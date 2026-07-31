@@ -46,6 +46,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Game")
 	void EndRound(EFARoundResult Result);
 
+	/**
+	 * 데스매치 참가자 확정 (GDD 5.4 · 1등 완전 동점자 2~3명).
+	 *
+	 * 관전자 보이스 관전자 채널로 분리.
+	 * 데스매치를 켤 때 반드시 호출할 것. 빈 배열을 넘기면 관전 상태 해제
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Game")
+	void SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders);
+
+	/**
+	 * 보이스 기준으로 관전자인가.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
+	bool IsVoiceSpectator(APlayerController* PlayerController) const;
+
 	/** 이번 매치에서 시작 좀비 몇 명으로 시작하는지 (GDD 9부: 6~8인 1명 / 9~12인 2명) */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
@@ -58,6 +73,9 @@ protected:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual void UpdateGameplayMuteList(APlayerController* aPlayer) override;
+
+	void UpdateVoiceMuteMatrix();
 
 	/** 진영 배정 + 리스폰 후 시작 카운트다운을 건다. */
 	void StartRound();
@@ -161,6 +179,10 @@ protected:
 	FName ZombiePlayerStartTag = FName(TEXT("Zombie"));
 
 private:
+	/** 데스매치 참가자. 서버 전용. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AFAPlayerState>> DeathMatchContenders;
+
 	FTimerHandle RoundStartTimerHandle;
 	FTimerHandle RoundTimerHandle;
 	FTimerHandle DraftTimerHandle;
