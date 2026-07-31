@@ -5,8 +5,11 @@
 
 #include "EngineUtils.h"
 #include "Game/FAGameState.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Player/FAPlayerState.h"
+#include "Player/FASpectatorPawn.h"
+#include "Voice/FAVoiceComponent.h"
 
 //구현 안된 것들
 // #include "Character/FACharacter.h"
@@ -19,6 +22,9 @@ AFAGameMode::AFAGameMode()
 {
 	GameStateClass = AFAGameState::StaticClass();
 	PlayerStateClass = AFAPlayerState::StaticClass();
+
+	// 관전자 보이스 붙는 폰
+	SpectatorClass = AFASpectatorPawn::StaticClass();
 
 	// DefaultPawnClass = AFACharacter::StaticClass();
 	// PlayerControllerClass = AFAPlayerController::StaticClass();
@@ -60,6 +66,9 @@ void AFAGameMode::HandleMatchHasStarted()
 		FAGameState->SetCurrentRound(0);
 	}
 
+	// 지난 매치의 데스매치 참가자가 남아 있으면 관전자 판정이 어긋남.
+	DeathMatchContenders.Reset();
+
 	// 매치 시작 점수 비움.
 	for (APlayerState* PlayerState : GameState->PlayerArray)
 	{
@@ -88,6 +97,9 @@ void AFAGameMode::StartRound()
 
 	AssignStartingTeams();
 	RestartAllPlayers();
+
+	// 라운드 사이에 관전 전환·난입 문제로 보이스 격리를 다시 맞춤.
+	UpdateVoiceMuteMatrix();
 
 	UE_LOG(LogTemp, Log, TEXT("[FA] Round %d/%d starting"), FAGameState->GetCurrentRound(), FAGameState->GetMaxRound());
 
@@ -319,10 +331,12 @@ void AFAGameMode::HandleMatchHasEnded()
 		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — deathmatch pending (co-winners for now)"), TiedFirstPlaceCount);
 
 		// TODO: UFADeathMatchSubsystem 구현 후 활성화 (1분 · 1층 제한 · 룰 전부 Remove · 나머지 자동 관전)
+		// SetRoundPhase 를 먼저 바꾸고 SetDeathMatchContenders 를 호출해야 관전자 판정이 맞는다.
 		// FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+		// TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
+		// SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
 		// if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
 		// {
-		//     TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
 		//     DeathMatch->StartDeathMatch(Contenders);
 		// }
 	}
@@ -542,6 +556,116 @@ void AFAGameMode::Logout(AController* Exiting)
 	Super::Logout(Exiting);
 
 	UpdateTeamCounts();
+	UpdateVoiceMuteMatrix();
+}
+
+void AFAGameMode::UpdateGameplayMuteList(APlayerController* aPlayer)
+{
+	Super::UpdateGameplayMuteList(aPlayer);
+
+	UpdateVoiceMuteMatrix();
+}
+
+void AFAGameMode::SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders)
+{
+	DeathMatchContenders.Reset(Contenders.Num());
+	for (AFAPlayerState* Contender : Contenders)
+	{
+		DeathMatchContenders.Add(Contender);
+	}
+
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+		{
+			APlayerController* PlayerController = Iterator->Get();
+			if (!PlayerController)
+			{
+				continue;
+			}
+
+			APawn* Pawn = PlayerController->GetPawn();
+			UFAVoiceComponent* VoiceComponent = Pawn ? Pawn->FindComponentByClass<UFAVoiceComponent>() : nullptr;
+			if (VoiceComponent)
+			{
+				VoiceComponent->SetVoiceChannel(IsVoiceSpectator(PlayerController)
+					? EFAVoiceChannel::Global
+					: EFAVoiceChannel::Proximity);
+			}
+		}
+	}
+
+	UpdateVoiceMuteMatrix();
+}
+
+bool AFAGameMode::IsVoiceSpectator(APlayerController* PlayerController) const
+{
+	if (!PlayerController)
+	{
+		return false;
+	}
+
+	// 개발 중 테스트용 관전 전용 접속(?SpectatorOnly=1)
+	if (MustSpectate(PlayerController))
+	{
+		return true;
+	}
+
+	const AFAGameState* FAGameState = GetFAGameState();
+	if (!FAGameState || FAGameState->GetRoundPhase() != EFARoundPhase::DeathMatch)
+	{
+		return false;
+	}
+
+	AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(PlayerController->PlayerState);
+	return FAPlayerState != nullptr && !DeathMatchContenders.Contains(FAPlayerState);
+}
+
+void AFAGameMode::UpdateVoiceMuteMatrix()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	TArray<APlayerController*> Participants;
+	for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		APlayerController* PlayerController = Iterator->Get();
+
+		// UniqueNetId 가 없으면 뮤트 대상으로 지목할 수단이 없음.
+		if (PlayerController && PlayerController->PlayerState && PlayerController->PlayerState->GetUniqueId().IsValid())
+		{
+			Participants.Add(PlayerController);
+		}
+	}
+
+	for (APlayerController* Listener : Participants)
+	{
+		const bool bListenerSpectating = IsVoiceSpectator(Listener);
+
+		for (APlayerController* Speaker : Participants)
+		{
+			if (Listener == Speaker)
+			{
+				continue;
+			}
+
+			const FUniqueNetIdRepl& SpeakerId = Speaker->PlayerState->GetUniqueId();
+
+			// 관전 여부가 서로 다르면 차단. 같으면(둘 다 관전 / 둘 다 인게임).
+			if (bListenerSpectating != IsVoiceSpectator(Speaker))
+			{
+				Listener->GameplayMutePlayer(SpeakerId);
+			}
+			else
+			{
+				Listener->GameplayUnmutePlayer(SpeakerId);
+			}
+		}
+	}
 }
 
 AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
