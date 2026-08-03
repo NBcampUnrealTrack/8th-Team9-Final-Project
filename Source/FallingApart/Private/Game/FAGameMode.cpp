@@ -10,12 +10,12 @@
 #include "Player/FAPlayerState.h"
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
+#include "Rule/FARuleDraftSubsystem.h"
 
 //구현 안된 것들
 // #include "Character/FACharacter.h"
 // #include "Player/FAPlayerController.h"
 // #include "UI/FAHUD.h"
-// #include "Rule/FARuleDraftSubsystem.h"
 // #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
@@ -161,12 +161,11 @@ void AFAGameMode::OnDraftTimer()
 		// 6회차(3:00, 무법 라운드)가 마지막
 		GetWorldTimerManager().ClearTimer(DraftTimerHandle);
 	}
-
-	// TODO: UFARuleDraftSubsystem 구현 후 활성화
-	// if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
-	// {
-	//     Draft->StartDraftForAllPlayers(DraftIndex);
-	// }
+	
+	if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+	{
+		Draft->StartDraftForAllPlayers(DraftIndex);
+	}
 }
 
 void AFAGameMode::EndRound(EFARoundResult Result)
