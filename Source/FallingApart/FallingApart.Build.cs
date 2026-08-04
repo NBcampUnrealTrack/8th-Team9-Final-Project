@@ -8,7 +8,13 @@ public class FallingApart : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
+			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
+			
+			//스팀 연동을 위한 모듈 포함
+			"OnlineSubsystemSteam"
+		});
 
 		// UMG: 발화 중 머리 위 아이콘(UWidgetComponent)
 		PrivateDependencyModuleNames.AddRange(new string[] { "UMG" });
