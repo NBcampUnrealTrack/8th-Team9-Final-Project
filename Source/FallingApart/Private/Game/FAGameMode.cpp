@@ -8,27 +8,26 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Player/FAPlayerState.h"
+#include "Player/FAPlayerController.h"
+#include "Player/FACharacter.h"
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
 
 //구현 안된 것들
-// #include "Character/FACharacter.h"
-// #include "Player/FAPlayerController.h"
 // #include "UI/FAHUD.h"
 // #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
 {
 	GameStateClass = AFAGameState::StaticClass();
+	PlayerControllerClass = AFAPlayerController::StaticClass();
 	PlayerStateClass = AFAPlayerState::StaticClass();
+	//HUDClass = AFAHUD::StaticClass();
+	DefaultPawnClass = AFACharacter::StaticClass();
 
 	// 관전자 보이스 붙는 폰
 	SpectatorClass = AFASpectatorPawn::StaticClass();
-
-	// DefaultPawnClass = AFACharacter::StaticClass();
-	// PlayerControllerClass = AFAPlayerController::StaticClass();
-	// HUDClass = AFAHUD::StaticClass();
 
 	// 인원 조건은 ReadyToStartMatch() 에서 직접 판정
 	bDelayedStart = true;
@@ -161,7 +160,7 @@ void AFAGameMode::OnDraftTimer()
 		// 6회차(3:00, 무법 라운드)가 마지막
 		GetWorldTimerManager().ClearTimer(DraftTimerHandle);
 	}
-	
+
 	if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
 	{
 		Draft->StartDraftForAllPlayers(DraftIndex);

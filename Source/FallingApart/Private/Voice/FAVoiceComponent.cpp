@@ -5,6 +5,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -42,6 +43,7 @@ void UFAVoiceComponent::BeginPlay()
 	Transport = NewObject<UFAVoiceTransport>(this, ResolvedTransportClass);
 
 	SetupVoiceSource();
+	SetupListenerAnchor();
 	SetupSpeakingIndicator();
 	ApplyListenerOverride();
 
@@ -298,11 +300,31 @@ USceneComponent* UFAVoiceComponent::ResolveVoiceSourceComponent()
 	Anchor->SetMobility(EComponentMobility::Movable);
 	Anchor->RegisterComponent();
 
-	USkeletalMeshComponent* Mesh = Owner->FindComponentByClass<USkeletalMeshComponent>();
-	if (Mesh != nullptr && Mesh->DoesSocketExist(HeadSocketName))
+	// 옷·헤어가 별도 스켈레탈 메시로 붙는 경우 FindComponentByClass 는 엉뚱한 걸 집는다.
+	// ACharacter 는 본체 메시가 GetMesh() 로 확정돼 있으므로 그쪽을 우선한다.
+	USkeletalMeshComponent* Mesh = nullptr;
+	if (const ACharacter* Character = Cast<ACharacter>(Owner))
 	{
-		Anchor->AttachToComponent(Mesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, HeadSocketName);
-		return Anchor;
+		Mesh = Character->GetMesh();
+	}
+	if (Mesh == nullptr)
+	{
+		Mesh = Owner->FindComponentByClass<USkeletalMeshComponent>();
+	}
+
+	if (Mesh != nullptr)
+	{
+		// DoesSocketExist 는 소켓이 없으면 본 이름으로 폴백한다(Mixamo 임포트의 Head 본이 그대로 매칭).
+		if (Mesh->DoesSocketExist(HeadSocketName))
+		{
+			Anchor->AttachToComponent(Mesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, HeadSocketName);
+			return Anchor;
+		}
+
+		// 조용히 발 밑에서 소리가 나는 것보다 로그를 남기는 편이 낫다.
+		UE_LOG(LogFAVoice, Warning,
+			TEXT("%s: 스켈레탈 메시에 소켓/본 '%s' 이 없어 루트 + 오프셋으로 대체합니다."),
+			*GetNameSafe(Owner), *HeadSocketName.ToString());
 	}
 
 	// 헤드 소켓이 없는 Pawn(DefaultPawn 등)에서도 튜닝은 가능해야 하므로 눈높이로 대체.
@@ -313,6 +335,36 @@ USceneComponent* UFAVoiceComponent::ResolveVoiceSourceComponent()
 	}
 
 	return Anchor;
+}
+
+void UFAVoiceComponent::SetupListenerAnchor()
+{
+	AActor* Owner = GetOwner();
+	USceneComponent* Root = Owner != nullptr ? Owner->GetRootComponent() : nullptr;
+	if (Root == nullptr)
+	{
+		return;
+	}
+
+	// 회전은 캡슐(= 액터 forward)을 그대로 쓰고, 높이만 헤드에 맞춘다.
+	float HeadHeight = VoiceSourceFallbackOffset.Z;
+	if (VoiceSourceComponent != nullptr && VoiceSourceComponent->GetAttachParent() != Root)
+	{
+		// 헤드 본에 붙은 경우에만 유효. RTS_Actor 라 액터 기준 로컬 Z 가 그대로 높이가 된다.
+		HeadHeight = VoiceSourceComponent->GetComponentTransform().GetRelativeTransform(
+			Owner->GetActorTransform()).GetLocation().Z;
+	}
+
+	ListenerAnchor = NewObject<USceneComponent>(Owner);
+	if (ListenerAnchor == nullptr)
+	{
+		return;
+	}
+
+	ListenerAnchor->SetMobility(EComponentMobility::Movable);
+	ListenerAnchor->RegisterComponent();
+	ListenerAnchor->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
+	ListenerAnchor->SetRelativeLocation(FVector(0.f, 0.f, HeadHeight));
 }
 
 void UFAVoiceComponent::SetupSpeakingIndicator()
@@ -330,7 +382,10 @@ void UFAVoiceComponent::SetupSpeakingIndicator()
 
 	SpeakingIndicator = NewObject<UWidgetComponent>(GetOwner());
 	SpeakingIndicator->SetWidgetSpace(EWidgetSpace::Screen);
-	SpeakingIndicator->SetDrawAtDesiredSize(true);
+
+	// DrawAtDesiredSize 를 켜면 브러시 원본 해상도가 그대로 화면 픽셀이 된다(512px 아이콘 → 캐릭터만 한 크기).
+	SpeakingIndicator->SetDrawAtDesiredSize(false);
+	SpeakingIndicator->SetDrawSize(SpeakingIndicatorDrawSize);
 	SpeakingIndicator->SetWidgetClass(SpeakingIndicatorWidgetClass);
 	SpeakingIndicator->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	SpeakingIndicator->RegisterComponent();
@@ -349,7 +404,7 @@ void UFAVoiceComponent::ApplyListenerOverride()
 		return;
 	}
 
-	if (!bOverrideListenerToHead || VoiceSourceComponent == nullptr)
+	if (!bOverrideListenerToHead || ListenerAnchor == nullptr)
 	{
 		return;
 	}
@@ -360,7 +415,7 @@ void UFAVoiceComponent::ApplyListenerOverride()
 		return;
 	}
 
-	PlayerController->SetAudioListenerOverride(VoiceSourceComponent, FVector::ZeroVector, FRotator::ZeroRotator);
+	PlayerController->SetAudioListenerOverride(ListenerAnchor, FVector::ZeroVector, FRotator::ZeroRotator);
 }
 
 USoundAttenuation* UFAVoiceComponent::BuildAttenuation()

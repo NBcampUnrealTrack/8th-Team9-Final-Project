@@ -107,6 +107,14 @@ public:
 
 	/** 라운드 점수를 매치 누적에 합산하고 라운드 점수를 비운다. */
 	void CommitRoundScore();
+	
+	/** 드래프트 UI를 여는 신호. 서버가 후보 3장을 담아 호출한다. */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds);
+	
+	/** 플레이어가 후보 중 하나를 골랐을 때 클라이언트가 호출. 서버가 검증 후 확정한다. */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_ConfirmDraft(int32 SelectedIndex);
 
 protected:
 	UFUNCTION()
@@ -117,6 +125,7 @@ protected:
 
 	UFUNCTION()
 	void OnRep_MatchScore();
+	
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_Team, VisibleAnywhere, Category = "FallingApart|Game")
