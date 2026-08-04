@@ -37,7 +37,10 @@ Saved/Config/
 *.userprefs
 *.sln.docstates
 
-# .vsconfig 는 팀 공유용(필요 VS 컴포넌트 정의)이라 커밋합니다 → 제외 안 함
+# .vsconfig 는 Generate Visual Studio project files 시 UBT 가 자동 생성하며,
+# 각자 설치된 VS 버전(2022/2026)의 MSVC 툴셋 ID 가 박힙니다.
+# 커밋해두면 팀원끼리 Generate 할 때마다 서로 덮어써서 diff 가 계속 뜨므로 제외합니다.
+.vsconfig
 
 # -----------------------------------------------------------------------------
 #  JetBrains Rider / ReSharper
