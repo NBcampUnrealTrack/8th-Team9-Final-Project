@@ -7,6 +7,8 @@
 #include "InputActionValue.h"
 #include "FACharacter.generated.h"
 
+class UFAVoiceComponent;
+
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter
 {
@@ -16,6 +18,9 @@ public:
 	AFACharacter();
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
+	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
 
 protected:
 	void Move(const FInputActionValue& Value);
@@ -33,4 +38,8 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	class UInputAction* LookAction;
+
+private:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFAVoiceComponent> VoiceComponent;
 };
