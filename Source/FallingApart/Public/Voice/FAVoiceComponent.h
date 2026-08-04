@@ -21,7 +21,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFAOnVoiceTalkingStateChanged, bool,
 /**
  * 근접 보이스 컴포넌트.
  *
- * 아직 캐릭터가 구현 안됐기에 pawn에 부착 -> 구현 되면 옮김
+ * 특정 캐릭터에 의존하지 않는다. AFACharacter(근접)와 AFASpectatorPawn(전역)이 각각 생성자에서 붙인다.
  */
 UCLASS(ClassGroup = (FallingApart), meta = (BlueprintSpawnableComponent))
 class FALLINGAPART_API UFAVoiceComponent : public UActorComponent
@@ -136,6 +136,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice")
 	FVector SpeakingIndicatorOffset = FVector(0.f, 0.f, 25.f);
 
+	/**
+	 * 아이콘 크기(화면 픽셀). Screen space 라 거리와 무관하게 고정된다.
+	 * 위젯의 Desired Size 를 쓰면 브러시 원본 해상도(512px 등)가 그대로 화면 크기가 되므로 여기서 잡는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice", meta = (ClampMin = "1"))
+	FVector2D SpeakingIndicatorDrawSize = FVector2D(48.f, 48.f);
+
 private:
 	/** PlayerState 와 UniqueNetId 가 준비될 때까지 재시도. */
 	void TryRegisterTalker();
@@ -147,6 +154,7 @@ private:
 	void ApplyTalkerSettings();
 
 	void SetupVoiceSource();
+	void SetupListenerAnchor();
 	void SetupSpeakingIndicator();
 	void ApplyListenerOverride();
 	USoundAttenuation* BuildAttenuation();
@@ -163,8 +171,17 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> RuntimeAttenuation;
 
+	/** 목소리가 나오는 위치(헤드 본). 애니메이션을 따라 움직인다. */
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> VoiceSourceComponent;
+
+	/**
+	 * 오디오 리스너 위치. 헤드 본이 아니라 루트(캡슐) + 헤드 높이에 붙는다.
+	 * 리스너는 위치뿐 아니라 회전도 쓰는데, 헤드 본의 축은 액터 forward 와 무관하고
+	 * 애니메이션마다 흔들려서 그대로 쓰면 좌우 정위가 틀어진다.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> ListenerAnchor;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> SpeakingIndicator;
