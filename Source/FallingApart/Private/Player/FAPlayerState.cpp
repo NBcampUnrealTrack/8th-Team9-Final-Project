@@ -4,6 +4,7 @@
 #include "Player/FAPlayerState.h"
 
 #include "Net/UnrealNetwork.h"
+#include "Rule/FARuleDraftSubsystem.h"
 
 AFAPlayerState::AFAPlayerState()
 {
@@ -213,4 +214,30 @@ void AFAPlayerState::OnRep_RoundScore()
 void AFAPlayerState::OnRep_MatchScore()
 {
 	OnScoreChanged.Broadcast();
+}
+
+void AFAPlayerState::Client_ShowDraftUI_Implementation(const TArray<FName>& CandidateRuleIds)
+{
+	UE_LOG(LogTemp, Log, TEXT("[Draft] Client_ShowDraftUI 수신 — 후보 %d장"), CandidateRuleIds.Num());
+
+	for (const FName& RuleId : CandidateRuleIds)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Draft]   클라이언트가 받은 후보 - %s"), *RuleId.ToString());
+	}
+
+	// TODO: 실제 드래프트 UI 위젯을 여는 코드로 교체
+}
+
+void AFAPlayerState::Server_ConfirmDraft_Implementation(int32 SelectedIndex)
+{
+	if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+	{
+		Draft->ConfirmDraft(this, SelectedIndex);
+	}
+}
+
+bool AFAPlayerState::Server_ConfirmDraft_Validate(int32 SelectedIndex)
+{
+	// 후보는 항상 3장(0~2)이므로, 이 범위를 벗어나면 애초에 조작된 요청으로 간주해 거부.
+	return SelectedIndex >= 0 && SelectedIndex < 3;
 }

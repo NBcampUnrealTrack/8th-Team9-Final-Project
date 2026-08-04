@@ -1,0 +1,45 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Character.h"
+#include "InputActionValue.h"
+#include "FACharacter.generated.h"
+
+class UFAVoiceComponent;
+
+UCLASS()
+class FALLINGAPART_API AFACharacter : public ACharacter
+{
+	GENERATED_BODY()
+
+public:
+	AFACharacter();
+
+	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
+	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
+
+protected:
+	void Move(const FInputActionValue& Value);
+	void Look(const FInputActionValue& Value);
+
+public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	class USpringArmComponent* CameraBoom;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	class UCameraComponent* FollowCamera;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	class UInputAction* MoveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	class UInputAction* LookAction;
+
+private:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFAVoiceComponent> VoiceComponent;
+};
