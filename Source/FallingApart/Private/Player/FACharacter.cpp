@@ -16,13 +16,19 @@ AFACharacter::AFACharacter()
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
+	bIsFirstPerson = false;
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 500.f, 0.f);
+	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
+	GetCharacterMovement()->MaxWalkSpeedCrouched = 300.f;
+
+	ThirdPersonArmLength = 300.f;
+	PerspectiveInterpSpeed = 12.f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.f;
+	CameraBoom->TargetArmLength = ThirdPersonArmLength;
 	CameraBoom->bUsePawnControlRotation = true;
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
@@ -42,6 +48,11 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AFACharacter::Move);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AFACharacter::Look);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFACharacter::Jump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFACharacter::StopJumping);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AFACharacter::ToggleCrouch);
+		EnhancedInputComponent->BindAction(PerspectiveAction, ETriggerEvent::Started, this, &AFACharacter::TogglePerspective);
+		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &AFACharacter::TriggerPrimary);
 	}
 }
 
@@ -71,4 +82,54 @@ void AFACharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+void AFACharacter::ToggleCrouch()
+{
+	if (GetCharacterMovement()->IsFalling())
+		return;
+
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	else
+	{
+		Crouch();
+	}
+}
+
+void AFACharacter::TogglePerspective()
+{
+	bIsFirstPerson = !bIsFirstPerson;
+	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+
+	if (!GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(PerspectiveTimerHandle, this, &AFACharacter::UpdatePerspectiveCamera, GetWorld()->GetDeltaSeconds(), true);
+	}
+}
+
+void AFACharacter::UpdatePerspectiveCamera()
+{
+	float DeltaTime = GetWorld()->GetDeltaSeconds();
+	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
+	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, PerspectiveInterpSpeed);
+	CameraBoom->SocketOffset.Z = FMath::FInterpTo(CameraBoom->SocketOffset.Z, TargetSocketOffsetZ, DeltaTime, PerspectiveInterpSpeed);
+
+	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
+
+	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.0f))
+	{
+		CameraBoom->TargetArmLength = TargetArmLength;
+		CameraBoom->SocketOffset.Z = TargetSocketOffsetZ;
+		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+	}
+}
+
+void AFACharacter::TriggerPrimary()
+{
+
 }
