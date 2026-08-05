@@ -30,7 +30,7 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 		}
 
 		// 플레이어 1명당 후보 3장을 각각 새로 뽑는다 (전원 동일 후보가 아니라 개인별 후보).
-		const TArray<FFADraftCandidate> Candidates = GenerateCandidates();
+		const TArray<FFADraftCandidate> Candidates = GenerateCandidates(FAPlayerState->GetTeam(), DraftIndex);
 
 		TWeakObjectPtr<AFAPlayerState> WeakPlayer(FAPlayerState);
 
@@ -154,34 +154,82 @@ void UFARuleDraftSubsystem::StartChainDraft(AFAPlayerState* Victim, int32 Remove
 	// TODO: RemovedRuleCount 만큼 좀비 카드 연속 드래프트 (1장당 6초)
 }
 
-TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(int32 Count) const
+TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForTeam, int32 DraftIndex, int32 Count) const
 {
-	TArray<FName> Pool = GetDummyRulePool();
-	TArray<FFADraftCandidate> Result;
+	// 이번 회차의 슬롯별 요구 티어 (예: 2회차 = [1, 1, 2]). GDD 4.2 티어 곡선.
+	const TArray<int32> TierComposition = GetTierComposition(DraftIndex);
+	const TArray<FFADummyRuleEntry> Pool = GetDummyRulePool();
 
-	for (int32 Index = 0; Index < Count && Pool.Num() > 0; ++Index)
+	TArray<FFADraftCandidate> Result;
+	TArray<FName> AlreadyPicked; // 같은 회차 안에서 같은 룰이 중복으로 안 뽑히게
+
+	for (int32 Slot = 0; Slot < TierComposition.Num(); ++Slot)
 	{
-		const int32 PickedIndex = FMath::RandRange(0, Pool.Num() - 1);
+		const int32 WantedTier = TierComposition[Slot];
+
+		// 이 진영 + 이 슬롯이 요구하는 정확한 티어 + 아직 안 뽑힌 것만 후보로 남긴다.
+		TArray<FFADummyRuleEntry> SlotPool;
+		for (const FFADummyRuleEntry& Entry : Pool)
+		{
+			if (Entry.Team == ForTeam && Entry.Tier == WantedTier && !AlreadyPicked.Contains(Entry.RuleId))
+			{
+				SlotPool.Add(Entry);
+			}
+		}
+
+		if (SlotPool.Num() == 0)
+		{
+			// 더미 풀에 해당 티어가 부족해서 생기는 임시 한계 — URuleCardData 로 교체되면 해소된다.
+			continue;
+		}
+
+		const FFADummyRuleEntry& Picked = SlotPool[FMath::RandRange(0, SlotPool.Num() - 1)];
 
 		FFADraftCandidate Candidate;
-		Candidate.RuleId = Pool[PickedIndex];
+		Candidate.RuleId = Picked.RuleId;
 		Result.Add(Candidate);
 
-		// 같은 후보가 중복으로 안 뽑히게, 뽑은 건 풀에서 제거
-		Pool.RemoveAtSwap(PickedIndex);
+		AlreadyPicked.Add(Picked.RuleId);
 	}
 
 	return Result;
 }
 
-TArray<FName> UFARuleDraftSubsystem::GetDummyRulePool() const
+TArray<FFADummyRuleEntry> UFARuleDraftSubsystem::GetDummyRulePool() const
 {
 	return {
-		TEXT("H01_DummyRule"),
-		TEXT("H02_DummyRule"),
-		TEXT("H03_DummyRule"),
-		TEXT("Z01_DummyRule"),
-		TEXT("Z02_DummyRule"),
-		TEXT("Z03_DummyRule")
-	};
+			{ TEXT("H_T1_Quiet"),         EFATeam::Human, 1 },
+			{ TEXT("H_T1_QuietFootstep"), EFATeam::Human, 1 },
+			{ TEXT("H_T1_Footsetep"),	   EFATeam::Human, 1 },
+			{ TEXT("H_T2_ExtraStamina"),  EFATeam::Human, 2 },
+			{ TEXT("H_T2_Extra"),		   EFATeam::Human, 2 },
+			{ TEXT("H_T2_Stamina"),       EFATeam::Human, 2 },
+			{ TEXT("H_T3_SecondWind"),    EFATeam::Human, 3 },
+			{ TEXT("H_T3_Wind"),          EFATeam::Human, 3 },
+			{ TEXT("H_T3_Second"),        EFATeam::Human, 3 },
+
+			{ TEXT("Z_T1_Quiet"),         EFATeam::Zombie, 1 },
+			{ TEXT("Z_T1_Footstep"),      EFATeam::Zombie, 1 },
+			{ TEXT("Z_T1_QuietFootstep"), EFATeam::Zombie, 1 },
+			{ TEXT("Z_T2_GrabRange"),     EFATeam::Zombie, 2 },
+			{ TEXT("Z_T2_Grab"),		   EFATeam::Zombie, 2 },
+			{ TEXT("Z_T2_Range"),		   EFATeam::Zombie, 2 },
+			{ TEXT("Z_T3_Frenzy"),        EFATeam::Zombie, 3 },
+			{ TEXT("Z_T3_Frenzystep"),    EFATeam::Zombie, 3 },
+			{ TEXT("Z_T3_step"),		   EFATeam::Zombie, 3 },
+		};
+}
+
+TArray<int32> UFARuleDraftSubsystem::GetTierComposition(int32 DraftIndex) const
+{
+	// 밸런싱 워크북 "1_드래프트곡선" 시트 그대로 반영 (1회차 T1T1T1 ~ 6회차 T3T3T3).
+	switch (DraftIndex)
+	{
+	case 1: return { 1, 1, 1 };
+	case 2: return { 1, 1, 2 };
+	case 3: return { 1, 2, 2 };
+	case 4: return { 2, 2, 2 };
+	case 5: return { 2, 2, 3 };
+	default: return { 3, 3, 3 }; // 6회차
+	}
 }

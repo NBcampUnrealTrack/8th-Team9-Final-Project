@@ -526,17 +526,17 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		return;
 	}
-
-	// 라운드 중 난입은 좀비로 참전
+	// 라운드 중(카운트다운 포함) 난입은 좀비로 참전.
+	// RoundStarting 단계는 AssignStartingTeams() 가 이미 실행된 뒤라, 여기서 놓치면 Team=None으로 남는다.
 	// TODO: 이탈 / 난입 처리 규칙은 기획 미확정 (GDD 부록 C)
-	if (FAGameState->GetRoundPhase() == EFARoundPhase::InProgress)
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	if (Phase == EFARoundPhase::InProgress || Phase == EFARoundPhase::RoundStarting)
 	{
 		if (AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(NewPlayer->PlayerState))
 		{
 			FAPlayerState->ResetForNewRound();
 			FAPlayerState->SetTeam(EFATeam::Zombie);
 		}
-
 		UpdateTeamCounts(false);
 	}
 }
