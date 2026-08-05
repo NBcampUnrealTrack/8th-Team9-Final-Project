@@ -27,6 +27,8 @@ protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void ToggleCrouch();
+	void TogglePerspective();
+	void UpdatePerspectiveCamera();
 	void TriggerPrimary();
 
 public:
@@ -35,6 +37,12 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float ThirdPersonArmLength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float PerspectiveInterpSpeed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* MoveAction;
@@ -49,9 +57,15 @@ public:
 	UInputAction* CrouchAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* PerspectiveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* PrimaryAction;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
+
+	bool bIsFirstPerson;
+	FTimerHandle PerspectiveTimerHandle;
 };
