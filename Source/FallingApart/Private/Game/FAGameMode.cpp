@@ -13,9 +13,9 @@
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "UI/FAHUD.h"
 
 //구현 안된 것들
-// #include "UI/FAHUD.h"
 // #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
@@ -23,7 +23,8 @@ AFAGameMode::AFAGameMode()
 	GameStateClass = AFAGameState::StaticClass();
 	PlayerControllerClass = AFAPlayerController::StaticClass();
 	PlayerStateClass = AFAPlayerState::StaticClass();
-	//HUDClass = AFAHUD::StaticClass();
+	// BP_FAGameMode 에서 BP_FAHUD 로 덮어쓴다 — WBP 지정이 BP 쪽에 있기 때문.
+	HUDClass = AFAHUD::StaticClass();
 	DefaultPawnClass = AFACharacter::StaticClass();
 
 	// 관전자 보이스 붙는 폰
