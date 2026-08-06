@@ -19,6 +19,8 @@ public:
 	AFACharacter();
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
@@ -27,6 +29,7 @@ protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void ToggleCrouch();
+	void UpdateCrouchCamera();
 	void TogglePerspective();
 	void UpdatePerspectiveCamera();
 	void TriggerPrimary();
@@ -42,7 +45,7 @@ public:
 	float ThirdPersonArmLength;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
-	float PerspectiveInterpSpeed;
+	float CameraInterpSpeed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* MoveAction;
@@ -67,5 +70,6 @@ private:
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
 
 	bool bIsFirstPerson;
+	FTimerHandle CrouchTimerHandle;
 	FTimerHandle PerspectiveTimerHandle;
 };

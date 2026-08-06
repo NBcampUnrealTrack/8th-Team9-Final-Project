@@ -24,7 +24,7 @@ AFACharacter::AFACharacter()
 	GetCharacterMovement()->MaxWalkSpeedCrouched = 300.f;
 
 	ThirdPersonArmLength = 300.f;
-	PerspectiveInterpSpeed = 12.f;
+	CameraInterpSpeed = 12.f;
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -53,6 +53,34 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AFACharacter::ToggleCrouch);
 		EnhancedInputComponent->BindAction(PerspectiveAction, ETriggerEvent::Started, this, &AFACharacter::TogglePerspective);
 		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &AFACharacter::TriggerPrimary);
+	}
+}
+
+void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	CameraBoom->TargetOffset.Z += HalfHeightAdjust;
+
+	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+
+	if (!GetWorldTimerManager().IsTimerActive(CrouchTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(CrouchTimerHandle, this, &AFACharacter::UpdateCrouchCamera, GetWorld()->GetDeltaSeconds(), true);
+	}
+}
+
+void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	CameraBoom->TargetOffset.Z -= HalfHeightAdjust;
+
+	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+
+	if (!GetWorldTimerManager().IsTimerActive(CrouchTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(CrouchTimerHandle, this, &AFACharacter::UpdateCrouchCamera, GetWorld()->GetDeltaSeconds(), true);
 	}
 }
 
@@ -99,6 +127,19 @@ void AFACharacter::ToggleCrouch()
 	}
 }
 
+void AFACharacter::UpdateCrouchCamera()
+{
+	float DeltaTime = GetWorld()->GetDeltaSeconds();
+
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, 0.f, DeltaTime, CameraInterpSpeed);
+
+	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, 0.f, 1.0f))
+	{
+		CameraBoom->TargetOffset.Z = 0.f;
+		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+	}
+}
+
 void AFACharacter::TogglePerspective()
 {
 	bIsFirstPerson = !bIsFirstPerson;
@@ -116,8 +157,8 @@ void AFACharacter::UpdatePerspectiveCamera()
 	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
 	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
 
-	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, PerspectiveInterpSpeed);
-	CameraBoom->SocketOffset.Z = FMath::FInterpTo(CameraBoom->SocketOffset.Z, TargetSocketOffsetZ, DeltaTime, PerspectiveInterpSpeed);
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
+	CameraBoom->SocketOffset.Z = FMath::FInterpTo(CameraBoom->SocketOffset.Z, TargetSocketOffsetZ, DeltaTime, CameraInterpSpeed);
 
 	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
 
