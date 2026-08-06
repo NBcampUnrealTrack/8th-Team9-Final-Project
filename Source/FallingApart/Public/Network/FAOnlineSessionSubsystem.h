@@ -39,7 +39,7 @@ public:
 	 * @param ServerName 공개될 세션 이름
 	 * @param Password 세션 입장에 필요한 비밀번호
 	 */
-	void CreateSession(int32 NumPublicConnections, const FString& MatchType, const FString& ServerName, const FString& Password = "");
+	void CreateSession(int32 NumPublicConnections, const FString& ServerName, const FString& Password = "");
 	
 	/** 세션 검색 
 	 * @param MaxSearchResults 최대 검색 개수*/

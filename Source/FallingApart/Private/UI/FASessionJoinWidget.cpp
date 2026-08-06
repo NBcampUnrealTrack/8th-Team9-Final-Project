@@ -3,7 +3,6 @@
 
 #include "UI/FASessionJoinWidget.h"
 
-#include "OnlineSessionSettings.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
 #include "Components/ScrollBox.h"
@@ -43,7 +42,7 @@ void UFASessionJoinWidget::VisibilityChanged(ESlateVisibility NewVisibility)
 }
 
 
-void UFASessionJoinWidget::AddSessionSearchResult(FOnlineSessionSearchResult& Result)
+void UFASessionJoinWidget::AddSessionSearchResult(const FOnlineSessionSearchResult& Result)
 {
 	UFASessionEntryWidget* EntryInstance = CreateWidget<UFASessionEntryWidget>(this, UFASessionEntryWidgetClass);
 	if (EntryInstance)
@@ -60,7 +59,7 @@ void UFASessionJoinWidget::RefreshSessionList()
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{ 
 		UFAOnlineSessionSubsystem* OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
-		OnlineSessionSubsystem->FindSession(10000);
+		OnlineSessionSubsystem->FindSession(100);
 	}
 }
 

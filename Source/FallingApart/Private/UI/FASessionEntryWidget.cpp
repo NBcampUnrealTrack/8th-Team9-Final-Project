@@ -3,8 +3,6 @@
 
 #include "UI/FASessionEntryWidget.h"
 
-#include <string>
-
 #include "OnlineSessionSettings.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
@@ -26,7 +24,7 @@ bool UFASessionEntryWidget::Initialize()
 	return true;
 }
 
-void UFASessionEntryWidget::SetSessionInfo(FOnlineSessionSearchResult Result)
+void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Result)
 {
 	EntryData = Result;
 	// 방 이름
@@ -48,12 +46,6 @@ void UFASessionEntryWidget::SetSessionInfo(FOnlineSessionSearchResult Result)
 	
 	
 }
-
-FOnlineSessionSearchResult UFASessionEntryWidget::GetSessionInfo()
-{
-	return FOnlineSessionSearchResult{};
-}
-
 void UFASessionEntryWidget::OnJoinButtonClicked()
 {
 	if (EntryData.IsValid())

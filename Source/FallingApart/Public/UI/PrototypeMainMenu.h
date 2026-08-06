@@ -13,6 +13,14 @@ class UFASessionCreateWidget;
 class UFASessionJoinWidget;
 class UWidgetSwitcher;
 class UButton;
+
+
+enum class EPrototypeMenuPage : uint8
+{
+	Main = 0,
+	CreateSession = 1,
+	JoinSession = 2
+};
 /**
  * 
  */
@@ -21,18 +29,20 @@ class FALLINGAPART_API UPrototypeMainMenu : public UUserWidget
 {
 	GENERATED_BODY()
 public:
-	virtual bool Initialize() override;
 
 	/**메뉴 열기*/
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup();//int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")));
+	void MenuSetup();
+	
+	void ShowPage(EPrototypeMenuPage Page);
 	
 	//* 로비 레벨의 경로 입력 선택 */
 	UPROPERTY(EditDefaultsOnly,Category = "FallingApart|Level")
 	TSoftObjectPtr<UWorld> TargetLevelPath;
-	
-	void SearchSession();
 protected:
+	// 버튼 이벤트 바인딩
+	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	
 	// 서브시스템의 대리자에 등록할 콜백함수
@@ -40,7 +50,7 @@ protected:
 	void OnCreateSession(bool bWasSuccessful);
 
 	// 아래 두 함수는 다이나믹 델리게이트(블루프린트 공개)가 아니므로 UFUNCTION을 사용하지않음)
-	void OnFindSession(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful);
+	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful);
 	
 	void OnJoinSession(EOnJoinSessionCompleteResult::Type Result);
 	
@@ -83,16 +93,13 @@ private:
 	TObjectPtr<UButton> ReturnToMainMenuButton;
 	
 	UFUNCTION()
-	void HostbuttonClicked();
+	void OnHostButtonClicked();
 	
 	UFUNCTION()
-	void JoinbuttonClicked();
+	void OnJoinButtonClicked();
 	
 	UFUNCTION()
 	void ConfirmHostButtonClicked();
-	
-	// UFUNCTION()
-	// void ConfirmJoinButtonClicked();
 	
 	UFUNCTION()
 	void ReturnToMainMenuButtonClicked();
@@ -102,15 +109,6 @@ private:
 	// 온라인 세션을 제어하기위한 서브시스템 포인터
 	// 주의사항, 싱글톤 서브시스템이기 때문에 다른 클래스 위젯등에서 작업시 Menu가 살아있으면 콜백 여기서 발생함.
 	// 이점을 고려하여 작성해야함.
+	// TODO : 위젯을 분리하였으니 코드 책임도 분리하기
 	UFAOnlineSessionSubsystem* OnlineSessionSubsystem;
-	
-	
-	int32 NumPublicConnections{8};
-	// 삭제예정
-	FString MatchType{TEXT("FreeForAll")};
-	
-	// 언젠가 스팀 제품 등록을 한다면 쓸 필요가 없음. 
-	// TODO : 전역변수로 이동
-	FString DefaultSettingKey{TEXT("Sparta")};
-	FString DefaultSettingValue{TEXT("FallingApart")};
 };

@@ -18,22 +18,14 @@ class FALLINGAPART_API UFASessionCreateWidget : public UUserWidget
 public:
 	virtual bool Initialize() override;
 	
-	TArray<FString> GetSessionSettings();
-	
-	FString GetNickName();
-	
 	FString GetSessionName();
 	
-	int32 GetMaxConnection();
+	int32 GetMaxConnections();
 	
 	FString GetPasswordString();
 	
 protected:
-	UFUNCTION()
-	void ConfirmButtonClicked();
-	
-	UFUNCTION()
-	void ReturnButtonClicked();
+	virtual void NativeConstruct() override;
 	
 private:
 	UPROPERTY(meta=(BindWidget))

@@ -34,7 +34,7 @@ void UFAOnlineSessionSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const FString& MatchType, const FString& ServerName, const FString& Password)
+void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const FString& ServerName, const FString& Password)
 {
 	if (!SessionInterface.IsValid())
 		return;

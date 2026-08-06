@@ -21,9 +21,7 @@ class FALLINGAPART_API UFASessionEntryWidget : public UUserWidget, public IUserO
 public:
 	virtual bool Initialize() override;
 	
-	void SetSessionInfo(FOnlineSessionSearchResult Result);
-	
-	FOnlineSessionSearchResult GetSessionInfo();
+	void SetSessionInfo(const FOnlineSessionSearchResult& Result);
 	
 protected:
 	UFUNCTION()

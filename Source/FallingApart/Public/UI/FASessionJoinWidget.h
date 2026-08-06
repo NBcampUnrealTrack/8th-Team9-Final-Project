@@ -7,7 +7,6 @@
 #include "Blueprint/UserWidget.h"
 #include "FASessionJoinWidget.generated.h"
 
-//class UFASessionListWidget;
 class UEditableText;
 class UFASessionEntryWidget;
 class UScrollBox;
@@ -22,7 +21,7 @@ class FALLINGAPART_API UFASessionJoinWidget : public UUserWidget
 public:
 	virtual bool Initialize() override;
 	
-	void AddSessionSearchResult(FOnlineSessionSearchResult& Result);
+	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);
 	
 	void ClearList();
 	
@@ -49,9 +48,4 @@ private:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PasswordInput;
-	
-	//UPROPERTY(meta=(BindWidget))
-	//TObjectPtr<UFASessionListWidget> SessionListWidget;
-	
-	FOnlineSessionSearchResult LastSelectedSession;
 };

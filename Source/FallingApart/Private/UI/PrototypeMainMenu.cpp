@@ -11,20 +11,18 @@
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
 
-bool UPrototypeMainMenu::Initialize()
+void UPrototypeMainMenu::NativeOnInitialized()
 {
-	// Initialize는 생성시 단 한번 호출됨
-	// NativeConstruct는 View에 추가될때마다 호출됨.
-	if (!Super::Initialize())
-		return false;
+	Super::NativeOnInitialized();
+	
 	//각 버튼에 이벤트 바인딩.
 	if (HostButton)
 	{
-		HostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HostbuttonClicked);
+		HostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnHostButtonClicked);
 	}
 	if (JoinButton)
 	{
-		JoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::JoinbuttonClicked);
+		JoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnJoinButtonClicked);
 	}
 	// if (ConfirmJoinButton)
 	// {
@@ -38,15 +36,46 @@ bool UPrototypeMainMenu::Initialize()
 	{
 		ReturnToMainMenuButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ReturnToMainMenuButtonClicked);
 	}
-	
-	return true;
 }
 
-void UPrototypeMainMenu::MenuSetup()//int32 NumberOfPublicConnections, FString TypeOfMatch)
+void UPrototypeMainMenu::NativeConstruct()
 {
-	//NumPublicConnections = NumberOfPublicConnections;
-	//MatchType = TypeOfMatch;
-	// 화면에 추가
+	Super::NativeConstruct();
+	// 서브시스템은 GameInstance로부터 가져올 수 있다.
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{ 
+		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
+	}
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.AddUniqueDynamic(this, &ThisClass::OnCreateSession);
+		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSessionComplete);
+		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSession);
+		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.AddUniqueDynamic(this, &ThisClass::OnDestroySession);
+		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.AddUniqueDynamic(this, &ThisClass::OnStartSession);
+	}
+}
+void UPrototypeMainMenu::NativeDestruct()
+{
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{ 
+		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
+	}
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.RemoveDynamic(this, &ThisClass::OnCreateSession);
+		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.RemoveAll(this);
+		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.RemoveAll(this);
+		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.RemoveDynamic(this, &ThisClass::OnDestroySession);
+		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.RemoveDynamic(this, &ThisClass::OnStartSession);
+	}
+	
+	//view에서 내릴때, MenuTearDown호출해 InputMode등 되돌림.
+	MenuTearDown();
+	Super::NativeDestruct();
+}
+void UPrototypeMainMenu::MenuSetup()
+{
 	AddToViewport();
 	SetVisibility(ESlateVisibility::Visible);
 	//bIsFocusable = true; //deprecated
@@ -54,7 +83,7 @@ void UPrototypeMainMenu::MenuSetup()//int32 NumberOfPublicConnections, FString T
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		APlayerController* PlayerController = World->GetFirstPlayerController();
+		APlayerController* PlayerController = GetOwningPlayer();
 		if (PlayerController)
 		{
 			FInputModeUIOnly InputMode;
@@ -67,34 +96,11 @@ void UPrototypeMainMenu::MenuSetup()//int32 NumberOfPublicConnections, FString T
 			PlayerController->SetShowMouseCursor(true);
 		}
 	}
-	// 서브시스템은 GameInstance로부터 가져올 수 있다.
-	if (UGameInstance* GameInstance = GetGameInstance())
-	{ 
-		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
-	}
-	if (OnlineSessionSubsystem)
-	{
-		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.AddDynamic(this, &ThisClass::OnCreateSession);
-		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSession);
-		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSession);
-		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.AddDynamic(this, &ThisClass::OnDestroySession);
-		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.AddDynamic(this, &ThisClass::OnStartSession);
-	}
-	
-	
 }
 
-void UPrototypeMainMenu::SearchSession()
+void UPrototypeMainMenu::ShowPage(EPrototypeMenuPage Page)
 {
-	if (OnlineSessionSubsystem)
-		OnlineSessionSubsystem->FindSession(10000);
-}
-
-void UPrototypeMainMenu::NativeDestruct()
-{
-	//view에서 내릴때, MenuTearDown호출해 InputMode등 되돌림.
-	MenuTearDown();
-	Super::NativeDestruct();
+	WidgetSwitcher_Page->SetActiveWidgetIndex(static_cast<int32>(Page));
 }
 
 void UPrototypeMainMenu::OnCreateSession(bool bWasSuccessful)
@@ -118,7 +124,7 @@ void UPrototypeMainMenu::OnCreateSession(bool bWasSuccessful)
 	}
 }
 
-void UPrototypeMainMenu::OnFindSession(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful)
+void UPrototypeMainMenu::OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful)
 {
 	if (!OnlineSessionSubsystem)
 		return;
@@ -137,22 +143,6 @@ void UPrototypeMainMenu::OnFindSession(const TArray<FOnlineSessionSearchResult>&
 		Result.Session.SessionSettings.bUsesPresence = true;
 		
 		SessionJoinWidget->AddSessionSearchResult(Result);
-		
-		// // 찾은 세션의 설정에서 키로 값을 가져올수있음
-		// FString SettingsValue;
-		// Result.Session.SessionSettings.Get(FName("MatchType"), SettingsValue);
-		//
-		// // 이유는 알수없지만 참가 전에 세션세팅을 주입해주어야 한다고... ue5.5이상의 버그?
-		// Result.Session.SessionSettings.bUseLobbiesIfAvailable = true;
-		// Result.Session.SessionSettings.bUsesPresence = true;
-		//
-		// // 매치타입이 검색설정과 같은경우
-		// if (SettingsValue == MatchType)
-		// {
-		// 	// 서브시스템을 통해 Join
-		// 	OnlineSessionSubsystem->JoinSession(Result, "");
-		// 	return;
-		// }
 	}
 }
 
@@ -179,7 +169,7 @@ void UPrototypeMainMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result
 			if (SessionInterface->GetResolvedConnectString(NAME_GameSession, Address))
 			{
 				// PlayerController의 ClientTravel을 이용해 서버의 주소로 이동.
-				APlayerController* PlayerController = GetGameInstance()->GetFirstLocalPlayerController();
+				APlayerController* PlayerController = GetOwningPlayer();
 				if (PlayerController)
 				{
 					PlayerController->ClientTravel(Address, TRAVEL_Absolute);
@@ -200,50 +190,39 @@ void UPrototypeMainMenu::OnStartSession(bool bWasSuccessful)
 }
 
 
-void UPrototypeMainMenu::HostbuttonClicked() 
+void UPrototypeMainMenu::OnHostButtonClicked() 
 {
-	WidgetSwitcher_Page->SetActiveWidgetIndex(1);
-	
-	// if (OnlineSessionSubsystem)
-	// 	OnlineSessionSubsystem->CreateSession(NumPublicConnections, MatchType, {}, {});;
+	ShowPage(EPrototypeMenuPage::CreateSession);
 }
 
-void UPrototypeMainMenu::JoinbuttonClicked()
+void UPrototypeMainMenu::OnJoinButtonClicked()
 {
-	WidgetSwitcher_Page->SetActiveWidgetIndex(2);
+	ShowPage(EPrototypeMenuPage::JoinSession);
+	// 페이지를 열떄 검색 시도.
 	SessionJoinWidget->RefreshSessionList();
-	
-	// if (OnlineSessionSubsystem)
-	// 	OnlineSessionSubsystem->FindSession(10000);
 }
 
 void UPrototypeMainMenu::ConfirmHostButtonClicked()
 {
 	if (OnlineSessionSubsystem)
 		OnlineSessionSubsystem->CreateSession(
-			SessionCreateWidget->GetMaxConnection(), 
-			MatchType, 
+			SessionCreateWidget->GetMaxConnections(), 
 			SessionCreateWidget->GetSessionName(), 
-			SessionCreateWidget->GetPasswordString());;
+			SessionCreateWidget->GetPasswordString());
 }
-
-// void UTestMenu::ConfirmJoinButtonClicked()
-// {
-// }
 
 void UPrototypeMainMenu::ReturnToMainMenuButtonClicked()
 {
-	WidgetSwitcher_Page->SetActiveWidgetIndex(0);
+	ShowPage(EPrototypeMenuPage::Main);
 }
 
 void UPrototypeMainMenu::MenuTearDown()
 {
 	RemoveFromParent();
-	
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		APlayerController* PlayerController = World->GetFirstPlayerController();
+		APlayerController* PlayerController = GetOwningPlayer();
 		if (PlayerController)
 		{
 			// 메뉴가 열릴때 변경된 인풋모드를 다시 기본으로
@@ -252,5 +231,4 @@ void UPrototypeMainMenu::MenuTearDown()
 			PlayerController->SetShowMouseCursor(false);
 		}
 	}
-	
 }

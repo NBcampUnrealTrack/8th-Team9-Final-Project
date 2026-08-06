@@ -6,8 +6,6 @@
 #include "Components/Button.h"
 #include "Components/EditableText.h"
 #include "GameFramework/PlayerState.h"
-#include "Network/FAOnlineSessionSubsystem.h"
-
 
 bool UFASessionCreateWidget::Initialize()
 {
@@ -31,32 +29,17 @@ bool UFASessionCreateWidget::Initialize()
 	return true;
 }
 
-void UFASessionCreateWidget::ConfirmButtonClicked()
+void UFASessionCreateWidget::NativeConstruct()
 {
-	
+	Super::NativeConstruct();
+	MaxConnectionInput->SetText(FText::FromString("8"));
 }
-
-void UFASessionCreateWidget::ReturnButtonClicked()
-{
-	
-}
-
-TArray<FString> UFASessionCreateWidget::GetSessionSettings()
-{
-	return TArray<FString>{};
-}
-
-FString UFASessionCreateWidget::GetNickName()
-{
-	return NicknameInput->GetText().ToString();
-}
-
 FString UFASessionCreateWidget::GetSessionName()
 {
 	return SessionNameInput->GetText().ToString();
 }
 
-int32 UFASessionCreateWidget::GetMaxConnection()
+int32 UFASessionCreateWidget::GetMaxConnections()
 {
 	// FString to int32
 	return FCString::Atoi(*MaxConnectionInput->GetText().ToString());
@@ -69,7 +52,7 @@ FString UFASessionCreateWidget::GetPasswordString()
 
 void UFASessionCreateWidget::OnNumberTextChanged(const FText& Text)
 {
-	// 숫자만 허용하도록 함
+	// 숫자만 입력하도록 제한함.
 	FString Str = Text.ToString();
 	
 	if (Str.IsEmpty()) 
