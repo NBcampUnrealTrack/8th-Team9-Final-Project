@@ -10,7 +10,8 @@ public class FallingApart : ModuleRules
 	
 		// UMG 는 Public — UI/FAHUDWidget.h 가 공개 헤더에서 UUserWidget 을 상속한다.
 		// (그 외 용도: 발화 중 머리 위 아이콘 UWidgetComponent)
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG",
+			"GameplayAbilities", "GameplayTags","GameplayTasks" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
