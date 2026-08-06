@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Game/FAGameTypes.h"
 #include "FARuleDraftSubsystem.generated.h"
 
 class AFAPlayerState;
@@ -13,6 +14,23 @@ struct FFADraftCandidate
 
 	UPROPERTY()
 	FName RuleId;
+};
+
+// 더미 룰 풀의 항목 1개 — 진영·티어 정보 포함. URuleCardData 나오면 이 구조체는 통째로 사라진다.
+USTRUCT()
+struct FFADummyRuleEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName RuleId;
+
+	UPROPERTY()
+	EFATeam Team = EFATeam::None;
+
+	// 1~3. 숫자가 클수록 강한 룰
+	UPROPERTY()
+	int32 Tier = 1;
 };
 
 /*
@@ -40,10 +58,13 @@ public:
 	
 private:
 	// 후보 3장을 뽑는다. 지금은 더미 룰 풀에서 무작위로 뽑기만 한다.
-	TArray<FFADraftCandidate> GenerateCandidates(int32 Count = 3) const;
+	TArray<FFADraftCandidate> GenerateCandidates(EFATeam ForTeam, int32 DraftIndex,int32 Count = 3) const;
 
 	// 임시 룰 풀. GAS 담당자의 URuleCardData 가 나오면 이 함수를 통째로 교체한다.
-	TArray<FName> GetDummyRulePool() const;
+	TArray<FFADummyRuleEntry> GetDummyRulePool() const;
+
+	// 이번 드래프트 회차(1~6)의 후보 3장 각각의 티어 구성. GDD 4.2 티어 곡선(밸런싱 워크북 1_드래프트곡선 시트).
+	TArray<int32> GetTierComposition(int32 DraftIndex) const;
 	
 	// 타임아웃 시 서버가 대신 무작위로 확정한다.
 	void HandleDraftTimeout(TWeakObjectPtr<AFAPlayerState> ForPlayer);

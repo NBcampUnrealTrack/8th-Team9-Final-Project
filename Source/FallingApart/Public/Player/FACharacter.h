@@ -7,6 +7,7 @@
 #include "InputActionValue.h"
 #include "FACharacter.generated.h"
 
+class UInputAction;
 class UFAVoiceComponent;
 
 UCLASS()
@@ -18,6 +19,8 @@ public:
 	AFACharacter();
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
@@ -25,6 +28,11 @@ public:
 protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+	void ToggleCrouch();
+	void UpdateCrouchCamera();
+	void TogglePerspective();
+	void UpdatePerspectiveCamera();
+	void TriggerPrimary();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -33,13 +41,35 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
-	class UInputAction* MoveAction;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float ThirdPersonArmLength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float CameraInterpSpeed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
-	class UInputAction* LookAction;
+	UInputAction* MoveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* LookAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* JumpAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* CrouchAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* PerspectiveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* PrimaryAction;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
+
+	bool bIsFirstPerson;
+	FTimerHandle CrouchTimerHandle;
+	FTimerHandle PerspectiveTimerHandle;
 };

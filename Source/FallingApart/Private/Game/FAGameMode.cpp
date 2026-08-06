@@ -13,9 +13,10 @@
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Rule/FADeathMatchSubsystem.h"
+#include "UI/FAHUD.h"
 
 //구현 안된 것들
-// #include "UI/FAHUD.h"
 // #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
@@ -23,7 +24,8 @@ AFAGameMode::AFAGameMode()
 	GameStateClass = AFAGameState::StaticClass();
 	PlayerControllerClass = AFAPlayerController::StaticClass();
 	PlayerStateClass = AFAPlayerState::StaticClass();
-	//HUDClass = AFAHUD::StaticClass();
+	// BP_FAGameMode 에서 BP_FAHUD 로 덮어쓴다 — WBP 지정이 BP 쪽에 있기 때문.
+	HUDClass = AFAHUD::StaticClass();
 	DefaultPawnClass = AFACharacter::StaticClass();
 
 	// 관전자 보이스 붙는 폰
@@ -328,15 +330,14 @@ void AFAGameMode::HandleMatchHasEnded()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — deathmatch pending (co-winners for now)"), TiedFirstPlaceCount);
 
-		// TODO: UFADeathMatchSubsystem 구현 후 활성화 (1분 · 1층 제한 · 룰 전부 Remove · 나머지 자동 관전)
 		// SetRoundPhase 를 먼저 바꾸고 SetDeathMatchContenders 를 호출해야 관전자 판정이 맞는다.
-		// FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
-		// TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
-		// SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
-		// if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
-		// {
-		//     DeathMatch->StartDeathMatch(Contenders);
-		// }
+		FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+		TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
+		SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+		     DeathMatch->StartDeathMatch(Contenders);
+		}
 	}
 }
 
@@ -526,17 +527,17 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		return;
 	}
-
-	// 라운드 중 난입은 좀비로 참전
+	// 라운드 중(카운트다운 포함) 난입은 좀비로 참전.
+	// RoundStarting 단계는 AssignStartingTeams() 가 이미 실행된 뒤라, 여기서 놓치면 Team=None으로 남는다.
 	// TODO: 이탈 / 난입 처리 규칙은 기획 미확정 (GDD 부록 C)
-	if (FAGameState->GetRoundPhase() == EFARoundPhase::InProgress)
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	if (Phase == EFARoundPhase::InProgress || Phase == EFARoundPhase::RoundStarting)
 	{
 		if (AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(NewPlayer->PlayerState))
 		{
 			FAPlayerState->ResetForNewRound();
 			FAPlayerState->SetTeam(EFATeam::Zombie);
 		}
-
 		UpdateTeamCounts(false);
 	}
 }
