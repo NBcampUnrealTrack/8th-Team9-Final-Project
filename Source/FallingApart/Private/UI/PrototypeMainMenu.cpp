@@ -1,17 +1,51 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "UI/TestMenu.h"
+#include "UI/PrototypeMainMenu.h"
 
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystemUtils.h"
 #include "Components/Button.h"
+#include "Components/WidgetSwitcher.h"
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "UI/FASessionCreateWidget.h"
+#include "UI/FASessionJoinWidget.h"
 
-void UTestMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
+bool UPrototypeMainMenu::Initialize()
 {
-	NumPublicConnections = NumberOfPublicConnections;
-	MatchType = TypeOfMatch;
+	// Initialize는 생성시 단 한번 호출됨
+	// NativeConstruct는 View에 추가될때마다 호출됨.
+	if (!Super::Initialize())
+		return false;
+	//각 버튼에 이벤트 바인딩.
+	if (HostButton)
+	{
+		HostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HostbuttonClicked);
+	}
+	if (JoinButton)
+	{
+		JoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::JoinbuttonClicked);
+	}
+	// if (ConfirmJoinButton)
+	// {
+	// 	ConfirmJoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ConfirmJoinButtonClicked);
+	// }
+	if (ConfirmHostButton)
+	{
+		ConfirmHostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ConfirmHostButtonClicked);
+	}
+	if (ReturnToMainMenuButton)
+	{
+		ReturnToMainMenuButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ReturnToMainMenuButtonClicked);
+	}
+	
+	return true;
+}
+
+void UPrototypeMainMenu::MenuSetup()//int32 NumberOfPublicConnections, FString TypeOfMatch)
+{
+	//NumPublicConnections = NumberOfPublicConnections;
+	//MatchType = TypeOfMatch;
 	// 화면에 추가
 	AddToViewport();
 	SetVisibility(ESlateVisibility::Visible);
@@ -46,35 +80,24 @@ void UTestMenu::MenuSetup(int32 NumberOfPublicConnections, FString TypeOfMatch)
 		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.AddDynamic(this, &ThisClass::OnDestroySession);
 		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.AddDynamic(this, &ThisClass::OnStartSession);
 	}
-}
-
-bool UTestMenu::Initialize()
-{
-	// Initialize는 생성시 단 한번 호출됨
-	// NativeConstruct는 View에 추가될때마다 호출됨.
-	if (!Super::Initialize())
-		return false;
-	//각 버튼에 이벤트 바인딩.
-	if (HostButton)
-	{
-		HostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HostbuttonClicked);
-	}
-	if (JoinButton)
-	{
-		JoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::JoinbuttonClicked);
-	}
 	
-	return true;
+	
 }
 
-void UTestMenu::NativeDestruct()
+void UPrototypeMainMenu::SearchSession()
+{
+	if (OnlineSessionSubsystem)
+		OnlineSessionSubsystem->FindSession(10000);
+}
+
+void UPrototypeMainMenu::NativeDestruct()
 {
 	//view에서 내릴때, MenuTearDown호출해 InputMode등 되돌림.
 	MenuTearDown();
 	Super::NativeDestruct();
 }
 
-void UTestMenu::OnCreateSession(bool bWasSuccessful)
+void UPrototypeMainMenu::OnCreateSession(bool bWasSuccessful)
 {
 	if (bWasSuccessful)
 	{
@@ -95,32 +118,45 @@ void UTestMenu::OnCreateSession(bool bWasSuccessful)
 	}
 }
 
-void UTestMenu::OnFindSession(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful)
+void UPrototypeMainMenu::OnFindSession(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful)
 {
 	if (!OnlineSessionSubsystem)
 		return;
 	
+	if (!bWasSuccessful)
+		return;
+	
 	for (FOnlineSessionSearchResult Result : SessionResult)
 	{
-		// 찾은 세션의 설정에서 키로 값을 가져올수있음
-		FString SettingsValue;
-		Result.Session.SessionSettings.Get(FName("MatchType"), SettingsValue);
-		
-		// 이유는 알수없지만 참가 전에 세션세팅을 주입해주어야 한다고... ue5.5이상의 버그?
+		// STEAM AppID480에서 구분을 위한 고유 키값
+		FString ProjectUniqueValue;
+		Result.Session.SessionSettings.Get(FName("SPARTA_PROJECT"), ProjectUniqueValue);
+		if (ProjectUniqueValue != FString("FALLING_APART"))
+			continue;
 		Result.Session.SessionSettings.bUseLobbiesIfAvailable = true;
 		Result.Session.SessionSettings.bUsesPresence = true;
 		
-		// 매치타입이 검색설정과 같은경우
-		if (SettingsValue == MatchType)
-		{
-			// 서브시스템을 통해 Join
-			OnlineSessionSubsystem->JoinSession(Result);
-			return;
-		}
+		SessionJoinWidget->AddSessionSearchResult(Result);
+		
+		// // 찾은 세션의 설정에서 키로 값을 가져올수있음
+		// FString SettingsValue;
+		// Result.Session.SessionSettings.Get(FName("MatchType"), SettingsValue);
+		//
+		// // 이유는 알수없지만 참가 전에 세션세팅을 주입해주어야 한다고... ue5.5이상의 버그?
+		// Result.Session.SessionSettings.bUseLobbiesIfAvailable = true;
+		// Result.Session.SessionSettings.bUsesPresence = true;
+		//
+		// // 매치타입이 검색설정과 같은경우
+		// if (SettingsValue == MatchType)
+		// {
+		// 	// 서브시스템을 통해 Join
+		// 	OnlineSessionSubsystem->JoinSession(Result, "");
+		// 	return;
+		// }
 	}
 }
 
-void UTestMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
+void UPrototypeMainMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
 {
 	//접속
 	if (!OnlineSessionSubsystem)
@@ -153,34 +189,54 @@ void UTestMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
 	}
 }
 
-void UTestMenu::OnDestroySession(bool bWasSuccessful)
+void UPrototypeMainMenu::OnDestroySession(bool bWasSuccessful)
 {
 	
 }
 
-void UTestMenu::OnStartSession(bool bWasSuccessful)
+void UPrototypeMainMenu::OnStartSession(bool bWasSuccessful)
 {
 	
 }
 
 
-void UTestMenu::HostbuttonClicked() 
+void UPrototypeMainMenu::HostbuttonClicked() 
 {
-	if (OnlineSessionSubsystem)
-	{
-		OnlineSessionSubsystem->CreateSession(NumPublicConnections, MatchType);;
-	}
+	WidgetSwitcher_Page->SetActiveWidgetIndex(1);
+	
+	// if (OnlineSessionSubsystem)
+	// 	OnlineSessionSubsystem->CreateSession(NumPublicConnections, MatchType, {}, {});;
 }
 
-void UTestMenu::JoinbuttonClicked()
+void UPrototypeMainMenu::JoinbuttonClicked()
 {
-	if (OnlineSessionSubsystem)
-	{
-		OnlineSessionSubsystem->FindSession(10000);
-	}
+	WidgetSwitcher_Page->SetActiveWidgetIndex(2);
+	SessionJoinWidget->RefreshSessionList();
+	
+	// if (OnlineSessionSubsystem)
+	// 	OnlineSessionSubsystem->FindSession(10000);
 }
 
-void UTestMenu::MenuTearDown()
+void UPrototypeMainMenu::ConfirmHostButtonClicked()
+{
+	if (OnlineSessionSubsystem)
+		OnlineSessionSubsystem->CreateSession(
+			SessionCreateWidget->GetMaxConnection(), 
+			MatchType, 
+			SessionCreateWidget->GetSessionName(), 
+			SessionCreateWidget->GetPasswordString());;
+}
+
+// void UTestMenu::ConfirmJoinButtonClicked()
+// {
+// }
+
+void UPrototypeMainMenu::ReturnToMainMenuButtonClicked()
+{
+	WidgetSwitcher_Page->SetActiveWidgetIndex(0);
+}
+
+void UPrototypeMainMenu::MenuTearDown()
 {
 	RemoveFromParent();
 	

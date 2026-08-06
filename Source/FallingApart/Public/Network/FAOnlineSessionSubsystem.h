@@ -30,23 +30,29 @@ class FALLINGAPART_API UFAOnlineSessionSubsystem : public UGameInstanceSubsystem
 public:
 	UFAOnlineSessionSubsystem();
 	
-		
+	virtual void Deinitialize() override;
 	// 메뉴에서 세션을 관리하기위해 호출하는 함수들
 	
 	/** 세션 생성 요청
 	 * @param NumPublicConnections 최대 연결 플레이어 수
-	 * @param MatchType 매치 타입(검색용 키워드, 확장 필요)*/
-	void CreateSession(int32 NumPublicConnections, FString MatchType);
+	 * @param MatchType 매치 타입(검색용 키워드, 확장 필요)
+	 * @param ServerName 공개될 세션 이름
+	 * @param Password 세션 입장에 필요한 비밀번호
+	 */
+	void CreateSession(int32 NumPublicConnections, const FString& MatchType, const FString& ServerName, const FString& Password = "");
 	
 	/** 세션 검색 
 	 * @param MaxSearchResults 최대 검색 개수*/
 	void FindSession(int32 MaxSearchResults);
 	
 	/** 특정 세션에 접속 시도
-	 * @param SessionResult FindSession()를 통해 가져온 접속할 세션정보*/
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
+	 * @param SessionResult FindSession()를 통해 가져온 접속할 세션정보
+	 * @param Password Oprional, 세션입장에 필요한 비밀번호
+	 */
+	void JoinSession(const FOnlineSessionSearchResult& SessionResult, FString Password);
 	
-	/** 서버 : 호스팅중인 세션 종료\n
+	/**TODO  
+	 * 서버 : 호스팅중인 세션 종료\n
 	 *  클라이언트 : 접속중인 세션에서 이탈*/
 	void DestroySession();
 	

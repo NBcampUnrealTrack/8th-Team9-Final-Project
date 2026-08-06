@@ -7,6 +7,7 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
 #include "Online/OnlineSessionNames.h"
+#include "Runtime/Renderer/Internal/SceneTextures.h"
 
 UFAOnlineSessionSubsystem::UFAOnlineSessionSubsystem():
 	CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(
@@ -27,7 +28,13 @@ UFAOnlineSessionSubsystem::UFAOnlineSessionSubsystem():
 	}
 }
 
-void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, FString MatchType)
+void UFAOnlineSessionSubsystem::Deinitialize()
+{
+	SessionInterface.Reset();
+	Super::Deinitialize();
+}
+
+void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const FString& MatchType, const FString& ServerName, const FString& Password)
 {
 	if (!SessionInterface.IsValid())
 		return;
@@ -51,9 +58,19 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, FStrin
 	LastSessionSettings->bShouldAdvertise = true;//세션을 공개하여 다른이들이 볼 수 있도록 함
 	LastSessionSettings->bUsesPresence = true;//내 상태를 플랫폼에 공개할것인지 여부 (친구창에 공개 등)
 	LastSessionSettings->bUseLobbiesIfAvailable = true;// 스팀 API구조 문제로, 반드시 로비 기능을 활성화해야한다고함
-	// 매치타입도 파라미터를 통해 설정
-	LastSessionSettings->Set(FName("MatchType"), MatchType, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	
+	// STEAM AppID480에서 구분을 위한 고유 키값
+	LastSessionSettings->Set(FName("SPARTA_PROJECT"), FString("FALLING_APART"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	
+	// TODO : 맵 설정?
+	// LastSessionSettings->Set(SETTING_MAPNAME, FString(TEXT("")), EOnlineDataAdvertisementType::ViaOnlineService);
 
+	LastSessionSettings->Set(FName("SERVER_NAME"), ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
+	if (!Password.IsEmpty())
+	{
+		LastSessionSettings->Set(FName("SERVER_PASSWORD"), Password, EOnlineDataAdvertisementType::ViaOnlineService);
+	}
+	
 	// 월드의 로컬 플레이어를 가져옴, 세션생서시 uniqueNetId에 사용.
 	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
 
@@ -102,7 +119,7 @@ void UFAOnlineSessionSubsystem::FindSession(int32 MaxSearchResults)
 
 }
 
-void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
+void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult, FString Password)
 {
 	if (!SessionInterface.IsValid())
 	{
