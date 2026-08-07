@@ -11,8 +11,13 @@ class UEditableText;
 class UFASessionEntryWidget;
 class UScrollBox;
 class UButton;
+class UTextBlock;
+
+DECLARE_MULTICAST_DELEGATE(FOnSessionRefreshRequested);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinRequested, const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+
 /**
- * 세션 참가 선택시 출력할 위젯, FASessionListWidget에서 하나 선택후 입장하는 구성
+ * 세션 참가 선택시 출력할 위젯, SessionScrollBox에서 Entry 하나 선택후 입장하는 구성
  */
 UCLASS()
 class FALLINGAPART_API UFASessionJoinWidget : public UUserWidget
@@ -21,21 +26,27 @@ class FALLINGAPART_API UFASessionJoinWidget : public UUserWidget
 public:
 	virtual bool Initialize() override;
 	
-	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);
-	
-	void ClearList();
-	
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|EntryWidgetClass")
 	TSubclassOf<UFASessionEntryWidget> UFASessionEntryWidgetClass;
 	
-	void RefreshSessionList();
+	void ActivatePage();
+	void SetSearchInProgress(bool bIsSearching);
+	void ShowSearchResults(const TArray<FOnlineSessionSearchResult>& SessionResults);
+	void ShowStatusMessage(const FText& Message);
+	void SetJoinInProgress(bool bIsJoining);
+
+	FOnSessionRefreshRequested OnSessionRefreshRequested;
+	FOnSessionJoinRequested OnSessionJoinRequested;
+
 protected:
-	
 	UFUNCTION()
 	void RefreshButtonClicked();
+
 private:
-	UFUNCTION()
-	void VisibilityChanged(ESlateVisibility NewVisibility);
+	void RequestRefresh();
+	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);
+	void ClearList();
+	void HandleSessionEntrySelected(const FOnlineSessionSearchResult& SessionResult);
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UScrollBox> SessionScrollBox;
@@ -48,4 +59,7 @@ private:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PasswordInput;
+
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> SearchStatusText;
 };

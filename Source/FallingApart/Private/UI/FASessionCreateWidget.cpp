@@ -29,25 +29,38 @@ bool UFASessionCreateWidget::Initialize()
 	return true;
 }
 
-void UFASessionCreateWidget::NativeConstruct()
+void UFASessionCreateWidget::SubmitCreateRequest()
 {
-	Super::NativeConstruct();
-	MaxConnectionInput->SetText(FText::FromString("8"));
+	FFASessionCreateRequest Request;
+	Request.MaxConnections = GetMaxConnections();
+	Request.ServerName = GetSessionName().TrimStartAndEnd();
+	Request.Password = GetPasswordString();
+
+	OnCreateSessionRequested.Broadcast(Request);
 }
-FString UFASessionCreateWidget::GetSessionName()
+
+FString UFASessionCreateWidget::GetSessionName() const
 {
 	return SessionNameInput->GetText().ToString();
 }
-
-int32 UFASessionCreateWidget::GetMaxConnections()
+int32 UFASessionCreateWidget::GetMaxConnections() const
 {
 	// FString to int32
 	return FCString::Atoi(*MaxConnectionInput->GetText().ToString());
 }
 
-FString UFASessionCreateWidget::GetPasswordString()
+FString UFASessionCreateWidget::GetPasswordString() const
 {
 	return PrivateSessionPass->GetText().ToString();
+}
+
+void UFASessionCreateWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	if (MaxConnectionInput && MaxConnectionInput->GetText().IsEmpty())
+	{
+		MaxConnectionInput->SetText(FText::AsNumber(8));
+	}
 }
 
 void UFASessionCreateWidget::OnNumberTextChanged(const FText& Text)
@@ -61,8 +74,9 @@ void UFASessionCreateWidget::OnNumberTextChanged(const FText& Text)
 		return;
 	}
 	
-	// 숫자인지 확인 
-	if (Str.IsNumeric())
+	// 숫자인지 확인 + 최소최대인원수 제한
+	const int32 ConnectionCount = FCString::Atoi(*Str);
+	if (Str.IsNumeric() && ConnectionCount >= 6 && ConnectionCount <= 12)
 	{
 		LastValidText = Text; // 유효한 숫자이므로 저장
 	}
