@@ -7,6 +7,8 @@
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Net/OnlineEngineInterface.h"
 #include "OnlineSessionSettings.h"
+#include "OnlineSubsystem.h"
+#include "OnlineSubsystemNames.h"
 #include "OnlineSubsystemUtils.h"
 #include "Voice/FAVoiceTypes.h"
 
@@ -65,7 +67,15 @@ void UFAEngineVoiceTransport::SetLocalTalking(APlayerController* OwningControlle
 
 FName UFAEngineVoiceTransport::GetBackendName() const
 {
-	return UOnlineEngineInterface::Get()->GetDefaultOnlineSubsystemName();
+	// config 의 DefaultPlatformService 가 아니라 실제로 올라온 서브시스템을 돌려준다.
+	// 스팀 클라이언트가 없거나 로그인이 실패하면 엔진이 조용히 NULL 로 떨어지는데,
+	// 설정값을 읽으면 그 상황에도 Steam 이라고 답해서 원인 추적이 불가능해진다.
+	if (const IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get())
+	{
+		return OnlineSubsystem->GetSubsystemName();
+	}
+
+	return NAME_None;
 }
 
 void UFAEngineVoiceTransport::ShutdownTransport(APlayerController* OwningController)
@@ -103,9 +113,13 @@ void UFAEngineVoiceTransport::EnsureVoiceSessionExists(APlayerController* Owning
 		return;
 	}
 
+	const IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	const bool bNullBackend = OnlineSubsystem == nullptr || OnlineSubsystem->GetSubsystemName() == NULL_SUBSYSTEM;
+
 	FOnlineSessionSettings SessionSettings;
 	SessionSettings.NumPublicConnections = 8;
-	SessionSettings.bIsLANMatch = true;
+	SessionSettings.bIsLANMatch = bNullBackend;
+	SessionSettings.bUseLobbiesIfAvailable = !bNullBackend;
 	SessionSettings.bShouldAdvertise = false;
 	SessionSettings.bAllowJoinInProgress = true;
 	SessionSettings.bUsesPresence = false;
@@ -116,6 +130,7 @@ void UFAEngineVoiceTransport::EnsureVoiceSessionExists(APlayerController* Owning
 
 	SessionInterface->CreateSession(LocalUserNum, FAVoice::FallbackVoiceSessionName, SessionSettings);
 
-	UE_LOG(LogFAVoice, Log, TEXT("보이스용 임시 세션 생성 — 엔진 VoIP 는 세션이 없으면 패킷을 처리하지 않는다. "
-		"서버 담당 세션이 붙으면 이 경로는 자동으로 건너뛴다."));
+	UE_LOG(LogFAVoice, Warning, TEXT("보이스용 임시 세션 생성 (백엔드 %s) — 엔진 VoIP 는 세션이 없으면 패킷을 처리하지 않는다. "
+		"정상 흐름(메뉴에서 서버 만들기/참가하기)을 탔다면 이 로그는 뜨지 않아야 한다."),
+		bNullBackend ? TEXT("NULL") : TEXT("Steam"));
 }
