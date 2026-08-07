@@ -30,6 +30,9 @@ AFACharacter::AFACharacter()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = ThirdPersonArmLength;
 	CameraBoom->bUsePawnControlRotation = true;
+	CameraBoom->bDoCollisionTest = false;
+	CameraBoom->bEnableCameraLag = true;
+	CameraBoom->CameraLagSpeed = CameraInterpSpeed;
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -38,6 +41,16 @@ AFACharacter::AFACharacter()
 	// 3인칭이어도 오디오 리스너는 카메라가 아니라 캐릭터 헤드에 붙는다(기획 확정).
 	// 카메라/스프링암 쪽에서 SetAudioListenerOverride 를 호출하면 이 동작이 깨진다.
 	VoiceComponent = CreateDefaultSubobject<UFAVoiceComponent>(TEXT("VoiceComponent"));
+}
+
+void AFACharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!bIsFirstPerson && !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+	{
+		UpdateCameraCollision(DeltaTime);
+	}
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -129,11 +142,9 @@ void AFACharacter::ToggleCrouch()
 
 void AFACharacter::UpdateCrouchCamera()
 {
-	float DeltaTime = GetWorld()->GetDeltaSeconds();
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, 0.f, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
 
-	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, 0.f, DeltaTime, CameraInterpSpeed);
-
-	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, 0.f, 1.0f))
+	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, 0.f, 1.f))
 	{
 		CameraBoom->TargetOffset.Z = 0.f;
 		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
@@ -162,12 +173,48 @@ void AFACharacter::UpdatePerspectiveCamera()
 
 	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
 
-	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.0f))
+	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.f))
 	{
 		CameraBoom->TargetArmLength = TargetArmLength;
 		CameraBoom->SocketOffset.Z = TargetSocketOffsetZ;
 		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 	}
+}
+
+void AFACharacter::UpdateCameraCollision(float DeltaTime)
+{
+	float TargetArmLength = ThirdPersonArmLength;
+	FVector Start = CameraBoom->GetComponentLocation();
+	FVector Direction = (FollowCamera->GetComponentLocation() - Start).GetSafeNormal();
+
+	if (Direction.IsNearlyZero())
+	{
+		Direction = -CameraBoom->GetForwardVector();
+	}
+
+	FVector End = Start + (Direction * ThirdPersonArmLength);
+
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams(FName("CameraCollision"), false, this);
+	QueryParams.AddIgnoredActor(this);
+
+
+	bool bHit = GetWorld()->SweepSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		FQuat::Identity,
+		ECC_Visibility,
+		FCollisionShape::MakeSphere(CameraBoom->ProbeSize),
+		QueryParams
+	);
+
+	if (bHit)
+	{
+		TargetArmLength = FMath::Clamp(HitResult.Distance - CameraBoom->ProbeSize, 30.f, ThirdPersonArmLength);
+	}
+
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
 }
 
 void AFACharacter::TriggerPrimary()
