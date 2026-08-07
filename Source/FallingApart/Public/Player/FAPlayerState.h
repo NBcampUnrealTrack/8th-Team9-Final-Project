@@ -108,9 +108,13 @@ public:
 	/** 라운드 점수를 매치 누적에 합산하고 라운드 점수를 비운다. */
 	void CommitRoundScore();
 	
-	/** 드래프트 UI를 여는 신호. 서버가 후보 3장을 담아 호출한다. */
+	/**
+	 * 드래프트 UI를 여는 신호. 서버가 후보 3장을 담아 호출한다.
+	 * @param SelectionTime 선택 제한 시간(초). 이 시간이 지나면 서버가 무작위로 확정하므로
+	 *                      클라이언트 카운트다운은 반드시 서버가 준 이 값을 써야 한다.
+	 */
 	UFUNCTION(Client, Reliable)
-	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds);
+	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds, float SelectionTime);
 	
 	/** 플레이어가 후보 중 하나를 골랐을 때 클라이언트가 호출. 서버가 검증 후 확정한다. */
 	UFUNCTION(Server, Reliable, WithValidation)

@@ -1,0 +1,11 @@
+Name,DisplayName,ShortDesc,Team,Tier,Type,RuleTag,RuleEffect,Magnitude,DraftWeight,bMVP
+Z01,굳은 관절,점프할 수 없다,Zombie,T1,Penalty,Rule.Move.NoJump,/Game/FallingApart/GAS/Effects/GE_Rule_NoJump.GE_Rule_NoJump_C,0.0,1.0,true
+H01,삔 발목,점프할 수 없다,Human,T1,Penalty,Rule.Move.NoJump,/Game/FallingApart/GAS/Effects/GE_Rule_NoJump.GE_Rule_NoJump_C,0.0,1.0,true
+Z02,시체의 다리,이동속도 -15%,Zombie,T1,Penalty,Rule.Move.SpeedDown.S,/Game/FallingApart/GAS/Effects/GE_Rule_SpeedDown_S.GE_Rule_SpeedDown_S_C,0.85,1.0,true
+H02,지친 다리,이동속도 -15%,Human,T1,Penalty,Rule.Move.SpeedDown.S,/Game/FallingApart/GAS/Effects/GE_Rule_SpeedDown_S.GE_Rule_SpeedDown_S_C,0.85,1.0,true
+Z04,미끄러짐,마찰 -70% · 멈추기 어렵다,Zombie,T2,Penalty,Rule.Move.LowFriction,/Game/FallingApart/GAS/Effects/GE_Rule_LowFriction.GE_Rule_LowFriction_C,0.3,1.0,true
+H04,젖은 바닥,마찰 -70% · 멈추기 어렵다,Human,T2,Penalty,Rule.Move.LowFriction,/Game/FallingApart/GAS/Effects/GE_Rule_LowFriction.GE_Rule_LowFriction_C,0.3,1.0,true
+Z05,전진 강박,멈출 수 없다 · 좌우 조향만 가능,Zombie,T3,Penalty,Rule.Move.ForceForward,/Game/FallingApart/GAS/Effects/GE_Rule_ForceForward.GE_Rule_ForceForward_C,0.0,1.0,false
+H05,공황 질주,멈출 수 없다 · 좌우 조향만 가능,Human,T3,Penalty,Rule.Move.ForceForward,/Game/FallingApart/GAS/Effects/GE_Rule_ForceForward.GE_Rule_ForceForward_C,0.0,1.0,false
+Z07,경련,6초마다 1.5초 굳는다,Zombie,T2,Penalty,Rule.Move.Seizure,/Game/FallingApart/GAS/Effects/GE_Rule_Seizure.GE_Rule_Seizure_C,0.0,1.0,true
+H06,발작,6초마다 1.5초 굳는다,Human,T3,Penalty,Rule.Move.Seizure,/Game/FallingApart/GAS/Effects/GE_Rule_Seizure.GE_Rule_Seizure_C,0.0,1.0,false
