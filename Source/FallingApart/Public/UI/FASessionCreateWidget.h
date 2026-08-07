@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "FASessionCreateWidget.generated.h"
 
+class USpinBox;
 class UEditableText;
 class UButton;
 
@@ -50,13 +51,10 @@ private:
 	TObjectPtr<UEditableText> SessionNameInput;
 	
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UEditableText> MaxConnectionInput;
+	TObjectPtr<USpinBox> MaxConnectionSpinBox;
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PrivateSessionPass;
-	
-	UFUNCTION()
-	void OnNumberTextChanged(const FText& Text);
 	
 	FText LastValidText;
 };

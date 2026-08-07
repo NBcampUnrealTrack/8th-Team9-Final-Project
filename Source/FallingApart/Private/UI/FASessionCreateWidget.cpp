@@ -5,6 +5,7 @@
 
 #include "Components/Button.h"
 #include "Components/EditableText.h"
+#include "Components/SpinBox.h"
 #include "GameFramework/PlayerState.h"
 
 bool UFASessionCreateWidget::Initialize()
@@ -18,12 +19,6 @@ bool UFASessionCreateWidget::Initialize()
 		{
 			NicknameInput->SetText(FText::FromString(PlayerState->GetPlayerName()));
 		}
-	}
-	
-	if (MaxConnectionInput)
-	{
-		MaxConnectionInput->OnTextChanged.AddDynamic(this, &ThisClass::OnNumberTextChanged);
-		LastValidText = FText::GetEmpty();
 	}
 	
 	return true;
@@ -45,8 +40,7 @@ FString UFASessionCreateWidget::GetSessionName() const
 }
 int32 UFASessionCreateWidget::GetMaxConnections() const
 {
-	// FString to int32
-	return FCString::Atoi(*MaxConnectionInput->GetText().ToString());
+	return MaxConnectionSpinBox->GetValue();
 }
 
 FString UFASessionCreateWidget::GetPasswordString() const
@@ -57,33 +51,4 @@ FString UFASessionCreateWidget::GetPasswordString() const
 void UFASessionCreateWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	if (MaxConnectionInput && MaxConnectionInput->GetText().IsEmpty())
-	{
-		MaxConnectionInput->SetText(FText::AsNumber(8));
-	}
-}
-
-void UFASessionCreateWidget::OnNumberTextChanged(const FText& Text)
-{
-	// 숫자만 입력하도록 제한함.
-	FString Str = Text.ToString();
-	
-	if (Str.IsEmpty()) 
-	{
-		LastValidText = Text;
-		return;
-	}
-	
-	// 숫자인지 확인 + 최소최대인원수 제한
-	const int32 ConnectionCount = FCString::Atoi(*Str);
-	if (Str.IsNumeric() && ConnectionCount >= 6 && ConnectionCount <= 12)
-	{
-		LastValidText = Text; // 유효한 숫자이므로 저장
-	}
-	else
-	{
-		// 숫자가 아니면 직전의 유효한 텍스트로 복구
-		MaxConnectionInput->SetText(LastValidText);
-	}
-	
 }
