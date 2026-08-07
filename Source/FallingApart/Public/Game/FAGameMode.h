@@ -136,6 +136,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
 	int32 DraftsPerRound = 6;
 
+	/** 감염 직후 무적 시간(초). 연속 드래프트를 뽑는 동안 즉사하지 않게 한다 (GDD 3.4). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
+	float InfectionInvulnerabilityTime = 2.0f;
+
 	/** 0 이면 인원수에 따라 자동 결정, 1 이상이면 방장 지정값으로 취급한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Game")
 	int32 StartingZombieCountOverride = 0;
