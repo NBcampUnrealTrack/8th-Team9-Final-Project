@@ -15,6 +15,7 @@
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Rule/FADeathMatchSubsystem.h"
 #include "UI/FAHUD.h"
 
 //구현 안된 것들
@@ -331,15 +332,14 @@ void AFAGameMode::HandleMatchHasEnded()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — deathmatch pending (co-winners for now)"), TiedFirstPlaceCount);
 
-		// TODO: UFADeathMatchSubsystem 구현 후 활성화 (1분 · 1층 제한 · 룰 전부 Remove · 나머지 자동 관전)
 		// SetRoundPhase 를 먼저 바꾸고 SetDeathMatchContenders 를 호출해야 관전자 판정이 맞는다.
-		// FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
-		// TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
-		// SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
-		// if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
-		// {
-		//     DeathMatch->StartDeathMatch(Contenders);
-		// }
+		FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+		TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
+		SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+		     DeathMatch->StartDeathMatch(Contenders);
+		}
 	}
 }
 
