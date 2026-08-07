@@ -23,9 +23,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
 	static void SetMicThreshold(float Threshold);
 
-	/** 현재 붙어 있는 보이스 백엔드 이름(NULL, Steam …). 설정 UI 표시와 디버그용. */
+	/**
+	 * 지금 실제로 올라와 있는 보이스 백엔드 이름(NULL, STEAM …). 설정 UI 표시와 디버그용.
+	 */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	static FName GetVoiceBackendName();
+
+	/** config 가 요구하는 백엔드([OnlineSubsystem] DefaultPlatformService). 실제 동작값이 아니다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
+	static FName GetConfiguredVoiceBackendName();
 
 	/** config 상 보이스가 켜져 있는가([Voice] bEnabled + [OnlineSubsystem] bHasVoiceEnabled). */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
