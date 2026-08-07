@@ -25,6 +25,7 @@ class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemIn
 public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
+	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -66,6 +67,7 @@ protected:
 	void UpdateCrouchCamera();
 	void TogglePerspective();
 	void UpdatePerspectiveCamera();
+	void UpdateCameraCollision(float DeltaTime);
 	void TriggerPrimary();
 
 public:
