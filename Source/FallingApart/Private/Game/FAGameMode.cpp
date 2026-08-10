@@ -4,6 +4,8 @@
 #include "Game/FAGameMode.h"
 
 #include "EngineUtils.h"
+#include "GAS/FAAbilitySystemComponent.h"
+#include "GAS/FAGameplayTags.h"
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
@@ -366,30 +368,27 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 	UE_LOG(LogTemp, Log, TEXT("[FA] %s infected by %s"), *Victim->GetPlayerName(),
 		Infector ? *Infector->GetPlayerName() : TEXT("None"));
 
-	// --- 미구현 시스템 연동 (캐릭터 / GAS / 드래프트) ---
-	// TODO: AFACharacter · ASC · UFARuleDraftSubsystem 구현 후 활성화
-	// if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
-	// {
-	//     UAbilitySystemComponent* ASC = VictimCharacter->GetAbilitySystemComponent();
-	//
-	//     // 1) 인간 룰 전부 제거 — 제거된 장수 N 을 센다 (설계 결정 ③)
-	//     const int32 RemovedRuleCount = ASC->RemoveActiveEffectsWithGrantedTags(
-	//         FGameplayTagContainer(FAGameplayTags::Get().Rule_Team_Human));
-	//
-	//     // 2) 진영 태그 전환 + 부활 직후 2초 무적 (GDD 3.4)
-	//     ASC->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Human);
-	//     ASC->AddLooseGameplayTag(FAGameplayTags::Get().State_Zombie);
-	//     VictimCharacter->ApplyInvulnerability(2.0f);
-	//
-	//     // 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
-	//     if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
-	//     {
-	//         Draft->StartChainDraft(Victim, RemovedRuleCount);
-	//     }
-	//
-	//     // 4) 암전 · 시야 필터 전환 연출은 클라이언트 로컬 처리
-	//     VictimCharacter->PlayInfectionSequence();
-	// }
+	if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
+	{
+		int32 RemovedRuleCount = 0;
+
+		if (UFAAbilitySystemComponent* ASC = VictimCharacter->GetFAAbilitySystemComponent())
+		{
+			// 1) 인간 룰 전부 제거 — 제거된 장수 N 이 곧 연속 드래프트 횟수
+			RemovedRuleCount = ASC->RemoveRulesOfTeam(FAGameplayTags::Get().Rule_Team_Human);
+		}
+
+		// 2) 감염 직후 2초 무적
+		VictimCharacter->ApplyInvulnerability(InfectionInvulnerabilityTime);
+
+		// 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
+		if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+		{
+			Draft->StartChainDraft(Victim, RemovedRuleCount);
+		}
+
+		// TODO: 암전 · 시야 필터 전환 연출(PlayInfectionSequence)은 캐릭터 담당자 작업 후 연결.
+	}
 
 	UpdateTeamCounts();
 }
