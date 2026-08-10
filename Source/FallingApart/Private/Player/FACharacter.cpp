@@ -57,11 +57,13 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
 {
+	// 가지고 있는 AbilitySystemComponent를 return 해줌  ( 쓸수 딴데서 데이터 확인할 수 있게 해줌 ) 
 	return AbilitySystemComponent;
 }
 
 UFACharacterMovementComponent* AFACharacter::GetFAMovementComponent() const
 {
+	// 가지고 있는 
 	return Cast<UFACharacterMovementComponent>(GetCharacterMovement());
 }
 
@@ -257,6 +259,7 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
+	// 앉기 시작했을 떄 호출되는 함수
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	CameraBoom->TargetOffset.Z += HalfHeightAdjust;
@@ -271,6 +274,7 @@ void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 
 void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
+	//앉기(Crouch)를 해제했을 때 호출되는 함수
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	CameraBoom->TargetOffset.Z -= HalfHeightAdjust;
@@ -299,7 +303,6 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		AddMovementInput(RightDirection, MovementVector.X);
 	}
 }
-
 void AFACharacter::Look(const FInputActionValue& Value)
 {
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
@@ -310,7 +313,6 @@ void AFACharacter::Look(const FInputActionValue& Value)
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
 }
-
 void AFACharacter::Input_Jump()
 {
 	// QTE 진행 중이면 점프를 막고 연타 카운트 증가
@@ -343,12 +345,10 @@ void AFACharacter::Input_Jump()
 	// BP_FACharacter 의 DefaultAbilities 에 GA_Jump 를 아직 안 넣은 상태 — 기존 동작 유지.
 	Jump();
 }
-
 void AFACharacter::Input_StopJumping()
 {
 	StopJumping();
 }
-
 void AFACharacter::ToggleCrouch()
 {
 	if (GetCharacterMovement()->IsFalling())
@@ -377,6 +377,7 @@ void AFACharacter::UpdateCrouchCamera()
 
 void AFACharacter::TogglePerspective()
 {
+	//1인칭 ↔ 3인칭 상태를 전환하고, 카메라 전환용 타이머를 시작하는 함수
 	bIsFirstPerson = !bIsFirstPerson;
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 
@@ -388,6 +389,8 @@ void AFACharacter::TogglePerspective()
 
 void AFACharacter::UpdatePerspectiveCamera()
 {
+	//1인칭 3인칭 시점 전환을 부드럽게 하는 코드 
+	//Rule 에서 강제로 변경시 보임
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
 	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
 	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
@@ -407,6 +410,7 @@ void AFACharacter::UpdatePerspectiveCamera()
 
 void AFACharacter::UpdateCameraCollision(float DeltaTime)
 {
+	// 3인칭 카메라 벽에 부딫혔을 때 부드럽게 복구하는 함수 
 	float TargetArmLength = ThirdPersonArmLength;
 	FVector Start = CameraBoom->GetComponentLocation();
 	FVector Direction = (FollowCamera->GetComponentLocation() - Start).GetSafeNormal();
@@ -449,7 +453,6 @@ void AFACharacter::TriggerPrimary()
 void AFACharacter::OnRep_QTEGauge()
 {
 	// UI 처리
-
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Cyan, FString::Printf(TEXT("QTE 게이지: %.1f"), CurrentQTEGauge));
@@ -458,8 +461,11 @@ void AFACharacter::OnRep_QTEGauge()
 
 void AFACharacter::SyncQTEPressesWithServer()
 {
+	//클라이언트에서 로컬로 누적한 QTE 버튼 입력 횟수를 서버에 한꺼번에 전송하고, 
+	//전송 후 로컬 카운트를 0으로 초기화하는 함수
 	if (LocalQTEPressCount > 0)
 	{
+		// 포획 또는 포획 풀기 입력 횟수 를 서버에 한번에 모아서 보내는 함수 
 		Server_SendQTEPresses(LocalQTEPressCount);
 		LocalQTEPressCount = 0;
 	}

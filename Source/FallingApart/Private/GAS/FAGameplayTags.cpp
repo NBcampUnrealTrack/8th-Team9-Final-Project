@@ -26,6 +26,16 @@ void FAGameplayTags::AddAllTags()
 	Rule_Move_LowFriction  = AddTag(TEXT("Rule.Move.LowFriction"),  TEXT("Z04/H04 지면 마찰 -70%. 관성이 커져 미끄러진다."));
 	Rule_Move_ForceForward = AddTag(TEXT("Rule.Move.ForceForward"), TEXT("Z05/H05 자동 전진. 멈출 수 없고 좌우 조향만 가능."));
 	Rule_Move_Seizure      = AddTag(TEXT("Rule.Move.Seizure"),      TEXT("Z07/H06 경련·발작. 6초마다 1.5초 State.Stunned."));
+	Rule_Move_NoAriControl = AddTag(TEXT("Rule.Move.NoAriControl"),  TEXT("Z09/H08 공중 마비. 공중 제어 0 "));
+	Rule_Move_LandStun	   = AddTag(TEXT("Rule.Move.Seizure"),      TEXT("Z11/H09 착지 경직 . 착지 시 1초 정지 "));
+	
+	//~ 룰 - Input
+	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
+	
+	//~ 룰 - Vision
+	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
+	
+	Rule_Vision_Desautrate = AddTag(TEXT("Rule.Vision.Desautrate"), TEXT("Z17/H18 흑백.  시야거리 8m "));
 
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));

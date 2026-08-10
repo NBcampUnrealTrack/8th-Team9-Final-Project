@@ -22,6 +22,7 @@ UFAAttributeSet::UFAAttributeSet()
 
 	// 시야
 	InitVisionRange(6000.0f);
+	InitFieldOfView(90.0f);
 }
 
 void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,float& NewValue)
@@ -65,6 +66,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	else if (Attribute == GetVisionRangeAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,6000.0f);
+	}
+	else if (Attribute == GetFieldOfViewAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue,0.0f,90.0f);
 	}
 }
 
@@ -116,6 +121,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	else if (ChangedAttribute ==GetVisionRangeAttribute())
 	{
 		SetVisionRange(FMath::Clamp(GetVisionRange(),0.0f,6000.0f));
+	}
+	else if (ChangedAttribute ==GetFieldOfViewAttribute())
+	{
+		SetVisionRange(FMath::Clamp(GetFieldOfView(),0.0f,6000.0f));
 	}
 }
 
@@ -176,4 +185,10 @@ void UFAAttributeSet::OnRep_MaxStamina(const FGameplayAttributeData& OldValue)
 	void UFAAttributeSet::OnRep_VisionRange(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,VisionRange,OldValue);
+}
+
+void UFAAttributeSet::OnRep_FieldOfView(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,FieldOfView,OldValue);
+	
 }
