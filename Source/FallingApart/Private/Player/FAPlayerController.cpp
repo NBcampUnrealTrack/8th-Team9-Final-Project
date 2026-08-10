@@ -1,16 +1,26 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FAPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameMapsSettings.h"
 #include "GAS/FAAbilitySystemComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Misc/PackageName.h"
+#include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "UI/FADraftWidget.h"
+#include "UI/FAHUD.h"
+#include "UI/FAPauseMenuWidget.h"
 
 AFAPlayerController::AFAPlayerController()
 {
 	bReplicates = true;
+
+	PauseMenuWidgetClass = UFAPauseMenuWidget::StaticClass();
+	PauseMenuKeys.Add(EKeys::Escape);
 }
 
 void AFAPlayerController::FADraft(int32 DraftIndex)
@@ -60,7 +70,198 @@ void AFAPlayerController::BeginPlay()
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+			// 로비 등 캐릭터 입력이 필요 없는 레벨에서는 비어 있을 수 있다.
+			if (DefaultMappingContext)
+			{
+				Subsystem->AddMappingContext(DefaultMappingContext, 0);
+			}
 		}
 	}
+}
+
+void AFAPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	if (!InputComponent)
+	{
+		return;
+	}
+
+	// Enhanced Input 과 별개로 키를 직접 잡는다
+	for (const FKey& Key : PauseMenuKeys)
+	{
+		if (Key.IsValid())
+		{
+			InputComponent->BindKey(Key, IE_Pressed, this, &AFAPlayerController::TogglePauseMenu);
+		}
+	}
+}
+
+void AFAPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (PauseMenuWidget)
+	{
+		PauseMenuWidget->RemoveFromParent();
+		PauseMenuWidget = nullptr;
+	}
+
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* Sessions = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			// 서브시스템은 레벨 이동 후에도 살아남는다 — 죽은 컨트롤러가 콜백을 물고 있으면 안 된다.
+			Sessions->MultiplayerOnDestroySessionComplete.RemoveAll(this);
+		}
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+//~ ---------------- 일시정지 메뉴 ----------------
+
+bool AFAPlayerController::IsPauseMenuOpen() const
+{
+	return PauseMenuWidget != nullptr && PauseMenuWidget->IsInViewport();
+}
+
+bool AFAPlayerController::IsPauseMenuKey(const FKey& Key) const
+{
+	return PauseMenuKeys.Contains(Key);
+}
+
+void AFAPlayerController::TogglePauseMenu()
+{
+	if (IsPauseMenuOpen())
+	{
+		HidePauseMenu();
+	}
+	else
+	{
+		ShowPauseMenu();
+	}
+}
+
+void AFAPlayerController::ShowPauseMenu()
+{
+	if (!IsLocalController() || IsPauseMenuOpen())
+	{
+		return;
+	}
+
+	if (!PauseMenuWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] AFAPlayerController: PauseMenuWidgetClass 가 비어 있어 ESC 메뉴를 만들지 못했다."));
+		return;
+	}
+
+	if (!PauseMenuWidget)
+	{
+		PauseMenuWidget = CreateWidget<UFAPauseMenuWidget>(this, PauseMenuWidgetClass);
+		if (!PauseMenuWidget)
+		{
+			return;
+		}
+	}
+
+	PauseMenuWidget->SetIsFocusable(true);
+	PauseMenuWidget->AddToViewport(PauseMenuZOrder);
+
+	// 멀티플레이라 게임을 멈추지는 않는다. 대신 메뉴가 입력을 독점한다.
+	FInputModeUIOnly InputMode;
+	InputMode.SetWidgetToFocus(PauseMenuWidget->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	SetShowMouseCursor(true);
+}
+
+void AFAPlayerController::HidePauseMenu()
+{
+	if (!PauseMenuWidget)
+	{
+		return;
+	}
+
+	PauseMenuWidget->RemoveFromParent();
+
+	UFADraftWidget* DraftWidget = nullptr;
+	if (const AFAHUD* FAHUD = Cast<AFAHUD>(GetHUD()))
+	{
+		DraftWidget = FAHUD->GetDraftWidget();
+	}
+
+	if (DraftWidget && DraftWidget->IsOpen())
+	{
+		DraftWidget->RestoreInputMode();
+		return;
+	}
+
+	SetInputMode(FInputModeGameOnly());
+	SetShowMouseCursor(false);
+}
+
+void AFAPlayerController::ReturnToMainMenu()
+{
+	if (bReturningToMainMenu)
+	{
+		return;
+	}
+	bReturningToMainMenu = true;
+
+	HidePauseMenu();
+
+	UGameInstance* GameInstance = GetGameInstance();
+	UFAOnlineSessionSubsystem* Sessions = GameInstance ? GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
+	if (!Sessions)
+	{
+		TravelToMainMenu();
+		return;
+	}
+
+	Sessions->MultiplayerOnDestroySessionComplete.RemoveAll(this);
+	Sessions->MultiplayerOnDestroySessionComplete.AddUObject(this, &AFAPlayerController::HandleDestroySessionComplete);
+	Sessions->DestroySession();
+}
+
+void AFAPlayerController::HandleDestroySessionComplete(bool bWasSuccessful)
+{
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* Sessions = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			Sessions->MultiplayerOnDestroySessionComplete.RemoveAll(this);
+		}
+	}
+
+	if (!bWasSuccessful)
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[FA] 메인 메뉴 복귀 — 세션 정리에 실패했다. 그대로 레벨만 옮긴다."));
+	}
+
+	TravelToMainMenu();
+}
+
+void AFAPlayerController::TravelToMainMenu()
+{
+	FString MapPath = MainMenuLevel.IsNull()
+		? UGameMapsSettings::GetGameDefaultMap()
+		: MainMenuLevel.ToSoftObjectPath().ToString();
+
+	if (MapPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] 메인 메뉴 복귀 — 돌아갈 레벨을 찾지 못했다. BP_FAPlayerController 의 MainMenuLevel 을 지정할 것."));
+		bReturningToMainMenu = false;
+		return;
+	}
+
+	MapPath = FPackageName::ObjectPathToPackageName(MapPath);
+
+	ClientTravel(MapPath, TRAVEL_Absolute);
+}
+
+void AFAPlayerController::QuitGame()
+{
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
