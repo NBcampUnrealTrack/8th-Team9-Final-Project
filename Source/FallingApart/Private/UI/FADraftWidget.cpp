@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FADraftWidget.h"
@@ -16,6 +16,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
+#include "Player/FAPlayerController.h"
 #include "Player/FAPlayerState.h"
 #include "Rule/FARuleSettings.h"
 #include "Styling/CoreStyle.h"
@@ -187,6 +188,11 @@ FFADraftCardInfo UFADraftWidget::MakeCardInfo(FName RuleId)
 	return Info;
 }
 
+void UFADraftWidget::RestoreInputMode()
+{
+	ApplyInputMode(bIsOpen);
+}
+
 void UFADraftWidget::ApplyInputMode(bool bOpen)
 {
 	if (!bTakeMouseCursorWhileOpen)
@@ -196,6 +202,13 @@ void UFADraftWidget::ApplyInputMode(bool bOpen)
 
 	APlayerController* PlayerController = GetOwningPlayer();
 	if (!PlayerController)
+	{
+		return;
+	}
+
+	// ESC 메뉴가 떠 있으면 입력은 그쪽으로.
+	const AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(PlayerController);
+	if (!bOpen && FAPlayerController && FAPlayerController->IsPauseMenuOpen())
 	{
 		return;
 	}
