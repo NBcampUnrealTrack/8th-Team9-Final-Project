@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -82,6 +82,16 @@ public:
 	/** 아무것도 고르지 않고 닫는다 (제한 시간 초과). 서버는 이미 무작위로 확정한 상태다. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Draft")
 	void CloseWithoutSelection();
+
+	/** 후보를 받아 열려 있는 상태인가. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Draft")
+	bool IsOpen() const { return bIsOpen; }
+
+	/**
+	 * 현재 열림 상태에 맞는 입력 모드를 다시 적용
+	 * 드래프트 위에 떴던 일시정지 메뉴가 닫힐 때 AFAPlayerController 가 호출
+	 */
+	void RestoreInputMode();
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Draft")
 	const TArray<FFADraftCardInfo>& GetCards() const { return Cards; }
