@@ -25,6 +25,8 @@ class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemIn
 public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
+	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -48,6 +50,19 @@ public:
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
 
+	// QTE 시작/종료
+	void StartQTESync();
+	void StopQTESync();
+
+	// 어빌리티 발동 시 타겟(Victim)을 외부에서 세팅
+	void SetQTEVictimTarget(AFACharacter* InVictim) { QTE_TargetVictim = InVictim; }
+
+	// 서버에서 상대방의 클릭을 내 게이지에 적용
+	void ReceiveQTEPress(AFACharacter* InstigatorCharacter, int32 Presses);
+
+	// QTE 게이지 초기화
+	void ResetQTEGauge();
+
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
@@ -66,7 +81,18 @@ protected:
 	void UpdateCrouchCamera();
 	void TogglePerspective();
 	void UpdatePerspectiveCamera();
+	void UpdateCameraCollision(float DeltaTime);
 	void TriggerPrimary();
+
+	// 현재 내가 상호작용 중인 대상
+	UPROPERTY(Transient)
+	AFACharacter* QTE_TargetVictim;
+
+	UPROPERTY(ReplicatedUsing = OnRep_QTEGauge, BlueprintReadOnly, Category = "QTE")
+	float CurrentQTEGauge;
+
+	UFUNCTION()
+	virtual void OnRep_QTEGauge();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -136,4 +162,13 @@ private:
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
 	FTimerHandle PerspectiveTimerHandle;
+
+	// QTE 횟수 동기화
+	void SyncQTEPressesWithServer();
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void Server_SendQTEPresses(int32 Presses);
+
+	int32 LocalQTEPressCount;
+	FTimerHandle QTESyncTimerHandle;
 };

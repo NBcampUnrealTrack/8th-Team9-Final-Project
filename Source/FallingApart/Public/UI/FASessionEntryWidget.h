@@ -11,6 +11,8 @@
 
 class UButton;
 class UTextBlock;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionEntrySelected, const FOnlineSessionSearchResult& SessionResult);
 /**
  * 
  */
@@ -22,6 +24,8 @@ public:
 	virtual bool Initialize() override;
 	
 	void SetSessionInfo(const FOnlineSessionSearchResult& Result);
+
+	FOnSessionEntrySelected OnSessionEntrySelected;
 	
 protected:
 	UFUNCTION()

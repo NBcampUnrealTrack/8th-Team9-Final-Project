@@ -6,8 +6,19 @@
 #include "Blueprint/UserWidget.h"
 #include "FASessionCreateWidget.generated.h"
 
+class USpinBox;
 class UEditableText;
 class UButton;
+
+struct FFASessionCreateRequest
+{
+	int32 MaxConnections = 8;
+	FString ServerName;
+	FString Password;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnCreateSessionRequested, const FFASessionCreateRequest& Request);
+
 /**
  * 서버 생성 선택시 세션설정 및 생성을 진행하는 위젯.
  */
@@ -17,17 +28,22 @@ class FALLINGAPART_API UFASessionCreateWidget : public UUserWidget
 	GENERATED_BODY()
 public:
 	virtual bool Initialize() override;
-	
-	FString GetSessionName();
-	
-	int32 GetMaxConnections();
-	
-	FString GetPasswordString();
-	
+
+	void SubmitCreateRequest();
+
+	FOnCreateSessionRequested OnCreateSessionRequested;
+
 protected:
 	virtual void NativeConstruct() override;
-	
+
 private:
+	
+	FString GetSessionName() const;
+	
+	int32 GetMaxConnections() const;
+	
+	FString GetPasswordString() const;
+
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> NicknameInput;
 	
@@ -35,13 +51,10 @@ private:
 	TObjectPtr<UEditableText> SessionNameInput;
 	
 	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UEditableText> MaxConnectionInput;
+	TObjectPtr<USpinBox> MaxConnectionSpinBox;
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PrivateSessionPass;
-	
-	UFUNCTION()
-	void OnNumberTextChanged(const FText& Text);
 	
 	FText LastValidText;
 };

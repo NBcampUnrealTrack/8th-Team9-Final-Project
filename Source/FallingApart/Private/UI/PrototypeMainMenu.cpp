@@ -3,13 +3,14 @@
 
 #include "UI/PrototypeMainMenu.h"
 
-#include "OnlineSessionSettings.h"
-#include "OnlineSubsystemUtils.h"
 #include "Components/Button.h"
 #include "Components/WidgetSwitcher.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
+
+#define LOCTEXT_NAMESPACE "PrototypeMainMenu"
 
 void UPrototypeMainMenu::NativeOnInitialized()
 {
@@ -24,10 +25,6 @@ void UPrototypeMainMenu::NativeOnInitialized()
 	{
 		JoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnJoinButtonClicked);
 	}
-	// if (ConfirmJoinButton)
-	// {
-	// 	ConfirmJoinButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ConfirmJoinButtonClicked);
-	// }
 	if (ConfirmHostButton)
 	{
 		ConfirmHostButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ConfirmHostButtonClicked);
@@ -35,6 +32,27 @@ void UPrototypeMainMenu::NativeOnInitialized()
 	if (ReturnToMainMenuButton)
 	{
 		ReturnToMainMenuButton->OnClicked.AddUniqueDynamic(this, &ThisClass::ReturnToMainMenuButtonClicked);
+	}
+	if (SettingButton)
+	{
+		SettingButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnSettingButtonClicked);
+	}
+	if (QuitButton)
+	{
+		QuitButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnQuitButtonClicked);
+	}
+
+	if (SessionCreateWidget)
+	{
+		SessionCreateWidget->OnCreateSessionRequested.RemoveAll(this);
+		SessionCreateWidget->OnCreateSessionRequested.AddUObject(this, &ThisClass::HandleCreateSessionRequested);
+	}
+	if (SessionJoinWidget)
+	{
+		SessionJoinWidget->OnSessionRefreshRequested.RemoveAll(this);
+		SessionJoinWidget->OnSessionRefreshRequested.AddUObject(this, &ThisClass::HandleSessionRefreshRequested);
+		SessionJoinWidget->OnSessionJoinRequested.RemoveAll(this);
+		SessionJoinWidget->OnSessionJoinRequested.AddUObject(this, &ThisClass::HandleJoinSessionRequested);
 	}
 }
 
@@ -48,11 +66,12 @@ void UPrototypeMainMenu::NativeConstruct()
 	}
 	if (OnlineSessionSubsystem)
 	{
-		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.AddUniqueDynamic(this, &ThisClass::OnCreateSession);
+		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.RemoveAll(this);
+		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.AddUObject(this, &ThisClass::OnCreateSessionComplete);
+		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.RemoveAll(this);
 		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSessionComplete);
-		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSession);
-		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.AddUniqueDynamic(this, &ThisClass::OnDestroySession);
-		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.AddUniqueDynamic(this, &ThisClass::OnStartSession);
+		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.RemoveAll(this);
+		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSessionComplete);
 	}
 }
 void UPrototypeMainMenu::NativeDestruct()
@@ -63,15 +82,11 @@ void UPrototypeMainMenu::NativeDestruct()
 	}
 	if (OnlineSessionSubsystem)
 	{
-		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.RemoveDynamic(this, &ThisClass::OnCreateSession);
+		OnlineSessionSubsystem->MultiplayerOnCreateSessionComplete.RemoveAll(this);
 		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.RemoveAll(this);
 		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.RemoveAll(this);
-		OnlineSessionSubsystem->MultiplayerOnDestroySessionComplete.RemoveDynamic(this, &ThisClass::OnDestroySession);
-		OnlineSessionSubsystem->MultiplayerOnStartSessionComplete.RemoveDynamic(this, &ThisClass::OnStartSession);
 	}
-	
-	//view에서 내릴때, MenuTearDown호출해 InputMode등 되돌림.
-	MenuTearDown();
+	RestoreGameInputMode();
 	Super::NativeDestruct();
 }
 void UPrototypeMainMenu::MenuSetup()
@@ -100,12 +115,56 @@ void UPrototypeMainMenu::MenuSetup()
 
 void UPrototypeMainMenu::ShowPage(EPrototypeMenuPage Page)
 {
+	if (!WidgetSwitcher_Page)
+	{
+		return;
+	}
+
 	WidgetSwitcher_Page->SetActiveWidgetIndex(static_cast<int32>(Page));
+	if (Page == EPrototypeMenuPage::JoinSession && SessionJoinWidget)
+	{
+		SessionJoinWidget->ActivatePage();
+	}
 }
 
-void UPrototypeMainMenu::OnCreateSession(bool bWasSuccessful)
+void UPrototypeMainMenu::HandleCreateSessionRequested(const FFASessionCreateRequest& Request)
 {
-	if (bWasSuccessful)
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->CreateSession(Request.MaxConnections, Request.ServerName, Request.Password);
+	}
+}
+
+void UPrototypeMainMenu::HandleSessionRefreshRequested()
+{
+	if (!OnlineSessionSubsystem || !SessionJoinWidget)
+	{
+		if (SessionJoinWidget)
+		{
+			SessionJoinWidget->SetSearchInProgress(false);
+			SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSubsystemUnavailable", "Session service is unavailable."));
+		}
+		return;
+	}
+
+	SessionJoinWidget->SetSearchInProgress(true);
+	OnlineSessionSubsystem->FindSession(100);
+}
+
+void UPrototypeMainMenu::HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password)
+{
+	if (!OnlineSessionSubsystem || !SessionJoinWidget)
+	{
+		return;
+	}
+
+	SessionJoinWidget->SetJoinInProgress(true);
+	OnlineSessionSubsystem->JoinSession(SessionResult, Password);
+}
+
+void UPrototypeMainMenu::OnCreateSessionComplete(EFASessionRequestResult Result)
+{
+	if (Result == EFASessionRequestResult::Success)
 	{
 		// 성공했다면, 로비레벨을 리슨서버로 오픈
 		UWorld* World = GetWorld();
@@ -118,75 +177,63 @@ void UPrototypeMainMenu::OnCreateSession(bool bWasSuccessful)
 			FString TravelURL = LevelPath + TEXT("?listen");
 			World->ServerTravel(TravelURL);
 		}
-	}else
+		return;
+	}
+
+	UE_LOG(LogFAOSS, Warning, TEXT("Create session failed: %s"), *UEnum::GetValueAsString(Result));
+}
+
+void UPrototypeMainMenu::OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result)
+{
+	if (!SessionJoinWidget)
 	{
-		//실패 로직
+		return;
+	}
+
+	SessionJoinWidget->SetSearchInProgress(false);
+	switch (Result)
+	{
+	case EFASessionRequestResult::Success:
+		SessionJoinWidget->ShowSearchResults(SessionResults);
+		break;
+	case EFASessionRequestResult::NoResults:
+		SessionJoinWidget->ShowSearchResults(TArray<FOnlineSessionSearchResult>());
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("NoSessionsFound", "No sessions found."));
+		break;
+	case EFASessionRequestResult::Busy:
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionOperationBusy", "Another session operation is already in progress."));
+		break;
+	default:
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSearchFailed", "Failed to search for sessions."));
+		UE_LOG(LogFAOSS, Warning, TEXT("Find sessions failed: %s"), *UEnum::GetValueAsString(Result));
+		break;
 	}
 }
 
-void UPrototypeMainMenu::OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful)
+void UPrototypeMainMenu::OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString)
 {
-	if (!OnlineSessionSubsystem)
-		return;
-	
-	if (!bWasSuccessful)
-		return;
-	
-	for (FOnlineSessionSearchResult Result : SessionResult)
+	if (SessionJoinWidget)
 	{
-		// STEAM AppID480에서 구분을 위한 고유 키값
-		FString ProjectUniqueValue;
-		Result.Session.SessionSettings.Get(FName("SPARTA_PROJECT"), ProjectUniqueValue);
-		if (ProjectUniqueValue != FString("FALLING_APART"))
-			continue;
-		Result.Session.SessionSettings.bUseLobbiesIfAvailable = true;
-		Result.Session.SessionSettings.bUsesPresence = true;
-		
-		SessionJoinWidget->AddSessionSearchResult(Result);
+		SessionJoinWidget->SetJoinInProgress(false);
 	}
-}
 
-void UPrototypeMainMenu::OnJoinSession(EOnJoinSessionCompleteResult::Type Result)
-{
-	//접속
-	if (!OnlineSessionSubsystem)
-		return;
-	if (Result != EOnJoinSessionCompleteResult::Success)
+	if (Result != EFASessionRequestResult::Success)
 	{
-		//실패시 원인 확인 후 UI피드백
-		UE_LOG(LogTemp, Error, TEXT("JoinSession failed: %d"), static_cast<int32>(Result));
-		return;
-	}
-	
-	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(UObject::GetWorld());
-	if (OnlineSubsystem!=nullptr)
-	{
-		IOnlineSessionPtr SessionInterface = OnlineSubsystem->GetSessionInterface();
-		if (SessionInterface.IsValid())
+		if (SessionJoinWidget)
 		{
-			// Address는 GetResolvedConnectString함수로부터 세션의 주소를 저장함.
-			FString Address;
-			if (SessionInterface->GetResolvedConnectString(NAME_GameSession, Address))
-			{
-				// PlayerController의 ClientTravel을 이용해 서버의 주소로 이동.
-				APlayerController* PlayerController = GetOwningPlayer();
-				if (PlayerController)
-				{
-					PlayerController->ClientTravel(Address, TRAVEL_Absolute);
-				}
-			}
+			const FText ErrorMessage = Result == EFASessionRequestResult::InvalidPassword
+				? LOCTEXT("InvalidSessionPassword", "The session password is incorrect.")
+				: LOCTEXT("JoinSessionFailed", "Failed to join the selected session.");
+			SessionJoinWidget->ShowStatusMessage(ErrorMessage);
 		}
+		UE_LOG(LogFAOSS, Error, TEXT("Join session failed: %s"), *UEnum::GetValueAsString(Result));
+		return;
 	}
-}
 
-void UPrototypeMainMenu::OnDestroySession(bool bWasSuccessful)
-{
-	
-}
-
-void UPrototypeMainMenu::OnStartSession(bool bWasSuccessful)
-{
-	
+	if (APlayerController* PlayerController = GetOwningPlayer())
+	{
+		PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
+	}
 }
 
 
@@ -198,27 +245,45 @@ void UPrototypeMainMenu::OnHostButtonClicked()
 void UPrototypeMainMenu::OnJoinButtonClicked()
 {
 	ShowPage(EPrototypeMenuPage::JoinSession);
-	// 페이지를 열떄 검색 시도.
-	SessionJoinWidget->RefreshSessionList();
+}
+
+void UPrototypeMainMenu::OnSettingButtonClicked()
+{
+	//TODO : 메뉴 UI추가 및 설정 창 이동
+}
+
+void UPrototypeMainMenu::OnQuitButtonClicked()
+{
+	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+	UKismetSystemLibrary::QuitGame(
+		GetWorld(),
+		PlayerController,
+		EQuitPreference::Quit,
+		false
+		);
 }
 
 void UPrototypeMainMenu::ConfirmHostButtonClicked()
 {
-	if (OnlineSessionSubsystem)
-		OnlineSessionSubsystem->CreateSession(
-			SessionCreateWidget->GetMaxConnections(), 
-			SessionCreateWidget->GetSessionName(), 
-			SessionCreateWidget->GetPasswordString());
+	if (SessionCreateWidget)
+	{
+		SessionCreateWidget->SubmitCreateRequest();
+	}
 }
+
 
 void UPrototypeMainMenu::ReturnToMainMenuButtonClicked()
 {
 	ShowPage(EPrototypeMenuPage::Main);
 }
 
-void UPrototypeMainMenu::MenuTearDown()
+void UPrototypeMainMenu::CloseMenu()
 {
 	RemoveFromParent();
+}
+
+void UPrototypeMainMenu::RestoreGameInputMode()
+{
 	UWorld* World = GetWorld();
 	if (World)
 	{
@@ -232,3 +297,5 @@ void UPrototypeMainMenu::MenuTearDown()
 		}
 	}
 }
+
+#undef LOCTEXT_NAMESPACE
