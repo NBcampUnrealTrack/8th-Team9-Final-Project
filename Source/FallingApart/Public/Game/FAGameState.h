@@ -83,6 +83,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	int32 GetZombieCount() const { return ZombieCount; }
 
+	/** 데스매치 1층 봉쇄가 켜져 있는가 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
+	bool IsDeathMatchArenaActive() const { return bDeathMatchArenaActive; }
+
 	/** 지정 진영의 플레이어 목록을 채운다. */
 	void GetPlayerStatesByTeam(EFATeam InTeam, TArray<AFAPlayerState*>& OutPlayerStates) const;
 
@@ -111,6 +115,12 @@ public:
 	void SetDraftsCompleted(int32 InCount);
 	void SetTeamCounts(int32 InSurvivorCount, int32 InZombieCount);
 
+	/**
+	 * 데스매치 1층 봉쇄 액터를 켜고 끈다 (UFADeathMatchSubsystem 만 호출).
+	 * 캐릭터 이동은 클라이언트 예측이라 봉쇄가 서버에만 있으면 밀려났다 되돌아온다.
+	 */
+	void SetDeathMatchArenaActive(bool bInActive);
+
 	/** 드래프트 회차 알림 (서버에서 호출 → 전 클라이언트 UI 오픈) */
 	void NotifyDraftRoundStarted(int32 DraftIndex);
 
@@ -123,6 +133,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_ZombieCount();
+
+	UFUNCTION()
+	void OnRep_DeathMatchArenaActive();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_DraftRoundStarted(int32 DraftIndex);
@@ -164,4 +177,7 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_ZombieCount, VisibleAnywhere, Category = "FallingApart|Game")
 	int32 ZombieCount = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_DeathMatchArenaActive, VisibleAnywhere, Category = "FallingApart|Game")
+	bool bDeathMatchArenaActive = false;
 };

@@ -6,7 +6,6 @@
 #include "OnlineSessionSettings.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
-#include "Network/FAOnlineSessionSubsystem.h"
 
 bool UFASessionEntryWidget::Initialize()
 {
@@ -50,10 +49,6 @@ void UFASessionEntryWidget::OnJoinButtonClicked()
 {
 	if (EntryData.IsValid())
 	{
-		if (UGameInstance* GameInstance = GetGameInstance())
-		{ 
-			UFAOnlineSessionSubsystem* OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
-			OnlineSessionSubsystem->JoinSession(EntryData, "");
-		}
+		OnSessionEntrySelected.Broadcast(EntryData);
 	}
 }

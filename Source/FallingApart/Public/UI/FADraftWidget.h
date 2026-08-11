@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -11,6 +11,7 @@
 class UBorder;
 class UButton;
 class UHorizontalBox;
+class UImage;
 class UTextBlock;
 class UTexture2D;
 
@@ -58,6 +59,10 @@ struct FFADraftCardInfo
  *
  * WBP 없이도 동작한다 — 디자이너 트리가 비어 있으면 RebuildWidget() 이 임시 레이아웃을 직접 조립한다.
  * UI 담당이 이 클래스를 상속한 WBP_FADraft 를 만들어 BP_FAHUD 에 물리면 그쪽이 우선한다.
+ *
+ * WBP 에서 아래 BindWidgetOptional 변수와 같은 이름으로 위젯을 만들면 C++ 이 그대로 채워준다
+ * (제목 · 남은 시간 · 카드 3장의 버튼/이름/설명/메타/아이콘). 이름이 없으면 그 칸만 건너뛰므로
+ * 필요한 것만 골라 만들면 되고, 연출을 직접 짜고 싶으면 OnDraftShown 이벤트만 써도 된다.
  */
 UCLASS()
 class FALLINGAPART_API UFADraftWidget : public UUserWidget
@@ -82,6 +87,16 @@ public:
 	/** 아무것도 고르지 않고 닫는다 (제한 시간 초과). 서버는 이미 무작위로 확정한 상태다. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Draft")
 	void CloseWithoutSelection();
+
+	/** 후보를 받아 열려 있는 상태인가. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Draft")
+	bool IsOpen() const { return bIsOpen; }
+
+	/**
+	 * 현재 열림 상태에 맞는 입력 모드를 다시 적용
+	 * 드래프트 위에 떴던 일시정지 메뉴가 닫힐 때 AFAPlayerController 가 호출
+	 */
+	void RestoreInputMode();
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Draft")
 	const TArray<FFADraftCardInfo>& GetCards() const { return Cards; }
@@ -116,12 +131,87 @@ public:
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	/** 드래프트 중에는 마우스 커서를 띄워 카드를 클릭할 수 있게 한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
 	bool bTakeMouseCursorWhileOpen = true;
+
+	//~ WBP 에 같은 이름의 위젯이 있으면 자동으로 물린다. 없으면 임시 레이아웃이 채운다.
+	/** "DRAFT n · 룰 카드를 고르세요" */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Title;
+
+	/** 남은 시간(초). */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Timer;
+
+	//~ 카드 0. 후보가 3장이 안 될 때 Card0 을 통째로 숨긴다 — 없으면 Btn_Card0 을 숨긴다.
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UWidget> Card0;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UButton> Btn_Card0;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card0Name;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card0Desc;
+
+	/** "[1] RuleId · T2 · Human" — 한글 폰트가 깨져도 무엇을 뽑았는지 알 수 있게. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card0Meta;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Card0Icon;
+
+	//~ 카드 1.
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UWidget> Card1;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UButton> Btn_Card1;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card1Name;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card1Desc;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card1Meta;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Card1Icon;
+
+	//~ 카드 2.
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UWidget> Card2;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UButton> Btn_Card2;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card2Name;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card2Desc;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UTextBlock> Txt_Card2Meta;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Card2Icon;
+
+	/**
+	 * 카드 버튼 배경을 티어 색으로 칠할지. WBP 에서 버튼 스타일을 직접 잡았다면 꺼둘 것.
+	 * 임시 레이아웃에서는 항상 칠한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
+	bool bTintCardButtonsByTier = true;
 
 private:
 	void Close(bool bConfirmed, int32 SelectedIndex);
@@ -131,10 +221,15 @@ private:
 
 	void ApplyInputMode(bool bOpen);
 
-	//~ WBP 가 없을 때만 쓰는 임시 레이아웃.
+	//~ 이름으로 물린 위젯 · 임시 레이아웃 위젯을 구분하지 않고 같은 코드로 채운다.
+	/** 개별 Btn_CardN … 을 인덱스 배열로 모은다. RebuildWidget · NativeConstruct 에서 호출. */
+	void GatherCardWidgets();
+	void RefreshCards();
+	void RefreshTimerText(int32 WholeSeconds);
+	void BindCardButtons();
+
+	/** WBP 가 없을 때만 쓰는 임시 레이아웃. */
 	void BuildFallbackLayout();
-	void RefreshFallbackCards();
-	void RefreshFallbackTimer(int32 WholeSeconds);
 
 	UFUNCTION()
 	void HandleCard0Clicked();
@@ -144,6 +239,10 @@ private:
 
 	UFUNCTION()
 	void HandleCard2Clicked();
+
+	/** 카드 3장이 공유하는 호버 소리. UI_Hover 와 분리 — 카드가 더 무겁게 들려야 한다. */
+	UFUNCTION()
+	void HandleCardHovered();
 
 	UPROPERTY(Transient)
 	TArray<FFADraftCardInfo> Cards;
@@ -158,25 +257,26 @@ private:
 
 	bool bIsOpen = false;
 
-	//~ 임시 레이아웃 위젯 참조. WBP 를 쓰면 전부 null 이다.
+	//~ GatherCardWidgets() 가 채우는 인덱스 접근용 사본. 원본은 위의 Btn_CardN … 이다.
+	//~ 길이는 항상 MaxCards 이고, WBP 에 없는 칸은 null 로 남는다.
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> FallbackTitleText;
+	TArray<TObjectPtr<UWidget>> CardRoots;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> FallbackTimerText;
+	TArray<TObjectPtr<UButton>> CardButtons;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UWidget>> FallbackCardSlots;
+	TArray<TObjectPtr<UTextBlock>> CardNameTexts;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UButton>> FallbackCardButtons;
+	TArray<TObjectPtr<UTextBlock>> CardDescTexts;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTextBlock>> FallbackNameTexts;
+	TArray<TObjectPtr<UTextBlock>> CardMetaTexts;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTextBlock>> FallbackDescTexts;
+	TArray<TObjectPtr<UImage>> CardIcons;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTextBlock>> FallbackMetaTexts;
+	/** 임시 레이아웃으로 조립한 상태인가 — 티어 색 · 카드 숨김을 무조건 적용해도 되는지 판단용. */
+	bool bUsingFallbackLayout = false;
 };

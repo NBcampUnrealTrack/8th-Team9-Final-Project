@@ -56,6 +56,12 @@ public:
 	void SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders);
 
 	/**
+	 * 데스매치가 끝났으니(또는 열지 못했으니) 매치를 최종 종료 상태로 되돌린다.
+	 * UFADeathMatchSubsystem 만 호출. 관전 해제 · 최종 순위표 표시가 여기서 일어난다.
+	 */
+	void FinishMatchAfterDeathMatch();
+
+	/**
 	 * 보이스 기준으로 관전자인가.
 	 */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
@@ -103,6 +109,9 @@ protected:
 	void UpdateTeamCounts(bool bCheckWipeOut = true);
 
 	void ClearRoundTimers();
+
+	/** 최종 순위를 로그로 찍고 전 클라이언트에 순위표 UI 를 띄운다. */
+	void ShowFinalRanking();
 
 	float GetServerTime() const;
 

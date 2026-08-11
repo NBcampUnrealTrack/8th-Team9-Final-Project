@@ -4,8 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Interfaces/OnlineSessionInterface.h"
-#include "PrototypeMainMenu.generated.h"
+#include "FAMainMenuWidget.generated.h"
 
 
 class UFAOnlineSessionSubsystem;
@@ -13,6 +12,9 @@ class UFASessionCreateWidget;
 class UFASessionJoinWidget;
 class UWidgetSwitcher;
 class UButton;
+struct FFASessionCreateRequest;
+class FOnlineSessionSearchResult;
+enum class EFASessionRequestResult : uint8;
 
 
 enum class EPrototypeMenuPage : uint8
@@ -25,7 +27,7 @@ enum class EPrototypeMenuPage : uint8
  * 
  */
 UCLASS()
-class FALLINGAPART_API UPrototypeMainMenu : public UUserWidget
+class FALLINGAPART_API UFAMainMenuWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
@@ -45,30 +47,26 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	
-	// 서브시스템의 대리자에 등록할 콜백함수
-	UFUNCTION()
-	void OnCreateSession(bool bWasSuccessful);
+	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
+	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
+	void HandleSessionRefreshRequested();
+	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
 
-	// 아래 두 함수는 다이나믹 델리게이트(블루프린트 공개)가 아니므로 UFUNCTION을 사용하지않음)
-	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful);
+	// 세션 서브시스템 완료 콜백
+	void OnCreateSessionComplete(EFASessionRequestResult Result);
+	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 	
-	void OnJoinSession(EOnJoinSessionCompleteResult::Type Result);
-	
-	UFUNCTION()
-	void OnDestroySession(bool bWasSuccessful);
-	
-	UFUNCTION()
-	void OnStartSession(bool bWasSuccessful);
+	void OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString);
 	
 	
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> WidgetSwitcher_Page;
 	
 	UPROPERTY(BlueprintReadOnly,meta=(BindWidget))
-	UFASessionCreateWidget* SessionCreateWidget;
+	TObjectPtr<UFASessionCreateWidget> SessionCreateWidget;
 	
 	UPROPERTY(BlueprintReadOnly,meta=(BindWidget))
-	UFASessionJoinWidget* SessionJoinWidget;
+	TObjectPtr<UFASessionJoinWidget> SessionJoinWidget;
 	
 private:
 	UPROPERTY(meta=(BindWidget))
@@ -99,16 +97,24 @@ private:
 	void OnJoinButtonClicked();
 	
 	UFUNCTION()
+	void OnSettingButtonClicked();
+	
+	UFUNCTION()
+	void OnQuitButtonClicked();
+	
+	UFUNCTION()
 	void ConfirmHostButtonClicked();
 	
 	UFUNCTION()
 	void ReturnToMainMenuButtonClicked();
 	
-	void MenuTearDown();
+	void CloseMenu();
+	
+	void RestoreGameInputMode();
 	
 	// 온라인 세션을 제어하기위한 서브시스템 포인터
 	// 주의사항, 싱글톤 서브시스템이기 때문에 다른 클래스 위젯등에서 작업시 Menu가 살아있으면 콜백 여기서 발생함.
 	// 이점을 고려하여 작성해야함.
-	// TODO : 위젯을 분리하였으니 코드 책임도 분리하기
-	UFAOnlineSessionSubsystem* OnlineSessionSubsystem;
+	UPROPERTY(Transient)
+	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;
 };

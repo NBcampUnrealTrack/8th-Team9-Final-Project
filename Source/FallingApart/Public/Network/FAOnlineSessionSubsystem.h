@@ -3,25 +3,69 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Game/FALobbyGameState.h"
 
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 
 #include "FAOnlineSessionSubsystem.generated.h"
 
+DECLARE_LOG_CATEGORY_EXTERN(LogFAOSS, Log, All);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, bool, bWasSuccessful);
-// 특이사항으로 FOnlineSessionSearchResult는 UClass가 붙지 않았기 때문에(리플렉션 미등록?)블루프린트에서 연겷하려면 복잡함.
-// 여기서는 구현을 C++에서 하기때문에 굳이 Dynamic(블루프린트 공걔)를 사용하지 않고 진행함.
-// 아래의 EOnJoinSessionCompleteResult도 같은이유로 블루프린트와 호환되지않음
-DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResult, bool bWasSuccessful);
-DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnJoinSessionComplete, EOnJoinSessionCompleteResult::Type Result);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool, bWasSuccessful);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool, bWasSuccessful);
+UENUM(BlueprintType)
+enum class ESessionOperationState : uint8
+{
+	Idle		UMETA(DisplayName="Idle"),
+	Creating	UMETA(DisplayName="Creating"),
+	Searching	UMETA(DisplayName="Searching"),
+	Joining		UMETA(DisplayName="Joining"),
+	Updating	UMETA(DisplayName="Updating"),
+	Starting	UMETA(DisplayName="Starting"),
+	Ending		UMETA(DisplayName="Ending"),
+	Destroying	UMETA(DisplayName="Destroying")
+};
 
+UENUM(BlueprintType)
+enum class EFASessionRequestResult : uint8
+{
+	Success					UMETA(DisplayName="Success"),
+	NoResults				UMETA(DisplayName="No Results"),
+	Busy					UMETA(DisplayName="Busy"),
+	InvalidSessionInterface UMETA(DisplayName="Invalid Session Interface"),
+	InvalidLocalPlayer		UMETA(DisplayName="Invalid Local Player"),
+	InvalidSessionResult	UMETA(DisplayName="Invalid Session Result"),
+	InvalidPassword			UMETA(DisplayName="Invalid Password"),
+	RequestFailed			UMETA(DisplayName="Request Failed"),
+	SessionIsFull			UMETA(DisplayName="Session Is Full"),
+	SessionDoesNotExist		UMETA(DisplayName="Session Does Not Exist"),
+	AlreadyInSession		UMETA(DisplayName="Already In Session"),
+	CouldNotRetrieveAddress UMETA(DisplayName="Could Not Retrieve Address"),
+	UnknownError			UMETA(DisplayName="Unknown Error")
+};
+USTRUCT()
+struct FFASessionInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName SessionName;
+
+	UPROPERTY()
+	int32 MaxPlayers;
+
+	UPROPERTY()
+	bool bIsPrivate;
+};
+// FOnlineSessionSearchResult는 리플렉션 타입이 아니므로 세션 결과 이벤트는 C++ 전용으로 제공한다.
+DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, EFASessionRequestResult Result);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnJoinSessionComplete, EFASessionRequestResult Result, const FString& ConnectString);
+DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool bWasSuccessful);
+DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool bWasSuccessful);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionPreparedForMatch, bool bSuccessed);
 /**
- * 
- * 
+ * OSS의 기본적인 생명주기를 관리하는 서브시스템
+ * 세션생성, 세션 검색과 참가, 세션 시작, 세션 종료
  */
 UCLASS()
 class FALLINGAPART_API UFAOnlineSessionSubsystem : public UGameInstanceSubsystem
@@ -29,13 +73,12 @@ class FALLINGAPART_API UFAOnlineSessionSubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 public:
 	UFAOnlineSessionSubsystem();
-	
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 	// 메뉴에서 세션을 관리하기위해 호출하는 함수들
 	
 	/** 세션 생성 요청
 	 * @param NumPublicConnections 최대 연결 플레이어 수
-	 * @param MatchType 매치 타입(검색용 키워드, 확장 필요)
 	 * @param ServerName 공개될 세션 이름
 	 * @param Password 세션 입장에 필요한 비밀번호
 	 */
@@ -49,7 +92,9 @@ public:
 	 * @param SessionResult FindSession()를 통해 가져온 접속할 세션정보
 	 * @param Password Oprional, 세션입장에 필요한 비밀번호
 	 */
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult, FString Password);
+	void JoinSession(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	
+	void PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount);
 	
 	/**TODO  
 	 * 서버 : 호스팅중인 세션 종료\n
@@ -65,6 +110,12 @@ public:
 	/// TODO : 플랫폼 친구에게 세션 초대 발송
 	void SendSessionInviteToFriends();
 	
+	
+	ESessionOperationState GetCurrentOperationState() const;
+	
+	FNamedOnlineSession* GetCurrentSession() const;
+	TSoftObjectPtr<UWorld> ResolveMap(FName GetSelectedMapId);
+
 	// 각각 콜백 등록용
 	
 	FMultiplayerOnCreateSessionComplete MultiplayerOnCreateSessionComplete;
@@ -72,7 +123,8 @@ public:
 	FMultiplayerOnJoinSessionComplete MultiplayerOnJoinSessionComplete;
 	FMultiplayerOnDestroySessionComplete MultiplayerOnDestroySessionComplete;
 	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
-	
+	FOnSessionPreparedForMatch OnSessionPreparedForMatch;
+
 protected:
 	// 온라인 세션 인터페이스에 등록될 내부 콜백 함수들.
 	// 직접 호출하지 않는 함수들임.
@@ -82,7 +134,7 @@ protected:
 	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
-	
+	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
 	
 private:
 	IOnlineSessionPtr SessionInterface;
@@ -104,4 +156,8 @@ private:
 	FDelegateHandle 					DestroySessionCompleteDelegateHandle;
 	FOnStartSessionCompleteDelegate		StartSessionCompleteDelegate;
 	FDelegateHandle 					StartSessionCompleteDelegateHandle;
+	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
+	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
+	
+	ESessionOperationState OperationState = ESessionOperationState::Idle;
 };
