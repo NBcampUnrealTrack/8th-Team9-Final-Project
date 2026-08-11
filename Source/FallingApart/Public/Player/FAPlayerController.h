@@ -1,11 +1,15 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
+#include "Templates/SubclassOf.h"
 #include "FAPlayerController.generated.h"
 
+class UFAMatchResultWidget;
+class UFAPauseMenuWidget;
 class UInputMappingContext;
 
 UCLASS()
@@ -28,10 +32,105 @@ public:
 	UFUNCTION(Exec)
 	void FATags();
 
+	/**
+	 * 테스트 용
+	 * 콘솔에 `FADeathMatch` 입력.
+	 * 현재 순위 상위 2명이 참가자
+	 */
+	UFUNCTION(Exec)
+	void FADeathMatch();
+
+	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
+	// 로비 · 인게임 공통
+
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void TogglePauseMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void ShowPauseMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void HidePauseMenu();
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|PauseMenu")
+	bool IsPauseMenuOpen() const;
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|PauseMenu")
+	bool IsPauseMenuKey(const FKey& Key) const;
+
+	/**
+	 * 세션을 정리하고 메인 메뉴 레벨로
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void ReturnToMainMenu();
+
+	//~ ---------------- 최종 순위표 ----------------
+
+	/** 매치 종료 후 호출 */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowMatchResult();
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
+	bool IsMatchResultOpen() const;
+
+	/** 게임 프로세스 종료. */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void QuitGame();
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void SetupInputComponent() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/**
+	 * 일시정지 메뉴 위젯. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 * UI 담당이 UFAPauseMenuWidget 을 상속한 WBP_FAPauseMenu 를 만들면 여기서 갈아끼울 것.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
+	TSubclassOf<UFAPauseMenuWidget> PauseMenuWidgetClass;
+
+	/** HUD · 드래프트 창보다 위에 떠야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
+	int32 PauseMenuZOrder = 100;
+
+	/**
+	 * 최종 순위표 위젯. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 * UI 담당이 UFAMatchResultWidget 을 상속한 WBP_FAMatchResult 를 만들면 여기서 갈아끼울 것.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	TSubclassOf<UFAMatchResultWidget> MatchResultWidgetClass;
+
+	/** 게임이 끝난 화면이라 ESC 메뉴보다도 위에 둔다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	int32 MatchResultZOrder = 150;
+
+	/**
+	 * 일시정지 메뉴 토글 키. 기본은 ESC 하나.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
+	TArray<FKey> PauseMenuKeys;
+
+	/**
+	 * 돌아갈 메인 메뉴 레벨. 비워두면 프로젝트 설정의 Game Default Map
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
+	TSoftObjectPtr<UWorld> MainMenuLevel;
 
 private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
+
+	/** 세션 정리가 끝났을 때(성공·실패 모두) 실제로 레벨을 옮긴다. */
+	void HandleDestroySessionComplete(bool bWasSuccessful);
+
+	void TravelToMainMenu();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFAPauseMenuWidget> PauseMenuWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFAMatchResultWidget> MatchResultWidget;
+
+	/** 메인 메뉴 복귀를 두 번 태우지 않기 위한 가드. */
+	bool bReturningToMainMenu = false;
 };

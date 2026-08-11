@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FADraftWidget.h"
@@ -10,12 +10,14 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
+#include "Player/FAPlayerController.h"
 #include "Player/FAPlayerState.h"
 #include "Rule/FARuleSettings.h"
 #include "Styling/CoreStyle.h"
@@ -81,7 +83,7 @@ void UFADraftWidget::ShowCandidates(const TArray<FName>& CandidateRuleIds, float
 	LastDisplayedSeconds = -1;
 	bIsOpen = true;
 
-	RefreshFallbackCards();
+	RefreshCards();
 	ApplyInputMode(true);
 
 	OnDraftShown(Cards, SelectionDuration);
@@ -187,6 +189,11 @@ FFADraftCardInfo UFADraftWidget::MakeCardInfo(FName RuleId)
 	return Info;
 }
 
+void UFADraftWidget::RestoreInputMode()
+{
+	ApplyInputMode(bIsOpen);
+}
+
 void UFADraftWidget::ApplyInputMode(bool bOpen)
 {
 	if (!bTakeMouseCursorWhileOpen)
@@ -196,6 +203,13 @@ void UFADraftWidget::ApplyInputMode(bool bOpen)
 
 	APlayerController* PlayerController = GetOwningPlayer();
 	if (!PlayerController)
+	{
+		return;
+	}
+
+	// ESC 메뉴가 떠 있으면 입력은 그쪽으로.
+	const AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(PlayerController);
+	if (!bOpen && FAPlayerController && FAPlayerController->IsPauseMenuOpen())
 	{
 		return;
 	}
@@ -215,6 +229,15 @@ void UFADraftWidget::ApplyInputMode(bool bOpen)
 		PlayerController->SetShowMouseCursor(false);
 		PlayerController->SetInputMode(FInputModeGameOnly());
 	}
+}
+
+void UFADraftWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	// WBP 로 만든 버튼은 여기서 처음 유효해진다 — 임시 레이아웃과 같은 핸들러로 묶는다.
+	GatherCardWidgets();
+	BindCardButtons();
 }
 
 void UFADraftWidget::NativeDestruct()
@@ -244,7 +267,7 @@ void UFADraftWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	if (WholeSeconds != LastDisplayedSeconds)
 	{
 		LastDisplayedSeconds = WholeSeconds;
-		RefreshFallbackTimer(WholeSeconds);
+		RefreshTimerText(WholeSeconds);
 		OnSelectionTimeChanged(Remaining, WholeSeconds);
 	}
 
@@ -254,19 +277,152 @@ void UFADraftWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	}
 }
 
-//~ ---------------- WBP 가 없을 때 쓰는 임시 레이아웃 ----------------
+//~ ---------------- 카드 위젯 채우기 (WBP · 임시 레이아웃 공통) ----------------
 
 TSharedRef<SWidget> UFADraftWidget::RebuildWidget()
 {
+	// UMG 디자이너 프리뷰에서는 아무것도 조립하지 않는다.
+	// 폴백을 만들면 WBP 의 WidgetTree 에 없는 위젯이 프리뷰에 섞여 Hierarchy 에서 선택·삭제가 안 되고,
+	// 후보가 0장인 상태로 RefreshCards() 를 돌리면 디자이너가 배치한 카드가 전부 숨겨진다.
+	if (IsDesignTime())
+	{
+		return Super::RebuildWidget();
+	}
+
 	// WBP 를 상속해 만들면 RootWidget 이 이미 차 있다 — 그때는 디자이너가 만든 트리를 그대로 쓴다.
 	if (WidgetTree && !WidgetTree->RootWidget)
 	{
 		BuildFallbackLayout();
-		RefreshFallbackCards();
 	}
+
+	GatherCardWidgets();
+	RefreshCards();
 
 	return Super::RebuildWidget();
 }
+
+void UFADraftWidget::GatherCardWidgets()
+{
+	// 개별 변수로 두어야 WBP 가 이름으로 물릴 수 있고, 채울 때는 인덱스가 편하다.
+	CardRoots = { Card0, Card1, Card2 };
+	CardButtons = { Btn_Card0, Btn_Card1, Btn_Card2 };
+	CardNameTexts = { Txt_Card0Name, Txt_Card1Name, Txt_Card2Name };
+	CardDescTexts = { Txt_Card0Desc, Txt_Card1Desc, Txt_Card2Desc };
+	CardMetaTexts = { Txt_Card0Meta, Txt_Card1Meta, Txt_Card2Meta };
+	CardIcons = { Img_Card0Icon, Img_Card1Icon, Img_Card2Icon };
+
+	static_assert(MaxCards == 3, "카드 슬롯 수를 바꾸면 CardN 변수와 HandleCardNClicked 도 같이 늘려야 한다");
+}
+
+void UFADraftWidget::BindCardButtons()
+{
+	// UButton::OnClicked 는 파라미터가 없어 인덱스를 실어 보낼 수 없다 — 슬롯 수만큼 핸들러를 둔다.
+	if (Btn_Card0)
+	{
+		Btn_Card0->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard0Clicked);
+	}
+	if (Btn_Card1)
+	{
+		Btn_Card1->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard1Clicked);
+	}
+	if (Btn_Card2)
+	{
+		Btn_Card2->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard2Clicked);
+	}
+}
+
+void UFADraftWidget::RefreshCards()
+{
+	if (CardButtons.Num() != MaxCards)
+	{
+		// 아직 위젯 트리가 만들어지기 전 (AddToViewport 이전).
+		return;
+	}
+
+	if (Txt_Title)
+	{
+		Txt_Title->SetText(FText::FromString(
+			FString::Printf(TEXT("DRAFT %d  ·  룰 카드를 고르세요"), GetDraftIndex())));
+	}
+
+	RefreshTimerText(FMath::CeilToInt(GetTimeRemaining()));
+
+	for (int32 Index = 0; Index < MaxCards; ++Index)
+	{
+		// 카드 루트를 따로 만들지 않았으면 버튼 자체를 숨긴다.
+		UWidget* CardRoot = CardRoots[Index].Get();
+		if (!CardRoot)
+		{
+			CardRoot = CardButtons[Index].Get();
+		}
+
+		if (!Cards.IsValidIndex(Index))
+		{
+			// 후보가 3장이 안 될 수 있다 (해당 티어 카드가 부족한 경우).
+			if (CardRoot)
+			{
+				CardRoot->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			continue;
+		}
+
+		const FFADraftCardInfo& Card = Cards[Index];
+
+		if (CardRoot)
+		{
+			CardRoot->SetVisibility(ESlateVisibility::Visible);
+		}
+
+		if (CardButtons[Index] && (bTintCardButtonsByTier || bUsingFallbackLayout))
+		{
+			CardButtons[Index]->SetBackgroundColor(FADraftUI::TierToColor(Card.Tier));
+		}
+
+		if (CardNameTexts[Index])
+		{
+			CardNameTexts[Index]->SetText(Card.DisplayName);
+		}
+
+		if (CardDescTexts[Index])
+		{
+			CardDescTexts[Index]->SetText(Card.ShortDesc);
+		}
+
+		if (CardMetaTexts[Index])
+		{
+			CardMetaTexts[Index]->SetText(FText::FromString(FString::Printf(TEXT("[%d]  %s · %s · %s"),
+				Index + 1,
+				*Card.RuleId.ToString(),
+				*FADraftUI::TierToString(Card.Tier),
+				*FADraftUI::TeamToString(Card.Team))));
+		}
+
+		if (UImage* Icon = CardIcons[Index])
+		{
+			// 카드가 3장뿐이라 동기 로드로 충분하다. 아이콘이 없는 룰은 이미지 칸을 숨긴다.
+			UTexture2D* IconTexture = Card.Icon.IsNull() ? nullptr : Card.Icon.LoadSynchronous();
+			if (IconTexture)
+			{
+				Icon->SetBrushFromTexture(IconTexture, true);
+				Icon->SetVisibility(ESlateVisibility::Visible);
+			}
+			else
+			{
+				Icon->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}
+	}
+}
+
+void UFADraftWidget::RefreshTimerText(int32 WholeSeconds)
+{
+	if (Txt_Timer)
+	{
+		Txt_Timer->SetText(FText::FromString(FString::Printf(TEXT("%d s"), FMath::Max(0, WholeSeconds))));
+	}
+}
+
+//~ ---------------- WBP 가 없을 때 쓰는 임시 레이아웃 ----------------
 
 void UFADraftWidget::BuildFallbackLayout()
 {
@@ -286,19 +442,19 @@ void UFADraftWidget::BuildFallbackLayout()
 	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->SetContent(Column);
 
-	FallbackTitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	FallbackTitleText->SetFont(FADraftUI::MakeFont(20, true));
-	FallbackTitleText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-	if (UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(FallbackTitleText))
+	Txt_Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Txt_Title->SetFont(FADraftUI::MakeFont(20, true));
+	Txt_Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+	if (UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Txt_Title))
 	{
 		TitleSlot->SetHorizontalAlignment(HAlign_Center);
 		TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
 	}
 
-	FallbackTimerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	FallbackTimerText->SetFont(FADraftUI::MakeFont(16, false));
-	FallbackTimerText->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.8f, 1.0f)));
-	if (UVerticalBoxSlot* TimerSlot = Column->AddChildToVerticalBox(FallbackTimerText))
+	Txt_Timer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+	Txt_Timer->SetFont(FADraftUI::MakeFont(16, false));
+	Txt_Timer->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.8f, 1.0f)));
+	if (UVerticalBoxSlot* TimerSlot = Column->AddChildToVerticalBox(Txt_Timer))
 	{
 		TimerSlot->SetHorizontalAlignment(HAlign_Center);
 		TimerSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
@@ -307,11 +463,12 @@ void UFADraftWidget::BuildFallbackLayout()
 	UHorizontalBox* CardRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	Column->AddChildToVerticalBox(CardRow);
 
-	FallbackCardSlots.Reset();
-	FallbackCardButtons.Reset();
-	FallbackNameTexts.Reset();
-	FallbackDescTexts.Reset();
-	FallbackMetaTexts.Reset();
+	// 카드 1장씩 만들어 Card0 / Btn_Card0 … 에 그대로 넣는다 — 채우는 코드는 WBP 와 완전히 같다.
+	TArray<UWidget*> BuiltRoots;
+	TArray<UButton*> BuiltButtons;
+	TArray<UTextBlock*> BuiltNames;
+	TArray<UTextBlock*> BuiltDescs;
+	TArray<UTextBlock*> BuiltMetas;
 
 	for (int32 Index = 0; Index < MaxCards; ++Index)
 	{
@@ -361,64 +518,36 @@ void UFADraftWidget::BuildFallbackLayout()
 			MetaSlot->SetPadding(FMargin(0.0f, 6.0f, 0.0f, 0.0f));
 		}
 
-		FallbackCardSlots.Add(CardSize);
-		FallbackCardButtons.Add(CardButton);
-		FallbackNameTexts.Add(NameText);
-		FallbackDescTexts.Add(DescText);
-		FallbackMetaTexts.Add(MetaText);
+		BuiltRoots.Add(CardSize);
+		BuiltButtons.Add(CardButton);
+		BuiltNames.Add(NameText);
+		BuiltDescs.Add(DescText);
+		BuiltMetas.Add(MetaText);
 	}
 
-	// UButton::OnClicked 는 파라미터가 없어 인덱스를 실어 보낼 수 없다 — 슬롯 수만큼 핸들러를 둔다.
-	FallbackCardButtons[0]->OnClicked.AddDynamic(this, &UFADraftWidget::HandleCard0Clicked);
-	FallbackCardButtons[1]->OnClicked.AddDynamic(this, &UFADraftWidget::HandleCard1Clicked);
-	FallbackCardButtons[2]->OnClicked.AddDynamic(this, &UFADraftWidget::HandleCard2Clicked);
-}
+	Card0 = BuiltRoots[0];
+	Card1 = BuiltRoots[1];
+	Card2 = BuiltRoots[2];
 
-void UFADraftWidget::RefreshFallbackCards()
-{
-	if (FallbackCardSlots.Num() != MaxCards)
-	{
-		// WBP 를 쓰는 중 — 그리기는 전부 블루프린트 몫이다.
-		return;
-	}
+	Btn_Card0 = BuiltButtons[0];
+	Btn_Card1 = BuiltButtons[1];
+	Btn_Card2 = BuiltButtons[2];
 
-	if (FallbackTitleText)
-	{
-		FallbackTitleText->SetText(FText::FromString(
-			FString::Printf(TEXT("DRAFT %d  ·  룰 카드를 고르세요"), GetDraftIndex())));
-	}
+	Txt_Card0Name = BuiltNames[0];
+	Txt_Card1Name = BuiltNames[1];
+	Txt_Card2Name = BuiltNames[2];
 
-	RefreshFallbackTimer(FMath::CeilToInt(GetTimeRemaining()));
+	Txt_Card0Desc = BuiltDescs[0];
+	Txt_Card1Desc = BuiltDescs[1];
+	Txt_Card2Desc = BuiltDescs[2];
 
-	for (int32 Index = 0; Index < MaxCards; ++Index)
-	{
-		if (!Cards.IsValidIndex(Index))
-		{
-			// 후보가 3장이 안 될 수 있다 (해당 티어 카드가 부족한 경우).
-			FallbackCardSlots[Index]->SetVisibility(ESlateVisibility::Collapsed);
-			continue;
-		}
+	Txt_Card0Meta = BuiltMetas[0];
+	Txt_Card1Meta = BuiltMetas[1];
+	Txt_Card2Meta = BuiltMetas[2];
 
-		const FFADraftCardInfo& Card = Cards[Index];
+	bUsingFallbackLayout = true;
 
-		FallbackCardSlots[Index]->SetVisibility(ESlateVisibility::Visible);
-		FallbackCardButtons[Index]->SetBackgroundColor(FADraftUI::TierToColor(Card.Tier));
-		FallbackNameTexts[Index]->SetText(Card.DisplayName);
-		FallbackDescTexts[Index]->SetText(Card.ShortDesc);
-		FallbackMetaTexts[Index]->SetText(FText::FromString(FString::Printf(TEXT("[%d]  %s · %s · %s"),
-			Index + 1,
-			*Card.RuleId.ToString(),
-			*FADraftUI::TierToString(Card.Tier),
-			*FADraftUI::TeamToString(Card.Team))));
-	}
-}
-
-void UFADraftWidget::RefreshFallbackTimer(int32 WholeSeconds)
-{
-	if (FallbackTimerText)
-	{
-		FallbackTimerText->SetText(FText::FromString(FString::Printf(TEXT("%d s"), FMath::Max(0, WholeSeconds))));
-	}
+	BindCardButtons();
 }
 
 void UFADraftWidget::HandleCard0Clicked()

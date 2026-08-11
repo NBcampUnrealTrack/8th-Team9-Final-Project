@@ -58,6 +58,12 @@ public:
 	
 private:
 	/**
+	 * 지금 드래프트를 돌려도 되는 상태인가.
+	 * 데스매치·매치 종료 후에는 룰을 새로 쥐여주면 안 된다.
+	 */
+	bool IsDraftAllowed() const;
+
+	/**
 	 * 후보 3장을 뽑는다. 지금은 티어 구성만 맞추고 가중치·ConflictTags 는 아직 안 본다.
 	 * @param ExcludeRuleIds 후보에서 뺄 카드 — 이미 보유 중인 룰. 뽑아봐야 적용이 거부돼 빈 선택이 된다.
 	 */
@@ -81,6 +87,9 @@ private:
 
 	// 최종 확정 처리 — 정상 확정과 타임아웃 확정이 공유하는 공통 로직.
 	void ApplyDraftResult(AFAPlayerState* ForPlayer, const FFADraftCandidate& Chosen);
+	
+	// 연속 드래프트 1장을 즉시 적용하고, 남은 장수가 있으면 6초 뒤 자신을 다시 예약한다.
+	void ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount);
 
 	// 플레이어별로 "지금 보낸 후보가 뭐였는지" 기억해두는 표.
 	TMap<TWeakObjectPtr<AFAPlayerState>, TArray<FFADraftCandidate>> PendingCandidates;
