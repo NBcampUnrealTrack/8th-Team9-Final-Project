@@ -36,6 +36,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void OnQuitClicked();
 
+	/** 버튼 위에 마우스가 올라갔을 때. 세 버튼이 공유한다. */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void OnButtonHovered();
+
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
