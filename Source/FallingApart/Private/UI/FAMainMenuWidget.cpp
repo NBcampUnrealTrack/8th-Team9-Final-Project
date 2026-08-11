@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "UI/PrototypeMainMenu.h"
+#include "UI/FAMainMenuWidget.h"
 
 #include "Components/Button.h"
 #include "Components/WidgetSwitcher.h"
@@ -12,7 +12,7 @@
 
 #define LOCTEXT_NAMESPACE "PrototypeMainMenu"
 
-void UPrototypeMainMenu::NativeOnInitialized()
+void UFAMainMenuWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 	
@@ -56,7 +56,7 @@ void UPrototypeMainMenu::NativeOnInitialized()
 	}
 }
 
-void UPrototypeMainMenu::NativeConstruct()
+void UFAMainMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	// 서브시스템은 GameInstance로부터 가져올 수 있다.
@@ -74,7 +74,7 @@ void UPrototypeMainMenu::NativeConstruct()
 		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSessionComplete);
 	}
 }
-void UPrototypeMainMenu::NativeDestruct()
+void UFAMainMenuWidget::NativeDestruct()
 {
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{ 
@@ -89,7 +89,7 @@ void UPrototypeMainMenu::NativeDestruct()
 	RestoreGameInputMode();
 	Super::NativeDestruct();
 }
-void UPrototypeMainMenu::MenuSetup()
+void UFAMainMenuWidget::MenuSetup()
 {
 	AddToViewport();
 	SetVisibility(ESlateVisibility::Visible);
@@ -113,7 +113,7 @@ void UPrototypeMainMenu::MenuSetup()
 	}
 }
 
-void UPrototypeMainMenu::ShowPage(EPrototypeMenuPage Page)
+void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 {
 	if (!WidgetSwitcher_Page)
 	{
@@ -127,7 +127,7 @@ void UPrototypeMainMenu::ShowPage(EPrototypeMenuPage Page)
 	}
 }
 
-void UPrototypeMainMenu::HandleCreateSessionRequested(const FFASessionCreateRequest& Request)
+void UFAMainMenuWidget::HandleCreateSessionRequested(const FFASessionCreateRequest& Request)
 {
 	if (OnlineSessionSubsystem)
 	{
@@ -135,7 +135,7 @@ void UPrototypeMainMenu::HandleCreateSessionRequested(const FFASessionCreateRequ
 	}
 }
 
-void UPrototypeMainMenu::HandleSessionRefreshRequested()
+void UFAMainMenuWidget::HandleSessionRefreshRequested()
 {
 	if (!OnlineSessionSubsystem || !SessionJoinWidget)
 	{
@@ -151,7 +151,7 @@ void UPrototypeMainMenu::HandleSessionRefreshRequested()
 	OnlineSessionSubsystem->FindSession(100);
 }
 
-void UPrototypeMainMenu::HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password)
+void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password)
 {
 	if (!OnlineSessionSubsystem || !SessionJoinWidget)
 	{
@@ -162,7 +162,7 @@ void UPrototypeMainMenu::HandleJoinSessionRequested(const FOnlineSessionSearchRe
 	OnlineSessionSubsystem->JoinSession(SessionResult, Password);
 }
 
-void UPrototypeMainMenu::OnCreateSessionComplete(EFASessionRequestResult Result)
+void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 {
 	if (Result == EFASessionRequestResult::Success)
 	{
@@ -183,7 +183,7 @@ void UPrototypeMainMenu::OnCreateSessionComplete(EFASessionRequestResult Result)
 	UE_LOG(LogFAOSS, Warning, TEXT("Create session failed: %s"), *UEnum::GetValueAsString(Result));
 }
 
-void UPrototypeMainMenu::OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result)
+void UFAMainMenuWidget::OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result)
 {
 	if (!SessionJoinWidget)
 	{
@@ -210,7 +210,7 @@ void UPrototypeMainMenu::OnFindSessionComplete(const TArray<FOnlineSessionSearch
 	}
 }
 
-void UPrototypeMainMenu::OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString)
+void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString)
 {
 	if (SessionJoinWidget)
 	{
@@ -237,22 +237,22 @@ void UPrototypeMainMenu::OnJoinSessionComplete(EFASessionRequestResult Result, c
 }
 
 
-void UPrototypeMainMenu::OnHostButtonClicked() 
+void UFAMainMenuWidget::OnHostButtonClicked() 
 {
 	ShowPage(EPrototypeMenuPage::CreateSession);
 }
 
-void UPrototypeMainMenu::OnJoinButtonClicked()
+void UFAMainMenuWidget::OnJoinButtonClicked()
 {
 	ShowPage(EPrototypeMenuPage::JoinSession);
 }
 
-void UPrototypeMainMenu::OnSettingButtonClicked()
+void UFAMainMenuWidget::OnSettingButtonClicked()
 {
 	//TODO : 메뉴 UI추가 및 설정 창 이동
 }
 
-void UPrototypeMainMenu::OnQuitButtonClicked()
+void UFAMainMenuWidget::OnQuitButtonClicked()
 {
 	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 	UKismetSystemLibrary::QuitGame(
@@ -263,7 +263,7 @@ void UPrototypeMainMenu::OnQuitButtonClicked()
 		);
 }
 
-void UPrototypeMainMenu::ConfirmHostButtonClicked()
+void UFAMainMenuWidget::ConfirmHostButtonClicked()
 {
 	if (SessionCreateWidget)
 	{
@@ -272,17 +272,17 @@ void UPrototypeMainMenu::ConfirmHostButtonClicked()
 }
 
 
-void UPrototypeMainMenu::ReturnToMainMenuButtonClicked()
+void UFAMainMenuWidget::ReturnToMainMenuButtonClicked()
 {
 	ShowPage(EPrototypeMenuPage::Main);
 }
 
-void UPrototypeMainMenu::CloseMenu()
+void UFAMainMenuWidget::CloseMenu()
 {
 	RemoveFromParent();
 }
 
-void UPrototypeMainMenu::RestoreGameInputMode()
+void UFAMainMenuWidget::RestoreGameInputMode()
 {
 	UWorld* World = GetWorld();
 	if (World)
