@@ -5,6 +5,8 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameMapsSettings.h"
+#include "Audio/FAAudioSettings.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "GAS/FAAbilitySystemComponent.h"
 #include "Game/FAGameMode.h"
 #include "Game/FAGameState.h"
@@ -96,6 +98,44 @@ void AFAPlayerController::FADeathMatch()
 	if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
 	{
 		DeathMatch->StartDeathMatch(Contenders);
+	}
+}
+
+void AFAPlayerController::FAPlaySound(const FString& SoundId)
+{
+	if (SoundId.IsEmpty())
+	{
+		// 인자 없이 부르면 지금 표에 실제로 들어 있는 ID 를 전부 보여준다.
+		TArray<FName> AllIds;
+		UFAAudioSettings::GetAllSoundIds(AllIds);
+
+		if (AllIds.Num() == 0)
+		{
+			ClientMessage(TEXT("[FAPlaySound] 표가 비어 있다 — Project Settings → Game → Falling Apart | Audio 에서 DT_Sound_* 를 지정할 것"));
+			return;
+		}
+
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] 등록된 ID %d개:"), AllIds.Num()));
+		for (const FName& Id : AllIds)
+		{
+			const FFASoundRow* Row = UFAAudioSettings::FindSound(Id);
+			ClientMessage(FString::Printf(TEXT("  %s%s"), *Id.ToString(),
+				(Row && Row->Sound.IsNull()) ? TEXT("   (음원 미지정)") : TEXT("")));
+		}
+		return;
+	}
+
+	const FName Id(*SoundId);
+	if (!UFAAudioSettings::FindSound(Id))
+	{
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 행을 다섯 표 어디에서도 찾지 못했다"), *SoundId));
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySound(Id);
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
 	}
 }
 

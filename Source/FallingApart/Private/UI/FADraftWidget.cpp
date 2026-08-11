@@ -3,6 +3,7 @@
 
 #include "UI/FADraftWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -21,6 +22,19 @@
 #include "Player/FAPlayerState.h"
 #include "Rule/FARuleSettings.h"
 #include "Styling/CoreStyle.h"
+
+namespace FADraftAudio
+{
+	static const FName Open(TEXT("Draft_Open"));
+	static const FName CardSelect(TEXT("Draft_CardSelect"));
+	static const FName CardHover(TEXT("Draft_CardHover"));
+	static const FName AutoPick(TEXT("Draft_AutoPick"));
+	static const FName TimerTick(TEXT("Draft_TimerTick"));
+	static const FName TimerUrgent(TEXT("Draft_TimerUrgent"));
+
+	/** 남은 시간이 이 값 이하면 급한 소리로 바꾼다 (UX 가이드 §8.2 — 3초부터 붉게 점멸). */
+	static constexpr int32 UrgentSeconds = 3;
+}
 
 namespace FADraftUI
 {
@@ -86,6 +100,9 @@ void UFADraftWidget::ShowCandidates(const TArray<FName>& CandidateRuleIds, float
 	RefreshCards();
 	ApplyInputMode(true);
 
+	// 화면을 안 보고 도망치는 중에도 "카드 왔다"가 먼저 도착해야 한다 (UX 가이드 §1).
+	UFAAudioSubsystem::PlayFASound(this, FADraftAudio::Open);
+
 	OnDraftShown(Cards, SelectionDuration);
 }
 
@@ -103,6 +120,9 @@ void UFADraftWidget::ConfirmSelection(int32 Index)
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Draft] 카드 선택: [%d] %s"), Index, *Cards[Index].RuleId.ToString());
+
+	// 숫자키 1/2/3 선택도 이 경로를 탄다.
+	UFAAudioSubsystem::PlayFASound(this, FADraftAudio::CardSelect);
 
 	if (AFAPlayerState* FAPlayerState = GetOwningPlayerState<AFAPlayerState>())
 	{
@@ -123,6 +143,10 @@ void UFADraftWidget::CloseWithoutSelection()
 	{
 		// 제한 시간이 지났다면 서버가 이미 무작위로 확정한 상태다 (UFARuleDraftSubsystem::HandleDraftTimeout).
 		UE_LOG(LogTemp, Log, TEXT("[Draft] 선택 없이 닫는다 (남은 시간 %.1f초)"), GetTimeRemaining());
+
+		// 내가 안 고른 게 들어왔다는 신호. 서버는 이미 무작위로 확정한 상태다.
+		UFAAudioSubsystem::PlayFASound(this, FADraftAudio::AutoPick);
+
 		Close(false, INDEX_NONE);
 	}
 }
@@ -268,6 +292,15 @@ void UFADraftWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		LastDisplayedSeconds = WholeSeconds;
 		RefreshTimerText(WholeSeconds);
+
+		// 0 초는 AutoPick 이 대신 울리므로 여기서 겹쳐 내지 않는다.
+		if (WholeSeconds > 0)
+		{
+			UFAAudioSubsystem::PlayFASound(this, WholeSeconds <= FADraftAudio::UrgentSeconds
+				? FADraftAudio::TimerUrgent
+				: FADraftAudio::TimerTick);
+		}
+
 		OnSelectionTimeChanged(Remaining, WholeSeconds);
 	}
 
@@ -320,15 +353,23 @@ void UFADraftWidget::BindCardButtons()
 	if (Btn_Card0)
 	{
 		Btn_Card0->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard0Clicked);
+		Btn_Card0->OnHovered.AddUniqueDynamic(this, &UFADraftWidget::HandleCardHovered);
 	}
 	if (Btn_Card1)
 	{
 		Btn_Card1->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard1Clicked);
+		Btn_Card1->OnHovered.AddUniqueDynamic(this, &UFADraftWidget::HandleCardHovered);
 	}
 	if (Btn_Card2)
 	{
 		Btn_Card2->OnClicked.AddUniqueDynamic(this, &UFADraftWidget::HandleCard2Clicked);
+		Btn_Card2->OnHovered.AddUniqueDynamic(this, &UFADraftWidget::HandleCardHovered);
 	}
+}
+
+void UFADraftWidget::HandleCardHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FADraftAudio::CardHover);
 }
 
 void UFADraftWidget::RefreshCards()

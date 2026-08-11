@@ -40,6 +40,13 @@ public:
 	UFUNCTION(Exec)
 	void FADeathMatch();
 
+	/**
+	 * 사운드 표에 걸어둔 ID 를 즉시 재생해 본다. 콘솔에 `FAPlaySound UI_Click` 처럼 입력.
+	 * 인자를 비우면 다섯 표에 들어 있는 ID 를 전부 콘솔에 찍는다 — 애셋 연결 확인용.
+	 */
+	UFUNCTION(Exec)
+	void FAPlaySound(const FString& SoundId);
+
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
 
