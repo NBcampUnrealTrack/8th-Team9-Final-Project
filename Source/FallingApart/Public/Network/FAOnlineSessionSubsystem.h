@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Game/FALobbyGameState.h"
 
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
@@ -18,6 +19,9 @@ enum class ESessionOperationState : uint8
 	Creating	UMETA(DisplayName="Creating"),
 	Searching	UMETA(DisplayName="Searching"),
 	Joining		UMETA(DisplayName="Joining"),
+	Updating	UMETA(DisplayName="Updating"),
+	Starting	UMETA(DisplayName="Starting"),
+	Ending		UMETA(DisplayName="Ending"),
 	Destroying	UMETA(DisplayName="Destroying")
 };
 
@@ -38,14 +42,27 @@ enum class EFASessionRequestResult : uint8
 	CouldNotRetrieveAddress UMETA(DisplayName="Could Not Retrieve Address"),
 	UnknownError			UMETA(DisplayName="Unknown Error")
 };
+USTRUCT()
+struct FFASessionInfo
+{
+	GENERATED_BODY()
 
+	UPROPERTY()
+	FName SessionName;
+
+	UPROPERTY()
+	int32 MaxPlayers;
+
+	UPROPERTY()
+	bool bIsPrivate;
+};
 // FOnlineSessionSearchResult는 리플렉션 타입이 아니므로 세션 결과 이벤트는 C++ 전용으로 제공한다.
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, EFASessionRequestResult Result);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnJoinSessionComplete, EFASessionRequestResult Result, const FString& ConnectString);
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool bWasSuccessful);
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool bWasSuccessful);
-
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionPreparedForMatch, bool bSuccessed);
 /**
  * OSS의 기본적인 생명주기를 관리하는 서브시스템
  * 세션생성, 세션 검색과 참가, 세션 시작, 세션 종료
@@ -77,6 +94,8 @@ public:
 	 */
 	void JoinSession(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
 	
+	void PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount);
+	
 	/**TODO  
 	 * 서버 : 호스팅중인 세션 종료\n
 	 *  클라이언트 : 접속중인 세션에서 이탈*/
@@ -91,8 +110,12 @@ public:
 	/// TODO : 플랫폼 친구에게 세션 초대 발송
 	void SendSessionInviteToFriends();
 	
+	
 	ESessionOperationState GetCurrentOperationState() const;
 	
+	FNamedOnlineSession* GetCurrentSession() const;
+	TSoftObjectPtr<UWorld> ResolveMap(FName GetSelectedMapId);
+
 	// 각각 콜백 등록용
 	
 	FMultiplayerOnCreateSessionComplete MultiplayerOnCreateSessionComplete;
@@ -100,7 +123,8 @@ public:
 	FMultiplayerOnJoinSessionComplete MultiplayerOnJoinSessionComplete;
 	FMultiplayerOnDestroySessionComplete MultiplayerOnDestroySessionComplete;
 	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
-	
+	FOnSessionPreparedForMatch OnSessionPreparedForMatch;
+
 protected:
 	// 온라인 세션 인터페이스에 등록될 내부 콜백 함수들.
 	// 직접 호출하지 않는 함수들임.
@@ -110,7 +134,7 @@ protected:
 	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
-	
+	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
 	
 private:
 	IOnlineSessionPtr SessionInterface;
@@ -132,6 +156,8 @@ private:
 	FDelegateHandle 					DestroySessionCompleteDelegateHandle;
 	FOnStartSessionCompleteDelegate		StartSessionCompleteDelegate;
 	FDelegateHandle 					StartSessionCompleteDelegateHandle;
+	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
+	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
 };
