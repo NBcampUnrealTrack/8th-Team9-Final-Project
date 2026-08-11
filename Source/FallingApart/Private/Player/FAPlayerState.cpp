@@ -27,6 +27,7 @@ void AFAPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AFAPlayerState, Team);
 	DOREPLIFETIME(AFAPlayerState, RoundScore);
 	DOREPLIFETIME(AFAPlayerState, MatchScore);
+	DOREPLIFETIME(AFAPlayerState, DeathMatchPlacement);
 }
 
 void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
@@ -39,6 +40,7 @@ void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
 		FAPlayerState->Team = Team;
 		FAPlayerState->RoundScore = RoundScore;
 		FAPlayerState->MatchScore = MatchScore;
+		FAPlayerState->DeathMatchPlacement = DeathMatchPlacement;
 	}
 }
 
@@ -92,10 +94,12 @@ void AFAPlayerState::ResetForNewMatch()
 	RoundScore.Reset();
 	SurvivalClockStart = -1.0f;
 	Team = EFATeam::None;
+	DeathMatchPlacement = 0;
 
 	OnRep_Team();
 	OnRep_RoundScore();
 	OnRep_MatchScore();
+	OnRep_DeathMatchPlacement();
 }
 
 void AFAPlayerState::ResetForNewRound()
@@ -210,6 +214,18 @@ void AFAPlayerState::CommitRoundScore()
 	OnRep_MatchScore();
 }
 
+void AFAPlayerState::SetDeathMatchPlacement(int32 InPlacement)
+{
+	if (!ensure(HasAuthority()) || DeathMatchPlacement == InPlacement)
+	{
+		return;
+	}
+
+	DeathMatchPlacement = InPlacement;
+
+	OnRep_DeathMatchPlacement();
+}
+
 void AFAPlayerState::OnRep_Team()
 {
 	OnTeamChanged.Broadcast(Team);
@@ -222,6 +238,12 @@ void AFAPlayerState::OnRep_RoundScore()
 
 void AFAPlayerState::OnRep_MatchScore()
 {
+	OnScoreChanged.Broadcast();
+}
+
+void AFAPlayerState::OnRep_DeathMatchPlacement()
+{
+	// 순위가 바뀌는 값이라 순위표를 다시 그리게 해야 한다.
 	OnScoreChanged.Broadcast();
 }
 
