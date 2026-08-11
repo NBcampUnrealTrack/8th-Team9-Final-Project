@@ -9,6 +9,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "GAS/FAAbilitySystemComponent.h"
 #include "Game/FAGameMode.h"
+#include "HAL/IConsoleManager.h"
 #include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/PackageName.h"
