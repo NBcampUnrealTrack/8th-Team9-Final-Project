@@ -1,17 +1,22 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "FADeathMatchSubsystem.generated.h"
 
 class AFAPlayerState;
+class APlayerStart;
 
 /**
  * 1등 완전 동점자(2~3명) 대상 서든데스 데스매치 (GDD 5.4 / 5.5, MVP 제외).
  * AFAGameMode::HandleMatchHasEnded() 가 동점 판정 후 이 서브시스템을 호출한다.
  *
  * 아레나(1층 제한)는 맵에 미리 배치된 액터를 태그로 찾아 토글하는 방식.
+ * 최종 순위는 AFAPlayerState::SetDeathMatchPlacement() 로 기록하고,
+ * AFAGameState::CompareRank() 4차(완전 동점 단계)가 이 값을 읽어서 승부를 가른다.
  *
+ * 3인 데스매치(좀비1 vs 인간2)는 GDD 상 "권장안 · 확정 필요" 항목 — 아래 승패/순위 해석은
+ * 기획 확정 전까지 쓰는 임시 규칙이다.
  */
 UCLASS()
 class FALLINGAPART_API UFADeathMatchSubsystem : public UWorldSubsystem
@@ -28,8 +33,8 @@ public:
 	 */
 	void NotifyContenderCaught(AFAPlayerState* CaughtHuman);
 
-	/** 데스매치가 진행 중인가 (참가자 2명이 확정되어 타이머가 도는 상태). */
-	bool IsDeathMatchActive() const { return ActiveHuman.IsValid() && ActiveZombie.IsValid(); }
+	/** 데스매치가 진행 중인가 (좀비·인간이 최소 1명씩 확정되어 타이머가 도는 상태). */
+	bool IsDeathMatchActive() const { return ActiveZombie.IsValid() && ActiveHumans.Num() > 0; }
 
 	/**
 	 * 1층 봉쇄 액터를 켜고 끈다. 서버·클라이언트 각자 자기 월드에 대해 호출한다
@@ -53,11 +58,17 @@ protected:
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 
 private:
-	// 1분 제한 시간 도달 — 인간 승 (데스매치 사양).
+	// 1분 제한 시간 도달 — 인간(들) 승 (데스매치 사양).
 	void HandleTimeExpired();
 
-	// 승패 확정 처리 — 타임아웃(인간 승)과 포획(좀비 승)이 공유하는 공통 로직.
-	void EndDeathMatch(AFAPlayerState* Winner, AFAPlayerState* Loser);
+	/**
+	 * 승패 확정 공통 처리. 순위값은 낮을수록 상위(1등=1)로 AFAPlayerState::SetDeathMatchPlacement() 에 기록한다.
+	 * @param TopPlacement    1등 그룹 (좀비 패배 시 생존 인간 전원, 좀비 승리 시 좀비 혼자)
+	 * @param MidPlacement    2등 (3인일 때 포획 안 당한 인간). 없으면 nullptr.
+	 * @param BottomPlacement 가장 낮은 순위값을 받을 플레이어들
+	 */
+	void EndDeathMatch(const TArray<AFAPlayerState*>& TopPlacement, AFAPlayerState* MidPlacement,
+		const TArray<AFAPlayerState*>& BottomPlacement);
 
 	/**
 	 * 데스매치를 열지 못하고 물러날 때. 매치를 정상 종료 상태로 되돌린다.
@@ -66,7 +77,7 @@ private:
 	void AbortDeathMatch(const FString& Reason);
 
 	/** 참가자를 1층 전용 스폰으로 옮기고 봉쇄를 켠다. 보유 룰도 여기서 전부 걷어낸다. */
-	void EnterArena(AFAPlayerState* Zombie, AFAPlayerState* Human);
+	void EnterArena(AFAPlayerState* Zombie, const TArray<AFAPlayerState*>& Humans);
 
 	/** 봉쇄를 끄고 타이머·참가자 캐시를 비운다. 정상 종료·중단 양쪽에서 호출. */
 	void LeaveArena();
@@ -78,8 +89,10 @@ private:
 	void GatherArenaStarts(TArray<AActor*>& OutZombieStarts, TArray<AActor*>& OutHumanStarts,
 		TArray<AActor*>& OutAnyStarts) const;
 
-	TWeakObjectPtr<AFAPlayerState> ActiveHuman;
 	TWeakObjectPtr<AFAPlayerState> ActiveZombie;
+
+	// 2인이면 1명, 3인이면 2명 (GDD "좀비1 vs 인간2", 권장안 · 확정 필요).
+	TArray<TWeakObjectPtr<AFAPlayerState>> ActiveHumans;
 
 	FTimerHandle DeathMatchTimerHandle;
 };
