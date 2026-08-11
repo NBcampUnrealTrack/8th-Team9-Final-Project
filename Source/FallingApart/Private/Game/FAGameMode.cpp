@@ -346,12 +346,27 @@ void AFAGameMode::HandleMatchHasEnded()
 void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infector)
 {
 	AFAGameState* FAGameState = GetFAGameState();
-	if (!FAGameState || !FAGameState->IsRoundInProgress())
+	if (!FAGameState || !Victim)
 	{
 		return;
 	}
 
-	if (!Victim || !Victim->IsHuman())
+	// 데스매치 중 포획은 점수 정산·연속 드래프트 없이 승패 판정만 한다 — 일반 감염과 완전히 다른 경로.
+	if (FAGameState->GetRoundPhase() == EFARoundPhase::DeathMatch)
+	{
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+			DeathMatch->NotifyContenderCaught(Victim);
+		}
+		return;
+	}
+
+	if (!FAGameState->IsRoundInProgress())
+	{
+		return;
+	}
+
+	if (!Victim->IsHuman())
 	{
 		return;
 	}
