@@ -3,6 +3,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GAS/FAAbilitySystemComponent.h"
+#include "Game/FAGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
@@ -13,6 +14,19 @@
 namespace FADraft
 {
 	static constexpr float SelectionTimeLimit = 10.0f;
+	static constexpr float ChainDraftInterval = 6.0f;
+}
+
+bool UFARuleDraftSubsystem::IsDraftAllowed() const
+{
+	const AFAGameState* FAGameState = GetWorld() ? GetWorld()->GetGameState<AFAGameState>() : nullptr;
+	if (!FAGameState)
+	{
+		return false;
+	}
+
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	return Phase != EFARoundPhase::DeathMatch && Phase != EFARoundPhase::MatchEnd;
 }
 
 void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
@@ -21,6 +35,12 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (!GameState)
 	{
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 데스매치·매치 종료 중이라 정규 드래프트를 돌리지 않는다 (DraftIndex=%d)"), DraftIndex);
 		return;
 	}
 
@@ -177,15 +197,15 @@ void UFARuleDraftSubsystem::ApplyDraftResult(AFAPlayerState* ForPlayer, const FF
 
 void UFARuleDraftSubsystem::StartChainDraft(AFAPlayerState* Victim, int32 RemovedRuleCount)
 {
-	if (!Victim)
+	if (!Victim || RemovedRuleCount <= 0 || !IsDraftAllowed())
 	{
 		return;
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Draft] StartChainDraft called — Victim=%s, RemovedRuleCount=%d"),
 		*Victim->GetPlayerName(), RemovedRuleCount);
-	
-	// TODO: RemovedRuleCount 만큼 좀비 카드 연속 드래프트 (1장당 6초)
+
+	ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState>(Victim), RemovedRuleCount);
 }
 
 TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForTeam, int32 DraftIndex, const TArray<FName>& ExcludeRuleIds) const
@@ -317,4 +337,70 @@ TArray<int32> UFARuleDraftSubsystem::GetTierComposition(int32 DraftIndex) const
 	case 5: return { 2, 2, 3 };
 	default: return { 3, 3, 3 }; // 6회차
 	}
+}
+
+void UFARuleDraftSubsystem::ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount)
+{
+	if (RemainingCount <= 0 || !ForPlayer.IsValid())
+	{
+		// 타이머가 도는 사이 접속이 끊겼거나, 다 뽑았으면 조용히 종료.
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		// 6초 간격으로 이어지는 사이에 매치가 끝났다면 남은 장수는 버린다.
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 매치가 끝나 %s 의 연속 드래프트를 중단한다 (남은 %d장)"),
+			*ForPlayer->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	AFAPlayerState* PlayerState = ForPlayer.Get();
+
+	const AFACharacter* Character = Cast<AFACharacter>(PlayerState->GetPawn());
+	UFAAbilitySystemComponent* ASC = Character ? Character->GetFAAbilitySystemComponent() : nullptr;
+	if (!ASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 의 캐릭터/ASC 가 없어 연속 드래프트를 중단한다 (남은 %d장)"),
+			*PlayerState->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	// 이미 보유 중인 룰은 제외하고, 좀비 진영 전체 풀에서 무작위 1장을 뽑는다 — 선택 없이 즉시 적용.
+	const TArray<FName> HeldRuleIds = ASC->GetActiveRuleIds();
+
+	TArray<FFADummyRuleEntry> Candidates;
+	for (const FFADummyRuleEntry& Entry : GetRulePool())
+	{
+		if (Entry.Team == EFATeam::Zombie && !HeldRuleIds.Contains(Entry.RuleId))
+		{
+			Candidates.Add(Entry);
+		}
+	}
+
+	if (Candidates.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 에게 줄 좀비 룰이 남지 않아 연속 드래프트를 중단한다 (남은 %d장)"),
+			*PlayerState->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	const FFADummyRuleEntry& Picked = Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
+
+	UE_LOG(LogTemp, Log, TEXT("[Draft] %s 연속 드래프트 적용: %s (남은 %d장)"),
+		*PlayerState->GetPlayerName(), *Picked.RuleId.ToString(), RemainingCount - 1);
+
+	ASC->ApplyRuleCard(Picked.RuleId);
+
+	if (RemainingCount - 1 <= 0)
+	{
+		// 마지막 1장까지 적용했으면 여기서 끝.
+		return;
+	}
+
+	FTimerDelegate NextDelegate = FTimerDelegate::CreateUObject(
+		this, &UFARuleDraftSubsystem::ProcessNextChainDraft, ForPlayer, RemainingCount - 1);
+
+	FTimerHandle Handle;
+	GetWorld()->GetTimerManager().SetTimer(Handle, NextDelegate, FADraft::ChainDraftInterval, false);
 }
