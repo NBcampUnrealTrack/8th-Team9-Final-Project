@@ -5,6 +5,7 @@
 
 #include "Net/UnrealNetwork.h"
 #include "Player/FAPlayerState.h"
+#include "Rule/FADeathMatchSubsystem.h"
 
 AFAGameState::AFAGameState()
 {
@@ -26,6 +27,7 @@ void AFAGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AFAGameState, DraftsCompleted);
 	DOREPLIFETIME(AFAGameState, SurvivorCount);
 	DOREPLIFETIME(AFAGameState, ZombieCount);
+	DOREPLIFETIME(AFAGameState, bDeathMatchArenaActive);
 }
 
 float AFAGameState::GetRoundTimeRemaining() const
@@ -137,7 +139,15 @@ bool AFAGameState::CompareRank(const AFAPlayerState& A, const AFAPlayerState& B)
 		return SurvivalA > SurvivalB;
 	}
 
-	// 4차 — 완전 동점. (공동 순위).
+	// 4차 — 데스매치 결과. 값이 붙는 건 1등 완전 동점자뿐이라 미참가자(0)와 섞이지 않는다.
+	const int32 PlacementA = A.GetDeathMatchPlacement();
+	const int32 PlacementB = B.GetDeathMatchPlacement();
+	if (PlacementA > 0 && PlacementB > 0 && PlacementA != PlacementB)
+	{
+		return PlacementA < PlacementB;
+	}
+
+	// 5차 — 완전 동점. (공동 순위).
 	return false;
 }
 
@@ -232,6 +242,23 @@ void AFAGameState::SetTeamCounts(int32 InSurvivorCount, int32 InZombieCount)
 	{
 		OnTeamCountsChanged.Broadcast();
 	}
+}
+
+void AFAGameState::SetDeathMatchArenaActive(bool bInActive)
+{
+	if (!ensure(HasAuthority()) || bDeathMatchArenaActive == bInActive)
+	{
+		return;
+	}
+
+	bDeathMatchArenaActive = bInActive;
+	OnRep_DeathMatchArenaActive();
+}
+
+void AFAGameState::OnRep_DeathMatchArenaActive()
+{
+	// 서버·클라이언트 각자 자기 월드의 봉쇄 액터를 토글한다.
+	UFADeathMatchSubsystem::ApplyArenaBlockers(GetWorld(), bDeathMatchArenaActive);
 }
 
 void AFAGameState::NotifyDraftRoundStarted(int32 DraftIndex)

@@ -8,6 +8,7 @@
 #include "Templates/SubclassOf.h"
 #include "FAPlayerController.generated.h"
 
+class UFAMatchResultWidget;
 class UFAPauseMenuWidget;
 class UInputMappingContext;
 
@@ -30,6 +31,14 @@ public:
 	/** 내 캐릭터 ASC 의 보유 룰·게임플레이 태그를 콘솔에 찍는다. 룰이 실제로 붙었는지 확인용. */
 	UFUNCTION(Exec)
 	void FATags();
+
+	/**
+	 * 테스트 용
+	 * 콘솔에 `FADeathMatch` 입력.
+	 * 현재 순위 상위 2명이 참가자
+	 */
+	UFUNCTION(Exec)
+	void FADeathMatch();
 
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
@@ -55,6 +64,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void ReturnToMainMenu();
 
+	//~ ---------------- 최종 순위표 ----------------
+
+	/** 매치 종료 후 호출 */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowMatchResult();
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
+	bool IsMatchResultOpen() const;
+
 	/** 게임 프로세스 종료. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void QuitGame();
@@ -74,6 +92,17 @@ protected:
 	/** HUD · 드래프트 창보다 위에 떠야 한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
 	int32 PauseMenuZOrder = 100;
+
+	/**
+	 * 최종 순위표 위젯. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 * UI 담당이 UFAMatchResultWidget 을 상속한 WBP_FAMatchResult 를 만들면 여기서 갈아끼울 것.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	TSubclassOf<UFAMatchResultWidget> MatchResultWidgetClass;
+
+	/** 게임이 끝난 화면이라 ESC 메뉴보다도 위에 둔다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	int32 MatchResultZOrder = 150;
 
 	/**
 	 * 일시정지 메뉴 토글 키. 기본은 ESC 하나.
@@ -98,6 +127,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFAPauseMenuWidget> PauseMenuWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFAMatchResultWidget> MatchResultWidget;
 
 	/** 메인 메뉴 복귀를 두 번 태우지 않기 위한 가드. */
 	bool bReturningToMainMenu = false;
