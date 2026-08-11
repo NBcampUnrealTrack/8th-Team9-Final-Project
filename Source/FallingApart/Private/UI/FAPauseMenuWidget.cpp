@@ -3,6 +3,7 @@
 
 #include "UI/FAPauseMenuWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -22,6 +23,18 @@ namespace FAPauseMenuUI
 	{
 		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
 	}
+
+	static const FName SoundOpen(TEXT("UI_PauseOpen"));
+	static const FName SoundClose(TEXT("UI_PauseClose"));
+	static const FName SoundClick(TEXT("UI_Click"));
+	static const FName SoundDenied(TEXT("UI_Denied"));
+	static const FName SoundHover(TEXT("UI_Hover"));
+}
+
+void UFAPauseMenuWidget::OnButtonHovered()
+{
+	// 쿨다운 0.04 초가 표에 걸려 있어 목록을 빠르게 훑어도 연사되지 않는다.
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundHover);
 }
 
 void UFAPauseMenuWidget::CloseMenu()
@@ -39,6 +52,8 @@ void UFAPauseMenuWidget::CloseMenu()
 
 void UFAPauseMenuWidget::OnMainMenuClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundClick);
+
 	if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer()))
 	{
 		FAPlayerController->ReturnToMainMenu();
@@ -49,6 +64,9 @@ void UFAPauseMenuWidget::OnSettingsClicked()
 {
 	if (!SettingsWidgetClass)
 	{
+		// 눌러도 아무 일 없는 버튼이라 최소한 "안 된다"는 건 들려야 한다.
+		UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundDenied);
+
 		// 사운드 클래스 · 키 바인딩이 아직 없어 설정 화면은 나중에 붙인다.
 		UE_LOG(LogTemp, Warning,
 			TEXT("[FA] 일시정지 메뉴: 설정 화면이 아직 없다. 만들고 나면 WBP_FAPauseMenu 의 SettingsWidgetClass 에 지정할 것."));
@@ -70,6 +88,8 @@ void UFAPauseMenuWidget::OnSettingsClicked()
 
 void UFAPauseMenuWidget::OnQuitClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundClick);
+
 	if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer()))
 	{
 		FAPlayerController->QuitGame();
@@ -83,6 +103,9 @@ void UFAPauseMenuWidget::NativeConstruct()
 	SetIsFocusable(true);
 
 	BindButtons();
+
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundOpen);
+
 	OnPauseMenuOpened();
 }
 
@@ -94,6 +117,8 @@ void UFAPauseMenuWidget::NativeDestruct()
 		SettingsWidget->RemoveFromParent();
 	}
 	SettingsWidget = nullptr;
+
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundClose);
 
 	OnPauseMenuClosed();
 
@@ -121,14 +146,17 @@ void UFAPauseMenuWidget::BindButtons()
 	if (Btn_MainMenu)
 	{
 		Btn_MainMenu->OnClicked.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnMainMenuClicked);
+		Btn_MainMenu->OnHovered.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnButtonHovered);
 	}
 	if (Btn_Settings)
 	{
 		Btn_Settings->OnClicked.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnSettingsClicked);
+		Btn_Settings->OnHovered.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnButtonHovered);
 	}
 	if (Btn_Quit)
 	{
 		Btn_Quit->OnClicked.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnQuitClicked);
+		Btn_Quit->OnHovered.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnButtonHovered);
 	}
 }
 

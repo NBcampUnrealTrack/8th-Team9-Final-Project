@@ -5,14 +5,23 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameMapsSettings.h"
+#include "Audio/FAAudioSettings.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "GAS/FAAbilitySystemComponent.h"
+#include "Game/FAGameMode.h"
+#include "HAL/IConsoleManager.h"
+#include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/PackageName.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
+#include "Player/FAPlayerState.h"
+#include "Rule/FADeathMatchSubsystem.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Voice/FAVoiceComponent.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
+#include "UI/FAMatchResultWidget.h"
 #include "UI/FAPauseMenuWidget.h"
 
 AFAPlayerController::AFAPlayerController()
@@ -20,6 +29,7 @@ AFAPlayerController::AFAPlayerController()
 	bReplicates = true;
 
 	PauseMenuWidgetClass = UFAPauseMenuWidget::StaticClass();
+	MatchResultWidgetClass = UFAMatchResultWidget::StaticClass();
 	PauseMenuKeys.Add(EKeys::Escape);
 }
 
@@ -56,6 +66,121 @@ void AFAPlayerController::FATags()
 	ClientMessage(FString::Printf(TEXT("[FATags] 태그: %s"), *OwnedTags.ToStringSimple()));
 	ClientMessage(FString::Printf(TEXT("[FATags] 점프 가능: %s"),
 		FACharacter->CanJump() ? TEXT("true") : TEXT("false")));
+}
+
+void AFAPlayerController::FADeathMatch()
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[DeathMatch] FADeathMatch 는 서버에서만 쓸 수 있다 (PIE 는 Play As Listen Server 로 호스트에서 입력할 것)"));
+		return;
+	}
+
+	AFAGameMode* GameMode = GetWorld()->GetAuthGameMode<AFAGameMode>();
+	AFAGameState* FAGameState = GetWorld()->GetGameState<AFAGameState>();
+	if (!GameMode || !FAGameState)
+	{
+		return;
+	}
+
+	TArray<AFAPlayerState*> Ranked;
+	FAGameState->GetRankedPlayerStates(Ranked);
+	if (Ranked.Num() < 2)
+	{
+		ClientMessage(TEXT("[FADeathMatch] 데스매치에는 2명이 필요하다 (현재 인원 부족)"));
+		return;
+	}
+
+	// 남아 있는 라운드·드래프트 타이머는 페이즈가 InProgress 가 아니게 되는 순간 전부 no-op 이 된다.
+	const TArray<AFAPlayerState*> Contenders(Ranked.GetData(), 2);
+
+	FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+	GameMode->SetDeathMatchContenders(Contenders);
+
+	if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+	{
+		DeathMatch->StartDeathMatch(Contenders);
+	}
+}
+
+void AFAPlayerController::FAPlaySound(const FString& SoundId)
+{
+	if (SoundId.IsEmpty())
+	{
+		// 인자 없이 부르면 지금 표에 실제로 들어 있는 ID 를 전부 보여준다.
+		TArray<FName> AllIds;
+		UFAAudioSettings::GetAllSoundIds(AllIds);
+
+		if (AllIds.Num() == 0)
+		{
+			ClientMessage(TEXT("[FAPlaySound] 표가 비어 있다 — Project Settings → Game → Falling Apart | Audio 에서 DT_Sound_* 를 지정할 것"));
+			return;
+		}
+
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] 등록된 ID %d개:"), AllIds.Num()));
+		for (const FName& Id : AllIds)
+		{
+			const FFASoundRow* Row = UFAAudioSettings::FindSound(Id);
+			ClientMessage(FString::Printf(TEXT("  %s%s"), *Id.ToString(),
+				(Row && Row->Sound.IsNull()) ? TEXT("   (음원 미지정)") : TEXT("")));
+		}
+		return;
+	}
+
+	const FName Id(*SoundId);
+	if (!UFAAudioSettings::FindSound(Id))
+	{
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 행을 다섯 표 어디에서도 찾지 못했다"), *SoundId));
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySound(Id);
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+	}
+}
+
+namespace FAVoiceTuning
+{
+	/** CVar 하나를 읽고, 유효한 새 값이 오면 덮어쓴다. 콘솔 출력용 문자열을 돌려준다. */
+	static FString ApplyCVar(const TCHAR* Name, float NewValue)
+	{
+		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name);
+		if (!CVar)
+		{
+			return FString::Printf(TEXT("  %s — 찾을 수 없음"), Name);
+		}
+
+		if (NewValue > 0.0f)
+		{
+			CVar->Set(NewValue, ECVF_SetByConsole);
+		}
+
+		return FString::Printf(TEXT("  %s = %.4f"), Name, CVar->GetFloat());
+	}
+}
+
+void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)
+{
+	ClientMessage(TEXT("[FAVoiceGate] 현재 값:"));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.SilenceDetectionThreshold"), SilenceThreshold));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.MicNoiseGateThreshold"), NoiseGateThreshold));
+	ClientMessage(TEXT("  (노이즈 바닥을 보려면 voice.debug.PrintAmplitude 1)"));
+}
+
+void AFAPlayerController::FAPushToTalk(bool bEnabled)
+{
+	const AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn());
+	UFAVoiceComponent* Voice = FACharacter ? FACharacter->GetVoiceComponent() : nullptr;
+	if (!Voice)
+	{
+		ClientMessage(TEXT("[FAPushToTalk] 보이스 컴포넌트를 찾을 수 없다 (폰 없음/관전 중?)"));
+		return;
+	}
+
+	Voice->SetPushToTalkEnabled(bEnabled);
+	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s"), bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크")));
 }
 
 void AFAPlayerController::BeginPlay()
@@ -106,6 +231,12 @@ void AFAPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		PauseMenuWidget = nullptr;
 	}
 
+	if (MatchResultWidget)
+	{
+		MatchResultWidget->RemoveFromParent();
+		MatchResultWidget = nullptr;
+	}
+
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
 		if (UFAOnlineSessionSubsystem* Sessions = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
@@ -145,6 +276,12 @@ void AFAPlayerController::TogglePauseMenu()
 void AFAPlayerController::ShowPauseMenu()
 {
 	if (!IsLocalController() || IsPauseMenuOpen())
+	{
+		return;
+	}
+
+	// 최종 순위표가 떠 있으면 게임은 이미 끝났다. ESC 메뉴가 그 위에 겹치면 입력 모드가 꼬인다.
+	if (IsMatchResultOpen())
 	{
 		return;
 	}
@@ -199,6 +336,55 @@ void AFAPlayerController::HidePauseMenu()
 
 	SetInputMode(FInputModeGameOnly());
 	SetShowMouseCursor(false);
+}
+
+//~ ---------------- 최종 순위표 ----------------
+
+bool AFAPlayerController::IsMatchResultOpen() const
+{
+	return MatchResultWidget != nullptr && MatchResultWidget->IsInViewport();
+}
+
+void AFAPlayerController::Client_ShowMatchResult_Implementation()
+{
+	if (!IsLocalController() || IsMatchResultOpen())
+	{
+		return;
+	}
+
+	if (!MatchResultWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] AFAPlayerController: MatchResultWidgetClass 가 비어 있어 최종 순위표를 만들지 못했다."));
+		return;
+	}
+
+	// 순위표가 뜨는 순간 게임은 끝났다 — 드래프트 창이 남아 있으면 걷는다.
+	if (AFAHUD* FAHUD = Cast<AFAHUD>(GetHUD()))
+	{
+		FAHUD->HideDraftUI();
+	}
+
+	// ESC 메뉴가 열려 있으면 닫는다. 순위표가 입력을 가져가야 한다.
+	HidePauseMenu();
+
+	if (!MatchResultWidget)
+	{
+		MatchResultWidget = CreateWidget<UFAMatchResultWidget>(this, MatchResultWidgetClass);
+		if (!MatchResultWidget)
+		{
+			return;
+		}
+	}
+
+	MatchResultWidget->SetIsFocusable(true);
+	MatchResultWidget->AddToViewport(MatchResultZOrder);
+
+	FInputModeUIOnly InputMode;
+	InputMode.SetWidgetToFocus(MatchResultWidget->TakeWidget());
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	SetShowMouseCursor(true);
 }
 
 void AFAPlayerController::ReturnToMainMenu()

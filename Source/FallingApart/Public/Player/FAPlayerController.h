@@ -8,6 +8,7 @@
 #include "Templates/SubclassOf.h"
 #include "FAPlayerController.generated.h"
 
+class UFAMatchResultWidget;
 class UFAPauseMenuWidget;
 class UInputMappingContext;
 
@@ -30,6 +31,37 @@ public:
 	/** 내 캐릭터 ASC 의 보유 룰·게임플레이 태그를 콘솔에 찍는다. 룰이 실제로 붙었는지 확인용. */
 	UFUNCTION(Exec)
 	void FATags();
+
+	/**
+	 * 테스트 용
+	 * 콘솔에 `FADeathMatch` 입력.
+	 * 현재 순위 상위 2명이 참가자
+	 */
+	UFUNCTION(Exec)
+	void FADeathMatch();
+
+	/**
+	 * 사운드 표에 걸어둔 ID 를 즉시 재생해 본다. 콘솔에 `FAPlaySound UI_Click` 처럼 입력.
+	 * 인자를 비우면 다섯 표에 들어 있는 ID 를 전부 콘솔에 찍는다 — 애셋 연결 확인용.
+	 */
+	UFUNCTION(Exec)
+	void FAPlaySound(const FString& SoundId);
+
+	/**
+	 * 내 마이크의 노이즈 게이트를 즉시 바꿔본다. 콘솔에 `FAVoiceGate 0.05 0.045` 처럼 입력.
+	 * 인자를 비우면 현재 값만 보여준다.
+	 *
+	 * 마이크·방 소음이 사람마다 달라 DefaultEngine.ini 값 하나로는 안 맞는다.
+	 * `voice.debug.PrintAmplitude 1` 로 노이즈 바닥을 보면서 여기서 바로 조정할 것.
+	 * @param SilenceThreshold 이 진폭 아래는 아예 전송하지 않는다. 0 이하를 주면 안 바꾼다.
+	 * @param NoiseGateThreshold 게이트 임계. 0 이하를 주면 안 바꾼다.
+	 */
+	UFUNCTION(Exec)
+	void FAVoiceGate(float SilenceThreshold = -1.0f, float NoiseGateThreshold = -1.0f);
+
+	/** 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구. */
+	UFUNCTION(Exec)
+	void FAPushToTalk(bool bEnabled = true);
 
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
@@ -55,6 +87,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void ReturnToMainMenu();
 
+	//~ ---------------- 최종 순위표 ----------------
+
+	/** 매치 종료 후 호출 */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowMatchResult();
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
+	bool IsMatchResultOpen() const;
+
 	/** 게임 프로세스 종료. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void QuitGame();
@@ -74,6 +115,17 @@ protected:
 	/** HUD · 드래프트 창보다 위에 떠야 한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
 	int32 PauseMenuZOrder = 100;
+
+	/**
+	 * 최종 순위표 위젯. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 * UI 담당이 UFAMatchResultWidget 을 상속한 WBP_FAMatchResult 를 만들면 여기서 갈아끼울 것.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	TSubclassOf<UFAMatchResultWidget> MatchResultWidgetClass;
+
+	/** 게임이 끝난 화면이라 ESC 메뉴보다도 위에 둔다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	int32 MatchResultZOrder = 150;
 
 	/**
 	 * 일시정지 메뉴 토글 키. 기본은 ESC 하나.
@@ -98,6 +150,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFAPauseMenuWidget> PauseMenuWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFAMatchResultWidget> MatchResultWidget;
 
 	/** 메인 메뉴 복귀를 두 번 태우지 않기 위한 가드. */
 	bool bReturningToMainMenu = false;
