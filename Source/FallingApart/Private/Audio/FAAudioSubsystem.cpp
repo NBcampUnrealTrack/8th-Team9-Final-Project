@@ -339,6 +339,10 @@ void UFAAudioSubsystem::HandleRoundPhaseChanged(EFARoundPhase NewPhase)
 		// MatchEnd 는 최종 순위표 위젯이 한 줄씩 틱을 내므로 여기서는 소리를 내지 않는다.
 		break;
 	}
+
+	// 긴장 레이어는 컴포넌트가 살아 있는 동안에만 틱이 돈다 — 라운드에 들어가는 이 시점에
+	// 한 번 깔아두지 않으면 첫 감염이 일어날 때까지 아예 시작되지 않는다.
+	UpdateTensionLayer();
 }
 
 void UFAAudioSubsystem::HandleRoundEnded(int32 RoundIndex, EFARoundResult Result)
@@ -420,7 +424,7 @@ bool UFAAudioSubsystem::IsOnCooldown(FName SoundId) const
 	return (FPlatformTime::Seconds() - *LastTime) < Row->RetriggerCooldown;
 }
 
-void UFAAudioSubsystem::WarnOnce(FName SoundId, const TCHAR* Reason)
+void UFAAudioSubsystem::WarnOnce(FName SoundId, const TCHAR* Reason, bool bIsMisconfiguration)
 {
 	if (WarnedSoundIds.Contains(SoundId))
 	{
@@ -428,7 +432,14 @@ void UFAAudioSubsystem::WarnOnce(FName SoundId, const TCHAR* Reason)
 	}
 	WarnedSoundIds.Add(SoundId);
 
-	// 애셋을 채우기 전까지는 이 로그가 "아직 안 만든 목록" 노릇을 한다.
+	if (bIsMisconfiguration)
+	{
+		// 실제로 잘못 채워둔 것. 기본 로그 레벨에서 보여야 한다.
+		UE_LOG(LogTemp, Warning, TEXT("[Audio] '%s' — %s"), *SoundId.ToString(), Reason);
+		return;
+	}
+
+	// 아직 안 채운 행은 개발 중 정상 상태다. 이 로그가 "남은 목록" 노릇을 한다.
 	UE_LOG(LogTemp, Verbose, TEXT("[Audio] '%s' 를 재생하지 못했다 — %s"), *SoundId.ToString(), Reason);
 }
 
@@ -475,6 +486,14 @@ bool UFAAudioSubsystem::ResolveSound(FName SoundId, const FFASoundRow*& OutRow, 
 	{
 		WarnOnce(SoundId, TEXT("음원 로드 실패"));
 		return false;
+	}
+
+	// 표의 bLooping 은 '자동 파괴하지 말라'는 뜻일 뿐, 실제 반복은 애셋이 한다.
+	// 둘이 어긋나면 앰비언스가 한 번 울리고 조용해지는데 원인 찾기가 까다로우므로 여기서 짚어준다.
+	if (OutRow->bLooping && !OutSound->IsLooping())
+	{
+		WarnOnce(SoundId, TEXT("표는 bLooping 인데 음원이 루프가 아니다 — Sound Wave 나 Cue 에서 Looping 을 켤 것"),
+			/*bIsMisconfiguration=*/true);
 	}
 
 	LastPlayTimes.Add(SoundId, Now);

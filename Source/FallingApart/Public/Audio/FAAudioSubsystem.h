@@ -156,8 +156,11 @@ private:
 	/** 소리를 낼 수 있는 상황인가 (전용 서버 · 월드 상태). */
 	bool CanPlay() const;
 
-	/** ID 당 한 번만 경고한다. 애셋이 아직 없는 단계에서 로그가 도배되면 안 된다. */
-	void WarnOnce(FName SoundId, const TCHAR* Reason);
+	/**
+	 * ID 당 한 번만 경고한다. 애셋이 아직 없는 단계에서 로그가 도배되면 안 된다.
+	 * @param bIsMisconfiguration true 면 Warning(잘못 채운 것), false 면 Verbose(아직 안 채운 것).
+	 */
+	void WarnOnce(FName SoundId, const TCHAR* Reason, bool bIsMisconfiguration = false);
 
 	/** SoundId → 마지막 재생 시각(초). 쿨다운 판정용. */
 	TMap<FName, double> LastPlayTimes;
