@@ -9,6 +9,7 @@
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FAPlayerState.h"
 #include "Player/FAPlayerController.h"
 #include "Player/FACharacter.h"
@@ -53,8 +54,17 @@ bool AFAGameMode::ReadyToStartMatch_Implementation()
 	{
 		return false;
 	}
+	//로비에서 넘어온 경우
+	if (bHasLobbyMatchContext)
+	{
+		return NumPlayers>= ExpectedPlayersToStart;
+	}
+	else
+	{
+		return (NumPlayers + NumBots) >= FMath::Max(1, MinPlayersToStart);
+	}
 
-	return (NumPlayers + NumBots) >= FMath::Max(1, MinPlayersToStart);
+	
 }
 
 void AFAGameMode::HandleMatchHasStarted()
@@ -487,6 +497,37 @@ int32 AFAGameMode::GetStartingZombieCount(int32 InPlayerCount) const
 	}
 
 	return (InPlayerCount >= PlayerCountForTwoZombies) ? 2 : 1;
+}
+
+void AFAGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	// 다른 액터가 초기화되기 전에 가장 먼저 실행되는 Gamemode 초기화 가상함수. 규칙설정에 적절함.
+	Super::InitGame(MapName, Options, ErrorMessage);
+	
+	UGameInstance* GameInstance = GetGameInstance();
+	if (!GameInstance)
+	{
+		return;
+	}
+
+	UFAOnlineSessionSubsystem* SessionSubsystem =
+		GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
+
+	if (!SessionSubsystem)
+	{
+		return;
+	}
+
+	FFAPendingMatchContext MatchContext;
+	if (!SessionSubsystem->GetPendingMatchContext(MatchContext))
+	{
+		return;
+	}
+
+	ExpectedPlayersToStart =
+		FMath::Max(1, MatchContext.ExpectedPlayerCount);
+
+	bHasLobbyMatchContext = true;
 }
 
 void AFAGameMode::AssignStartingTeams()

@@ -72,6 +72,7 @@ public:
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
 
 protected:
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
 	virtual bool ReadyToStartMatch_Implementation() override;
 	virtual void HandleMatchHasStarted() override;
@@ -200,4 +201,11 @@ private:
 	FTimerHandle RoundTimerHandle;
 	FTimerHandle DraftTimerHandle;
 	FTimerHandle RoundEndTimerHandle;
+	
+	
+	// 박지석 추가, 로비에서 전환했는지 구분을 위한 값 추가. InitGame 함수에서 설정함.
+	int32 ExpectedPlayersToStart = 0;
+
+	bool bHasLobbyMatchContext = false;
+	
 };

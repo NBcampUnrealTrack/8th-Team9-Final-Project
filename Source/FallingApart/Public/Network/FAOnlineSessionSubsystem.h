@@ -12,6 +12,7 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogFAOSS, Log, All);
 
+// 세션 상태 관리용
 UENUM(BlueprintType)
 enum class ESessionOperationState : uint8
 {
@@ -25,6 +26,7 @@ enum class ESessionOperationState : uint8
 	Destroying	UMETA(DisplayName="Destroying")
 };
 
+// OSS 요청 관련 메세지 정의
 UENUM(BlueprintType)
 enum class EFASessionRequestResult : uint8
 {
@@ -42,20 +44,31 @@ enum class EFASessionRequestResult : uint8
 	CouldNotRetrieveAddress UMETA(DisplayName="Could Not Retrieve Address"),
 	UnknownError			UMETA(DisplayName="Unknown Error")
 };
+
+// 매치 게임 이동시 플레이어 수, 맵 관리 용
 USTRUCT()
-struct FFASessionInfo
+struct FFAPendingMatchContext
 {
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FName SessionName;
+	bool bValid = false;
 
 	UPROPERTY()
-	int32 MaxPlayers;
+	int32 ExpectedPlayerCount = 0;
 
 	UPROPERTY()
-	bool bIsPrivate;
+	FName MapId = NAME_None;
+
+	void Reset()
+	{
+		bValid = false;
+		ExpectedPlayerCount = 0;
+		MapId = NAME_None;
+	}
 };
+
+
 // FOnlineSessionSearchResult는 리플렉션 타입이 아니므로 세션 결과 이벤트는 C++ 전용으로 제공한다.
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnCreateSessionComplete, EFASessionRequestResult Result);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnFindSessionsComplete, const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
@@ -160,4 +173,22 @@ private:
 	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
+	
+	
+#pragma region MatchContext
+public:
+	void SetPendingMatchContext(
+		FName MapId,
+		int32 ExpectedPlayerCount);
+
+	bool GetPendingMatchContext(
+		FFAPendingMatchContext& OutContext) const;
+
+	void ClearPendingMatchContext();
+	
+private:
+	UPROPERTY(Transient)
+	FFAPendingMatchContext PendingMatchContext;
+	
+#pragma endregion MatchContext
 };

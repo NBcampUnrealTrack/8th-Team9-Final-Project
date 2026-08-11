@@ -263,6 +263,7 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 
 void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount)
 {
+	SetPendingMatchContext(MapId, ExpectedPlayerCount);
 	OperationState = ESessionOperationState::Starting;
 	
 	LastSessionSettings->bAllowJoinInProgress = false;
@@ -272,12 +273,11 @@ void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 Expect
 	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
 	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
 	{
-		OperationState = ESessionOperationState::Idle;
 		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
-		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed, FString());
-		
+		OperationState = ESessionOperationState::Idle;
+		ClearPendingMatchContext();
+		OnSessionPreparedForMatch.Broadcast(false);
 	}
-	
 }
 
 void UFAOnlineSessionSubsystem::DestroySession()
@@ -442,5 +442,46 @@ void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool b
 
 void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface
+			->ClearOnUpdateSessionCompleteDelegate_Handle(
+				UpdateSessionCompleteDelegateHandle);
+	}
+
+	if (!bWasSuccessful)
+	{
+		OperationState = ESessionOperationState::Idle;
+		ClearPendingMatchContext();
+		OnSessionPreparedForMatch.Broadcast(false);
+		return;
+	}
 	StartSession();
+}
+
+void UFAOnlineSessionSubsystem::SetPendingMatchContext(FName MapId, int32 ExpectedPlayerCount)
+{
+	//값이 잘못들어오는 경우에 대한 대비
+	PendingMatchContext.bValid =
+	!MapId.IsNone() && ExpectedPlayerCount > 0;
+
+	PendingMatchContext.MapId = MapId;
+	PendingMatchContext.ExpectedPlayerCount =
+		FMath::Max(0, ExpectedPlayerCount);
+}
+
+bool UFAOnlineSessionSubsystem::GetPendingMatchContext(FFAPendingMatchContext& OutContext) const
+{
+	if (!PendingMatchContext.bValid)
+	{
+		return false;
+	}
+
+	OutContext = PendingMatchContext;
+	return true;
+}
+
+void UFAOnlineSessionSubsystem::ClearPendingMatchContext()
+{
+	PendingMatchContext.Reset();
 }
