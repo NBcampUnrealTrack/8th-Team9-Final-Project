@@ -81,6 +81,9 @@ private:
 
 	// 최종 확정 처리 — 정상 확정과 타임아웃 확정이 공유하는 공통 로직.
 	void ApplyDraftResult(AFAPlayerState* ForPlayer, const FFADraftCandidate& Chosen);
+	
+	// 연속 드래프트 1장을 즉시 적용하고, 남은 장수가 있으면 6초 뒤 자신을 다시 예약한다.
+	void ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount);
 
 	// 플레이어별로 "지금 보낸 후보가 뭐였는지" 기억해두는 표.
 	TMap<TWeakObjectPtr<AFAPlayerState>, TArray<FFADraftCandidate>> PendingCandidates;
