@@ -5,6 +5,7 @@
 
 #include "Net/UnrealNetwork.h"
 #include "Player/FAPlayerState.h"
+#include "Rule/FADeathMatchSubsystem.h"
 
 AFAGameState::AFAGameState()
 {
@@ -93,8 +94,23 @@ void AFAGameState::GetRankedPlayerStates(TArray<AFAPlayerState*>& OutRanked) con
 		}
 	}
 
-	OutRanked.Sort([](const AFAPlayerState& A, const AFAPlayerState& B)
+	// 데스매치 결과가 있으면(1등 동점자 중 승부가 갈린 경우) 그 참가자들끼리는
+	// 원래 점수 타이브레이크보다 데스매치 순위를 우선한다.
+	const UFADeathMatchSubsystem* DeathMatch = GetWorld() ? GetWorld()->GetSubsystem<UFADeathMatchSubsystem>() : nullptr;
+
+	OutRanked.Sort([DeathMatch](const AFAPlayerState& A, const AFAPlayerState& B)
 	{
+		if (DeathMatch)
+		{
+			const int32 PlacementA = DeathMatch->GetDeathMatchPlacement(&A);
+			const int32 PlacementB = DeathMatch->GetDeathMatchPlacement(&B);
+			if (PlacementA != PlacementB)
+			{
+				// 둘 중 하나라도 데스매치 결과가 있으면(0이 아니면) 그 값으로 우선 정렬.
+				return PlacementA > PlacementB;
+			}
+		}
+
 		return CompareRank(A, B);
 	});
 }
