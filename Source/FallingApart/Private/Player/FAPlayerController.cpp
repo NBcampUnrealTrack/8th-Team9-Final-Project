@@ -5,6 +5,8 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameMapsSettings.h"
+#include "Audio/FAAudioSettings.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "GAS/FAAbilitySystemComponent.h"
 #include "Game/FAGameMode.h"
 #include "Game/FAGameState.h"
@@ -15,6 +17,7 @@
 #include "Player/FAPlayerState.h"
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Voice/FAVoiceComponent.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
@@ -97,6 +100,86 @@ void AFAPlayerController::FADeathMatch()
 	{
 		DeathMatch->StartDeathMatch(Contenders);
 	}
+}
+
+void AFAPlayerController::FAPlaySound(const FString& SoundId)
+{
+	if (SoundId.IsEmpty())
+	{
+		// 인자 없이 부르면 지금 표에 실제로 들어 있는 ID 를 전부 보여준다.
+		TArray<FName> AllIds;
+		UFAAudioSettings::GetAllSoundIds(AllIds);
+
+		if (AllIds.Num() == 0)
+		{
+			ClientMessage(TEXT("[FAPlaySound] 표가 비어 있다 — Project Settings → Game → Falling Apart | Audio 에서 DT_Sound_* 를 지정할 것"));
+			return;
+		}
+
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] 등록된 ID %d개:"), AllIds.Num()));
+		for (const FName& Id : AllIds)
+		{
+			const FFASoundRow* Row = UFAAudioSettings::FindSound(Id);
+			ClientMessage(FString::Printf(TEXT("  %s%s"), *Id.ToString(),
+				(Row && Row->Sound.IsNull()) ? TEXT("   (음원 미지정)") : TEXT("")));
+		}
+		return;
+	}
+
+	const FName Id(*SoundId);
+	if (!UFAAudioSettings::FindSound(Id))
+	{
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 행을 다섯 표 어디에서도 찾지 못했다"), *SoundId));
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySound(Id);
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+	}
+}
+
+namespace FAVoiceTuning
+{
+	/** CVar 하나를 읽고, 유효한 새 값이 오면 덮어쓴다. 콘솔 출력용 문자열을 돌려준다. */
+	static FString ApplyCVar(const TCHAR* Name, float NewValue)
+	{
+		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name);
+		if (!CVar)
+		{
+			return FString::Printf(TEXT("  %s — 찾을 수 없음"), Name);
+		}
+
+		if (NewValue > 0.0f)
+		{
+			CVar->Set(NewValue, ECVF_SetByConsole);
+		}
+
+		return FString::Printf(TEXT("  %s = %.4f"), Name, CVar->GetFloat());
+	}
+}
+
+void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)
+{
+	ClientMessage(TEXT("[FAVoiceGate] 현재 값:"));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.SilenceDetectionThreshold"), SilenceThreshold));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.MicNoiseGateThreshold"), NoiseGateThreshold));
+	ClientMessage(TEXT("  (노이즈 바닥을 보려면 voice.debug.PrintAmplitude 1)"));
+}
+
+void AFAPlayerController::FAPushToTalk(bool bEnabled)
+{
+	const AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn());
+	UFAVoiceComponent* Voice = FACharacter ? FACharacter->GetVoiceComponent() : nullptr;
+	if (!Voice)
+	{
+		ClientMessage(TEXT("[FAPushToTalk] 보이스 컴포넌트를 찾을 수 없다 (폰 없음/관전 중?)"));
+		return;
+	}
+
+	Voice->SetPushToTalkEnabled(bEnabled);
+	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s"), bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크")));
 }
 
 void AFAPlayerController::BeginPlay()

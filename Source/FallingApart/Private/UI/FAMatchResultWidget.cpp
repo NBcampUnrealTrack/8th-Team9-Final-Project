@@ -3,6 +3,7 @@
 
 #include "UI/FAMatchResultWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -15,6 +16,7 @@
 #include "Player/FAPlayerController.h"
 #include "Player/FAPlayerState.h"
 #include "Styling/CoreStyle.h"
+#include "TimerManager.h"
 
 #define LOCTEXT_NAMESPACE "FAMatchResult"
 
@@ -24,6 +26,10 @@ namespace FAMatchResultUI
 	{
 		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
 	}
+
+	static const FName SoundRankReveal(TEXT("Result_RankReveal"));
+	static const FName SoundClick(TEXT("UI_Click"));
+	static const FName SoundHover(TEXT("UI_Hover"));
 
 	/** 순위 · 이름 · 점수 · 생존 시간을 한 줄로. 임시 레이아웃 전용 표기. */
 	FText MakeRowText(const FFAMatchResultEntry& Entry)
@@ -67,11 +73,18 @@ void UFAMatchResultRowWidget::SetEntry(const FFAMatchResultEntry& InEntry)
 
 void UFAMatchResultWidget::OnReturnToLobbyClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAMatchResultUI::SoundClick);
+
 	// 세션 정리 · 레벨 이동은 컨트롤러가 한 곳에서 책임진다 (ESC 메뉴의 '메인 메뉴' 와 같은 경로).
 	if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer()))
 	{
 		FAPlayerController->ReturnToMainMenu();
 	}
+}
+
+void UFAMatchResultWidget::OnReturnToLobbyHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAMatchResultUI::SoundHover);
 }
 
 void UFAMatchResultWidget::NativeConstruct()
@@ -83,6 +96,7 @@ void UFAMatchResultWidget::NativeConstruct()
 	if (Btn_ReturnToLobby)
 	{
 		Btn_ReturnToLobby->OnClicked.AddUniqueDynamic(this, &UFAMatchResultWidget::OnReturnToLobbyClicked);
+		Btn_ReturnToLobby->OnHovered.AddUniqueDynamic(this, &UFAMatchResultWidget::OnReturnToLobbyHovered);
 	}
 
 	// WBP 에서 제목을 직접 써 넣었으면 그대로 둔다 — 비어 있을 때만 기본값을 채운다.
@@ -176,7 +190,35 @@ void UFAMatchResultWidget::RefreshEntries()
 		RebuildRowWidgets();
 	}
 
+	StartRankReveal();
+
 	OnResultsChanged(Entries);
+}
+
+void UFAMatchResultWidget::StartRankReveal()
+{
+	// 점수가 늦게 도착해 순위표가 다시 그려질 때마다 울리면 안 된다 — 처음 한 번만.
+	if (bRankRevealStarted || Entries.Num() == 0 || !GetWorld())
+	{
+		return;
+	}
+	bRankRevealStarted = true;
+	RankRevealIndex = 0;
+
+	GetWorld()->GetTimerManager().SetTimer(RankRevealTimerHandle, this,
+		&UFAMatchResultWidget::TickRankReveal, FMath::Max(0.02f, RankRevealInterval), /*bLoop=*/true, /*FirstDelay=*/0.0f);
+}
+
+void UFAMatchResultWidget::TickRankReveal()
+{
+	if (RankRevealIndex >= Entries.Num())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(RankRevealTimerHandle);
+		return;
+	}
+
+	++RankRevealIndex;
+	UFAAudioSubsystem::PlayFASound(this, FAMatchResultUI::SoundRankReveal);
 }
 
 void UFAMatchResultWidget::RebuildRowWidgets()
