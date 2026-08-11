@@ -3,6 +3,7 @@
 
 #include "UI/FAMainMenuWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/WidgetSwitcher.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -59,6 +60,14 @@ void UFAMainMenuWidget::NativeOnInitialized()
 void UFAMainMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	// 메뉴 레벨에는 AFAGameState 가 없어 페이즈 기반 BGM 이 걸리지 않는다 — 여기서 직접 건다.
+	// (로비 BGM 은 AFALobbyGameState 를 보고 UFAAudioSubsystem 이 알아서 켠다)
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlayMusic(TEXT("BGM_MainMenu"));
+	}
+
 	// 서브시스템은 GameInstance로부터 가져올 수 있다.
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{ 
@@ -166,6 +175,8 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 {
 	if (Result == EFASessionRequestResult::Success)
 	{
+		UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Success"));
+
 		// 성공했다면, 로비레벨을 리슨서버로 오픈
 		UWorld* World = GetWorld();
 		if (World)
@@ -179,6 +190,9 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 		}
 		return;
 	}
+
+	// 방 만들기 실패는 화면에 아직 표시가 없다 — 최소한 소리로는 알려야 한다.
+	UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Error"));
 
 	UE_LOG(LogFAOSS, Warning, TEXT("Create session failed: %s"), *UEnum::GetValueAsString(Result));
 }
@@ -226,9 +240,14 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 				: LOCTEXT("JoinSessionFailed", "Failed to join the selected session.");
 			SessionJoinWidget->ShowStatusMessage(ErrorMessage);
 		}
+		// 비밀번호 오류가 제일 흔하다 — 메시지를 안 보고 있어도 실패했다는 건 알아야 한다.
+		UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Error"));
+
 		UE_LOG(LogFAOSS, Error, TEXT("Join session failed: %s"), *UEnum::GetValueAsString(Result));
 		return;
 	}
+
+	UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Success"));
 
 	if (APlayerController* PlayerController = GetOwningPlayer())
 	{
