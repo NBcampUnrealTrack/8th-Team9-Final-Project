@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Game/FAGameState.h"
@@ -95,23 +95,10 @@ void AFAGameState::GetRankedPlayerStates(TArray<AFAPlayerState*>& OutRanked) con
 		}
 	}
 
-	// 데스매치 결과가 있으면(1등 동점자 중 승부가 갈린 경우) 그 참가자들끼리는
-	// 원래 점수 타이브레이크보다 데스매치 순위를 우선한다.
-	const UFADeathMatchSubsystem* DeathMatch = GetWorld() ? GetWorld()->GetSubsystem<UFADeathMatchSubsystem>() : nullptr;
-
-	OutRanked.Sort([DeathMatch](const AFAPlayerState& A, const AFAPlayerState& B)
+	// 데스매치 결과 반영은 CompareRank() 4차(완전 동점 단계) 안에서 AFAPlayerState::GetDeathMatchPlacement() 로
+	// 처리한다 — 여기서 별도로 서브시스템을 조회하지 않는다 (UFADeathMatchSubsystem::EndDeathMatch() 참고).
+	OutRanked.Sort([](const AFAPlayerState& A, const AFAPlayerState& B)
 	{
-		if (DeathMatch)
-		{
-			const int32 PlacementA = DeathMatch->GetDeathMatchPlacement(&A);
-			const int32 PlacementB = DeathMatch->GetDeathMatchPlacement(&B);
-			if (PlacementA != PlacementB)
-			{
-				// 둘 중 하나라도 데스매치 결과가 있으면(0이 아니면) 그 값으로 우선 정렬.
-				return PlacementA > PlacementB;
-			}
-		}
-
 		return CompareRank(A, B);
 	});
 }
