@@ -3,6 +3,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GAS/FAAbilitySystemComponent.h"
+#include "Game/FAGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
@@ -16,12 +17,30 @@ namespace FADraft
 	static constexpr float ChainDraftInterval = 6.0f;
 }
 
+bool UFARuleDraftSubsystem::IsDraftAllowed() const
+{
+	const AFAGameState* FAGameState = GetWorld() ? GetWorld()->GetGameState<AFAGameState>() : nullptr;
+	if (!FAGameState)
+	{
+		return false;
+	}
+
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	return Phase != EFARoundPhase::DeathMatch && Phase != EFARoundPhase::MatchEnd;
+}
+
 void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 {
 	// 살아있는(관전자 아닌) 모든 플레이어에게 같은 후보를 보낸다. 지금은 전원 동일 후보 — 진영별 필터는 다음 단계.
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (!GameState)
 	{
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 데스매치·매치 종료 중이라 정규 드래프트를 돌리지 않는다 (DraftIndex=%d)"), DraftIndex);
 		return;
 	}
 
@@ -178,7 +197,7 @@ void UFARuleDraftSubsystem::ApplyDraftResult(AFAPlayerState* ForPlayer, const FF
 
 void UFARuleDraftSubsystem::StartChainDraft(AFAPlayerState* Victim, int32 RemovedRuleCount)
 {
-	if (!Victim || RemovedRuleCount <= 0)
+	if (!Victim || RemovedRuleCount <= 0 || !IsDraftAllowed())
 	{
 		return;
 	}
@@ -325,6 +344,14 @@ void UFARuleDraftSubsystem::ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState>
 	if (RemainingCount <= 0 || !ForPlayer.IsValid())
 	{
 		// 타이머가 도는 사이 접속이 끊겼거나, 다 뽑았으면 조용히 종료.
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		// 6초 간격으로 이어지는 사이에 매치가 끝났다면 남은 장수는 버린다.
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 매치가 끝나 %s 의 연속 드래프트를 중단한다 (남은 %d장)"),
+			*ForPlayer->GetPlayerName(), RemainingCount);
 		return;
 	}
 

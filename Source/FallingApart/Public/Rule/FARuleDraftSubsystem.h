@@ -58,6 +58,12 @@ public:
 	
 private:
 	/**
+	 * 지금 드래프트를 돌려도 되는 상태인가.
+	 * 데스매치·매치 종료 후에는 룰을 새로 쥐여주면 안 된다.
+	 */
+	bool IsDraftAllowed() const;
+
+	/**
 	 * 후보 3장을 뽑는다. 지금은 티어 구성만 맞추고 가중치·ConflictTags 는 아직 안 본다.
 	 * @param ExcludeRuleIds 후보에서 뺄 카드 — 이미 보유 중인 룰. 뽑아봐야 적용이 거부돼 빈 선택이 된다.
 	 */
