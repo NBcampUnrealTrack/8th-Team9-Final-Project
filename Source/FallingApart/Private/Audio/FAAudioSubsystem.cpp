@@ -6,6 +6,7 @@
 #include "Components/AudioComponent.h"
 #include "Engine/World.h"
 #include "Game/FAGameState.h"
+#include "Game/FALobbyGameState.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundAttenuation.h"
@@ -68,8 +69,15 @@ void UFAAudioSubsystem::Deinitialize()
 
 bool UFAAudioSubsystem::IsTickable() const
 {
+	if (IsTemplate())
+	{
+		return false;
+	}
+
 	// GameState 를 잡을 때까지, 그리고 긴장 레이어가 살아 있는 동안만 돈다.
-	return !IsTemplate() && (!BoundGameState.IsValid() || MusicLayerComponent != nullptr);
+	// 메뉴·로비처럼 AFAGameState 가 아예 없는 레벨에서는 포기하고 틱을 끈다.
+	const bool bWaitingForGameState = !BoundGameState.IsValid() && !bGaveUpBindingGameState;
+	return bWaitingForGameState || MusicLayerComponent != nullptr;
 }
 
 TStatId UFAAudioSubsystem::GetStatId() const
@@ -87,27 +95,41 @@ void UFAAudioSubsystem::Tick(float DeltaTime)
 
 void UFAAudioSubsystem::TryBindGameState()
 {
-	if (BoundGameState.IsValid() || !GetWorld())
+	UWorld* World = GetWorld();
+	if (BoundGameState.IsValid() || bGaveUpBindingGameState || !World)
 	{
 		return;
 	}
 
-	AFAGameState* GameState = GetWorld()->GetGameState<AFAGameState>();
-	if (!GameState)
+	if (AFAGameState* GameState = World->GetGameState<AFAGameState>())
 	{
-		// 클라이언트는 GameState 가 복제돼 오기까지 몇 프레임 걸린다.
+		GameState->OnRoundPhaseChanged.AddDynamic(this, &UFAAudioSubsystem::HandleRoundPhaseChanged);
+		GameState->OnRoundEnded.AddDynamic(this, &UFAAudioSubsystem::HandleRoundEnded);
+		GameState->OnTeamCountsChanged.AddDynamic(this, &UFAAudioSubsystem::HandleTeamCountsChanged);
+
+		BoundGameState = GameState;
+		LastSurvivorCount = GameState->GetSurvivorCount();
+
+		// 늦게 들어온 클라이언트는 페이즈 전환 이벤트를 이미 놓쳤다 — 현재 페이즈로 음악을 맞춘다.
+		UpdateMusicForPhase(GameState->GetRoundPhase());
 		return;
 	}
 
-	GameState->OnRoundPhaseChanged.AddDynamic(this, &UFAAudioSubsystem::HandleRoundPhaseChanged);
-	GameState->OnRoundEnded.AddDynamic(this, &UFAAudioSubsystem::HandleRoundEnded);
-	GameState->OnTeamCountsChanged.AddDynamic(this, &UFAAudioSubsystem::HandleTeamCountsChanged);
+	// 로비는 AFAGameState 가 아니라 AFALobbyGameState 를 쓴다 — 라운드 페이즈라는 개념이 없으므로
+	// 여기서 로비 BGM 만 걸고 더는 기다리지 않는다.
+	if (World->GetGameState<AFALobbyGameState>())
+	{
+		PlayMusic(FAAudioIds::BgmLobby);
+		bGaveUpBindingGameState = true;
+		return;
+	}
 
-	BoundGameState = GameState;
-	LastSurvivorCount = GameState->GetSurvivorCount();
-
-	// 늦게 들어온 클라이언트는 페이즈 전환 이벤트를 이미 놓쳤다 — 현재 페이즈로 음악을 맞춘다.
-	UpdateMusicForPhase(GameState->GetRoundPhase());
+	// 클라이언트는 GameState 가 복제돼 오기까지 몇 프레임 걸린다. 다만 메인 메뉴처럼 아예 없는
+	// 레벨도 있으므로 무한정 기다리지는 않는다.
+	if (World->GetTimeSeconds() > BindTimeoutSeconds)
+	{
+		bGaveUpBindingGameState = true;
+	}
 }
 
 //~ ---------------- 음악 ----------------
@@ -236,10 +258,9 @@ void UFAAudioSubsystem::UpdateMusicForPhase(EFARoundPhase Phase)
 {
 	switch (Phase)
 	{
+	// 로비가 별도 레벨로 분리된 뒤로, 매치 레벨의 WaitingToStart 는 '인원 차기를 기다리는 몇 초'다.
+	// 여기서 로비 BGM 을 틀면 1초 뒤에 곧바로 갈아끼워야 하므로 처음부터 매치 곡으로 간다.
 	case EFARoundPhase::WaitingToStart:
-		PlayMusic(FAAudioIds::BgmLobby);
-		break;
-
 	case EFARoundPhase::RoundStarting:
 	case EFARoundPhase::InProgress:
 		PlayMusic(FAAudioIds::BgmRoundBase);

@@ -17,6 +17,7 @@
 #include "Player/FAPlayerState.h"
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Voice/FAVoiceComponent.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
@@ -137,6 +138,48 @@ void AFAPlayerController::FAPlaySound(const FString& SoundId)
 		Audio->PlaySound(Id);
 		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
 	}
+}
+
+namespace FAVoiceTuning
+{
+	/** CVar 하나를 읽고, 유효한 새 값이 오면 덮어쓴다. 콘솔 출력용 문자열을 돌려준다. */
+	static FString ApplyCVar(const TCHAR* Name, float NewValue)
+	{
+		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name);
+		if (!CVar)
+		{
+			return FString::Printf(TEXT("  %s — 찾을 수 없음"), Name);
+		}
+
+		if (NewValue > 0.0f)
+		{
+			CVar->Set(NewValue, ECVF_SetByConsole);
+		}
+
+		return FString::Printf(TEXT("  %s = %.4f"), Name, CVar->GetFloat());
+	}
+}
+
+void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)
+{
+	ClientMessage(TEXT("[FAVoiceGate] 현재 값:"));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.SilenceDetectionThreshold"), SilenceThreshold));
+	ClientMessage(FAVoiceTuning::ApplyCVar(TEXT("voice.MicNoiseGateThreshold"), NoiseGateThreshold));
+	ClientMessage(TEXT("  (노이즈 바닥을 보려면 voice.debug.PrintAmplitude 1)"));
+}
+
+void AFAPlayerController::FAPushToTalk(bool bEnabled)
+{
+	const AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn());
+	UFAVoiceComponent* Voice = FACharacter ? FACharacter->GetVoiceComponent() : nullptr;
+	if (!Voice)
+	{
+		ClientMessage(TEXT("[FAPushToTalk] 보이스 컴포넌트를 찾을 수 없다 (폰 없음/관전 중?)"));
+		return;
+	}
+
+	Voice->SetPushToTalkEnabled(bEnabled);
+	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s"), bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크")));
 }
 
 void AFAPlayerController::BeginPlay()

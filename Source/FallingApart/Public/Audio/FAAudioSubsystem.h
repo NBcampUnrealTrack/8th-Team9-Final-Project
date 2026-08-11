@@ -125,6 +125,15 @@ private:
 
 	TWeakObjectPtr<AFAGameState> BoundGameState;
 
+	/**
+	 * 이 월드에는 AFAGameState 가 없다고 판단한 상태.
+	 * 메인 메뉴·로비는 각자 다른 GameState 를 쓰므로, 없는 걸 계속 기다리며 틱을 돌면 안 된다.
+	 */
+	bool bGaveUpBindingGameState = false;
+
+	/** 이 시간(초)까지 AFAGameState 가 안 나타나면 포기한다. 클라이언트 복제 지연을 넉넉히 감안한 값. */
+	static constexpr float BindTimeoutSeconds = 10.0f;
+
 	/** 생존자가 '줄었을' 때만 소리를 내기 위한 직전 값. */
 	int32 LastSurvivorCount = -1;
 

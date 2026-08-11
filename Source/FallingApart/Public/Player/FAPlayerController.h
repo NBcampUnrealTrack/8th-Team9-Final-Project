@@ -47,6 +47,22 @@ public:
 	UFUNCTION(Exec)
 	void FAPlaySound(const FString& SoundId);
 
+	/**
+	 * 내 마이크의 노이즈 게이트를 즉시 바꿔본다. 콘솔에 `FAVoiceGate 0.05 0.045` 처럼 입력.
+	 * 인자를 비우면 현재 값만 보여준다.
+	 *
+	 * 마이크·방 소음이 사람마다 달라 DefaultEngine.ini 값 하나로는 안 맞는다.
+	 * `voice.debug.PrintAmplitude 1` 로 노이즈 바닥을 보면서 여기서 바로 조정할 것.
+	 * @param SilenceThreshold 이 진폭 아래는 아예 전송하지 않는다. 0 이하를 주면 안 바꾼다.
+	 * @param NoiseGateThreshold 게이트 임계. 0 이하를 주면 안 바꾼다.
+	 */
+	UFUNCTION(Exec)
+	void FAVoiceGate(float SilenceThreshold = -1.0f, float NoiseGateThreshold = -1.0f);
+
+	/** 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구. */
+	UFUNCTION(Exec)
+	void FAPushToTalk(bool bEnabled = true);
+
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
 
