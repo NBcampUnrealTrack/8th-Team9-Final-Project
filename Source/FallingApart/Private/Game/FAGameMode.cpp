@@ -4,6 +4,8 @@
 #include "Game/FAGameMode.h"
 
 #include "EngineUtils.h"
+#include "GAS/FAAbilitySystemComponent.h"
+#include "GAS/FAGameplayTags.h"
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
@@ -13,9 +15,10 @@
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Rule/FADeathMatchSubsystem.h"
+#include "UI/FAHUD.h"
 
 //구현 안된 것들
-// #include "UI/FAHUD.h"
 // #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
@@ -23,7 +26,8 @@ AFAGameMode::AFAGameMode()
 	GameStateClass = AFAGameState::StaticClass();
 	PlayerControllerClass = AFAPlayerController::StaticClass();
 	PlayerStateClass = AFAPlayerState::StaticClass();
-	//HUDClass = AFAHUD::StaticClass();
+	// BP_FAGameMode 에서 BP_FAHUD 로 덮어쓴다 — WBP 지정이 BP 쪽에 있기 때문.
+	HUDClass = AFAHUD::StaticClass();
 	DefaultPawnClass = AFACharacter::StaticClass();
 
 	// 관전자 보이스 붙는 폰
@@ -328,15 +332,14 @@ void AFAGameMode::HandleMatchHasEnded()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — deathmatch pending (co-winners for now)"), TiedFirstPlaceCount);
 
-		// TODO: UFADeathMatchSubsystem 구현 후 활성화 (1분 · 1층 제한 · 룰 전부 Remove · 나머지 자동 관전)
 		// SetRoundPhase 를 먼저 바꾸고 SetDeathMatchContenders 를 호출해야 관전자 판정이 맞는다.
-		// FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
-		// TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
-		// SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
-		// if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
-		// {
-		//     DeathMatch->StartDeathMatch(Contenders);
-		// }
+		FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+		TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
+		SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+		     DeathMatch->StartDeathMatch(Contenders);
+		}
 	}
 }
 
@@ -365,30 +368,27 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 	UE_LOG(LogTemp, Log, TEXT("[FA] %s infected by %s"), *Victim->GetPlayerName(),
 		Infector ? *Infector->GetPlayerName() : TEXT("None"));
 
-	// --- 미구현 시스템 연동 (캐릭터 / GAS / 드래프트) ---
-	// TODO: AFACharacter · ASC · UFARuleDraftSubsystem 구현 후 활성화
-	// if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
-	// {
-	//     UAbilitySystemComponent* ASC = VictimCharacter->GetAbilitySystemComponent();
-	//
-	//     // 1) 인간 룰 전부 제거 — 제거된 장수 N 을 센다 (설계 결정 ③)
-	//     const int32 RemovedRuleCount = ASC->RemoveActiveEffectsWithGrantedTags(
-	//         FGameplayTagContainer(FAGameplayTags::Get().Rule_Team_Human));
-	//
-	//     // 2) 진영 태그 전환 + 부활 직후 2초 무적 (GDD 3.4)
-	//     ASC->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Human);
-	//     ASC->AddLooseGameplayTag(FAGameplayTags::Get().State_Zombie);
-	//     VictimCharacter->ApplyInvulnerability(2.0f);
-	//
-	//     // 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
-	//     if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
-	//     {
-	//         Draft->StartChainDraft(Victim, RemovedRuleCount);
-	//     }
-	//
-	//     // 4) 암전 · 시야 필터 전환 연출은 클라이언트 로컬 처리
-	//     VictimCharacter->PlayInfectionSequence();
-	// }
+	if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
+	{
+		int32 RemovedRuleCount = 0;
+
+		if (UFAAbilitySystemComponent* ASC = VictimCharacter->GetFAAbilitySystemComponent())
+		{
+			// 1) 인간 룰 전부 제거 — 제거된 장수 N 이 곧 연속 드래프트 횟수
+			RemovedRuleCount = ASC->RemoveRulesOfTeam(FAGameplayTags::Get().Rule_Team_Human);
+		}
+
+		// 2) 감염 직후 2초 무적
+		VictimCharacter->ApplyInvulnerability(InfectionInvulnerabilityTime);
+
+		// 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
+		if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+		{
+			Draft->StartChainDraft(Victim, RemovedRuleCount);
+		}
+
+		// TODO: 암전 · 시야 필터 전환 연출(PlayInfectionSequence)은 캐릭터 담당자 작업 후 연결.
+	}
 
 	UpdateTeamCounts();
 }
@@ -526,17 +526,17 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		return;
 	}
-
-	// 라운드 중 난입은 좀비로 참전
+	// 라운드 중(카운트다운 포함) 난입은 좀비로 참전.
+	// RoundStarting 단계는 AssignStartingTeams() 가 이미 실행된 뒤라, 여기서 놓치면 Team=None으로 남는다.
 	// TODO: 이탈 / 난입 처리 규칙은 기획 미확정 (GDD 부록 C)
-	if (FAGameState->GetRoundPhase() == EFARoundPhase::InProgress)
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	if (Phase == EFARoundPhase::InProgress || Phase == EFARoundPhase::RoundStarting)
 	{
 		if (AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(NewPlayer->PlayerState))
 		{
 			FAPlayerState->ResetForNewRound();
 			FAPlayerState->SetTeam(EFATeam::Zombie);
 		}
-
 		UpdateTeamCounts(false);
 	}
 }
