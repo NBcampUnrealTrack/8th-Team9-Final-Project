@@ -113,7 +113,7 @@ void AFACharacter::InitializeAbilitySystem()
 void AFACharacter::SetTeamStateTag(EFATeam NewTeam)
 {
 	if (!HasAuthority() || !AbilitySystemComponent)
-	{
+	{ 
 		return;
 	}
 
