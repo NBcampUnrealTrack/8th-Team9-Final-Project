@@ -38,7 +38,14 @@ void FAGameplayTags::AddAllTags()
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
 
 	//~ 어빌리티
-	Ability_Jump = AddTag(TEXT("Ability.Jump"), TEXT("GA_Jump 식별 태그."));
+	Ability_Jump = AddTag(TEXT("Ability.Jump"),						TEXT("GA_Jump 식별 태그."));
+	Ability_Grab = AddTag(TEXT("Ability.Grab"),						TEXT("GA_Grab 좀비 포획 어빌리티 식별 태그."));
+	Ability_Rescue = AddTag(TEXT("Ability.Rescue"),					TEXT("GA_Rescue 인간 구출 어빌리티 식별 태그."));
+	Ability_RescueContest = AddTag(TEXT("Ability.RescueContest"),	TEXT("GA_RescueContest QTE 줄다리기 어빌리티 식별 태그."));
+	Ability_ContestMash = AddTag(TEXT("Ability.ContestMash"),		TEXT("GA_ContestMash QTE 스페이스바 연타 어빌리티 식별 태그."));
+
+	//~ 이벤트
+	Event_Contest_Mash = AddTag(TEXT("Event.Contest.Mash"), TEXT("QTE 줄다리기 스페이스바 연타 1회 이벤트."));
 
 	//~ SetByCaller
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));

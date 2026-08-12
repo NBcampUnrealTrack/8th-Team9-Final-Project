@@ -7,12 +7,12 @@ public class FallingApart : ModuleRules
 	public FallingApart(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-	
+
 		// UMG 는 Public — UI/FAHUDWidget.h 가 공개 헤더에서 UUserWidget 을 상속한다.
 		// (그 외 용도: 발화 중 머리 위 아이콘 UWidgetComponent)
 		// DeveloperSettings 도 Public — Public/Rule/FARuleSettings.h 가 UDeveloperSettings 를 상속한다.
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG",
-			"GameplayAbilities", "GameplayTags","GameplayTasks", "DeveloperSettings" });
+			"GameplayAbilities", "GameplayTags", "GameplayTasks", "DeveloperSettings" });
 
 		// UI/FADraftWidget.cpp 가 WBP 없이 위젯을 직접 조립하면서 FSlateFontInfo·FCoreStyle 을 쓴다.
 		// EngineSettings — ESC 메뉴의 "메인 메뉴" 가 돌아갈 레벨 기본값으로 UGameMapsSettings 의
