@@ -46,6 +46,8 @@ private:
 	
 	void HandleSessionPrepared(bool bSuccess);
 	
+	void HandleSessionReopened(bool bSuccess);
+	
 	void TravelToSelectedMap();
 	
 	void RollbackGameStart();
@@ -71,6 +73,9 @@ private:
 	
 	FDelegateHandle PreparedForMatchDelegateHandle;
 	
+	FDelegateHandle ReopenedForLobbyDelegateHandle;
+	
 	bool bGameStartCommitted = false;
+	bool bRollbackInProgress = false;
 };
 

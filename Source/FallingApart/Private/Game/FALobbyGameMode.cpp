@@ -72,7 +72,6 @@ void AFALobbyGameMode::SetPlayerReady(APlayerController* PlayerController, bool 
 		return;
 	}
 	
-	
 	AFALobbyGameState* LobbyGameState = GetLobbyGameState();
 	AFALobbyPlayerState* LobbyplayerState = PlayerController->GetPlayerState<AFALobbyPlayerState>();
 	if (!LobbyplayerState || !LobbyGameState)
@@ -95,8 +94,12 @@ void AFALobbyGameMode::BeginPlay()
 		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
 		if (OnlineSessionSubsystem)
 		{
+			// 매치 준비와 로비 복구의 비동기 완료 결과를 각각 처리한다.
 			PreparedForMatchDelegateHandle = OnlineSessionSubsystem->OnSessionPreparedForMatch.AddUObject(
 				this, &ThisClass::HandleSessionPrepared);
+			
+			ReopenedForLobbyDelegateHandle = OnlineSessionSubsystem->OnSessionReopenedForLobby.AddUObject(
+				this, &ThisClass::HandleSessionReopened);
 		}
 	}
 	if (AFALobbyGameState* LobbyGameState = GetLobbyGameState())
@@ -110,8 +113,9 @@ void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (OnlineSessionSubsystem)
 	{
-		//콜백 해제
+		// GameMode 종료 후 지연 콜백이 호출되지 않도록 두 이벤트를 모두 해제한다.
 		OnlineSessionSubsystem->OnSessionPreparedForMatch.Remove(PreparedForMatchDelegateHandle);
+		OnlineSessionSubsystem->OnSessionReopenedForLobby.Remove(ReopenedForLobbyDelegateHandle);
 	}
 	Super::EndPlay(EndPlayReason);
 }
@@ -130,8 +134,8 @@ void AFALobbyGameMode::RefreshLobbyState()
 	{
 		AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(PlayerState);
 		
-		if (!LobbyPlayerState || LobbyPlayerState->IsInactive())
-			return;
+		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator())
+			continue;
 		PlayerCount++;
 		
 		if (LobbyPlayerState->IsLobbyReady())
@@ -181,7 +185,7 @@ bool AFALobbyGameMode::CanStartGame(int32& OutPlayerCount, int32& OutReadyCount)
 	{
 		AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(PlayerState);
 		
-		if (!LobbyPlayerState || LobbyPlayerState->IsInactive())
+		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator())
 			continue;
 		
 		OutPlayerCount++;
@@ -241,7 +245,7 @@ void AFALobbyGameMode::CommitGameStart()
 
 void AFALobbyGameMode::HandleSessionPrepared(bool bSuccess)
 {		
-	OnlineSessionSubsystem->OnSessionPreparedForMatch.Remove(PreparedForMatchDelegateHandle);
+	//OnlineSessionSubsystem->OnSessionPreparedForMatch.Remove(PreparedForMatchDelegateHandle);
 
 	if (!bGameStartCommitted)
 	{
@@ -275,6 +279,28 @@ void AFALobbyGameMode::HandleSessionPrepared(bool bSuccess)
 	TravelToSelectedMap();
 }
 
+void AFALobbyGameMode::HandleSessionReopened(bool bSuccess)
+{
+	// 현재 GameMode가 요청한 복구 결과만 처리한다.
+	if (!bRollbackInProgress)
+	{
+		return;
+	}
+
+	bRollbackInProgress = false;
+
+	if (!bSuccess)
+	{
+		// 세션 복구 실패 시 실제 세션과 UI 상태가 어긋나지 않도록 로비 잠금을 유지한다.
+		UE_LOG(LogFAOSS, Error, TEXT("HandleSessionReopened() | Failed to reopen the lobby session"));
+		return;
+	}
+
+	// 세션 설정 복구가 완료된 뒤에만 Ready 입력과 신규 접속을 다시 허용한다.
+	bGameStartCommitted = false;
+	RefreshLobbyState();
+}
+
 void AFALobbyGameMode::TravelToSelectedMap()
 {
 	const AFALobbyGameState* LobbyState = GetLobbyGameState();
@@ -302,6 +328,23 @@ void AFALobbyGameMode::TravelToSelectedMap()
 
 void AFALobbyGameMode::RollbackGameStart()
 {
+	// 중복 이탈이나 실패 콜백으로 동일한 복구 요청이 여러 번 시작되는 것을 막는다.
+	if (!bGameStartCommitted || bRollbackInProgress)
+	{
+		return;
+	}
+
+	if (!OnlineSessionSubsystem)
+	{
+		// 온라인 세션이 없는 로컬 실행에서는 복구할 외부 상태가 없으므로 즉시 잠금을 해제한다.
+		bGameStartCommitted = false;
+		RefreshLobbyState();
+		return;
+	}
+
+	// 복구 완료 전까지 현재 잠금 Phase를 유지하고 완료 콜백에서만 로비를 다시 연다.
+	bRollbackInProgress = true;
+	OnlineSessionSubsystem->ReopenSessionForLobby();
 }
 
 AFALobbyGameState* AFALobbyGameMode::GetLobbyGameState() const

@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Game/FALobbyGameState.h"
 
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
@@ -23,7 +22,8 @@ enum class ESessionOperationState : uint8
 	Updating	UMETA(DisplayName="Updating"),
 	Starting	UMETA(DisplayName="Starting"),
 	Ending		UMETA(DisplayName="Ending"),
-	Destroying	UMETA(DisplayName="Destroying")
+	Destroying	UMETA(DisplayName="Destroying"),
+	
 };
 
 // OSS 요청 관련 메세지 정의
@@ -43,6 +43,13 @@ enum class EFASessionRequestResult : uint8
 	AlreadyInSession		UMETA(DisplayName="Already In Session"),
 	CouldNotRetrieveAddress UMETA(DisplayName="Could Not Retrieve Address"),
 	UnknownError			UMETA(DisplayName="Unknown Error")
+};
+
+enum class EFAUpdateSessionPurpose : uint8
+{
+	None,
+	PrepareMatch,
+	RestoreLobby
 };
 
 // 매치 게임 이동시 플레이어 수, 맵 관리 용
@@ -76,6 +83,7 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FMultiplayerOnJoinSessionComplete, EFASessi
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool bWasSuccessful);
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool bWasSuccessful);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionPreparedForMatch, bool bSuccessed);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionReopenedForLobby,	bool bSuccessed);
 /**
  * OSS의 기본적인 생명주기를 관리하는 서브시스템
  * 세션생성, 세션 검색과 참가, 세션 시작, 세션 종료
@@ -109,7 +117,7 @@ public:
 	
 	void PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount);
 	
-	/**TODO  
+	/**
 	 * 서버 : 호스팅중인 세션 종료\n
 	 *  클라이언트 : 접속중인 세션에서 이탈*/
 	void DestroySession();
@@ -123,6 +131,11 @@ public:
 	/// TODO : 플랫폼 친구에게 세션 초대 발송
 	void SendSessionInviteToFriends();
 	
+	void ReopenSessionForLobby();
+	
+	void HandleEndSessionForReopenSession(FName SessionName, bool bWasSuccessful);
+	
+	void RestoreLobbySetting();
 	
 	ESessionOperationState GetCurrentOperationState() const;
 	
@@ -137,6 +150,7 @@ public:
 	FMultiplayerOnDestroySessionComplete MultiplayerOnDestroySessionComplete;
 	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
 	FOnSessionPreparedForMatch OnSessionPreparedForMatch;
+	FOnSessionReopenedForLobby OnSessionReopenedForLobby;
 
 protected:
 	// 온라인 세션 인터페이스에 등록될 내부 콜백 함수들.
@@ -148,9 +162,16 @@ protected:
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
+
 	
 private:
+	void CompleteReopenSessionForLobby(bool bWasSuccessful);
+	
 	IOnlineSessionPtr SessionInterface;
+	
+	FName DefaultLobbyMapPackageName = FName("/Game/FallingApart/Level/L_LobbyLevel");
+	
+	bool bReopenLobbyRequested = false;
 	
 	TSharedPtr<FOnlineSessionSettings> LastSessionSettings;
 	TSharedPtr<FOnlineSessionSearch> LastSessionSearch;
@@ -169,11 +190,14 @@ private:
 	FDelegateHandle 					DestroySessionCompleteDelegateHandle;
 	FOnStartSessionCompleteDelegate		StartSessionCompleteDelegate;
 	FDelegateHandle 					StartSessionCompleteDelegateHandle;
+	FOnEndSessionCompleteDelegate		EndSessionCompleteDelegate;
+	FDelegateHandle 					EndSessionCompleteDelegateHandle;
 	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
 	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
 	
+	EFAUpdateSessionPurpose UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
 	
 #pragma region MatchContext
 public:
