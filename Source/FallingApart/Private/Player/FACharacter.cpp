@@ -1,6 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacter.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Camera/CameraComponent.h"
 #include "GAS/FAAbilitySystemComponent.h"
@@ -185,6 +186,12 @@ void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 
 	CameraBoom->TargetOffset.Z += HalfHeightAdjust;
 
+	// 크라우치는 bIsCrouched 가 복제되면서 모든 머신에서 이 함수가 불리므로 주변 사람에게도 들린다.
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySoundAtLocation(TEXT("Crouch_In"), GetActorLocation());
+	}
+
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 
 	if (!GetWorldTimerManager().IsTimerActive(CrouchTimerHandle))
@@ -198,6 +205,11 @@ void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdj
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	CameraBoom->TargetOffset.Z -= HalfHeightAdjust;
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySoundAtLocation(TEXT("Crouch_Out"), GetActorLocation());
+	}
 
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 
