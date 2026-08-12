@@ -52,18 +52,16 @@ void UFALobbyMainWidget::NativeOnInitialized()
 void UFALobbyMainWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
 }
 
 void UFALobbyMainWidget::NativeDestruct()
 {
 	Super::NativeDestruct();
-	if (BoundLobbyGameState)
+	if (BoundedLobbyGameState)
 	{
-		BoundLobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+		BoundedLobbyGameState->OnLobbyStateChanged.RemoveDynamic(
 			this,
 			&ThisClass::HandleLobbyStateChanged);
-		
 	}
 	if (Button_Ready)
 	{
@@ -89,7 +87,7 @@ void UFALobbyMainWidget::InitializeLobby()
 	{
 		return;
 	}
-	if (BoundLobbyGameState && LobbyGameState != BoundLobbyGameState)
+	if (BoundedLobbyGameState && LobbyGameState != BoundedLobbyGameState)
 	{
 		
 		LobbyGameState->OnLobbyStateChanged.RemoveDynamic(
@@ -97,8 +95,8 @@ void UFALobbyMainWidget::InitializeLobby()
 			&ThisClass::HandleLobbyStateChanged);
 	}
 	//
-	BoundLobbyGameState = LobbyGameState;
-	BoundLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
+	BoundedLobbyGameState = LobbyGameState;
+	BoundedLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::HandleLobbyStateChanged);
 
@@ -165,22 +163,44 @@ void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> Play
 
 void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 {
-	if (!Button_Ready)
-		return;
-		
-	switch (LobbyPhase)
+	AFALobbyPlayerController* LobbyController =	Cast<AFALobbyPlayerController>(GetOwningPlayer());
+
+	AFALobbyGameState* LobbyState =	BoundedLobbyGameState.Get();
+	
+	const bool bIsHost = LobbyController && LobbyController->IsLobbyHost();
+	
+	if (Button_Start)
 	{
-		
-	case EFALobbyPhase::Traveling:
-	case EFALobbyPhase::LockingSession:
-		Button_Ready->SetIsEnabled(false);
-		break;
-	case EFALobbyPhase::WaitingForPlayers:
-	case EFALobbyPhase::WaitingForReady:
-	case EFALobbyPhase::Countdown:
-		Button_Ready->SetIsEnabled(true);
-		break;
+		const bool bCanClickStart =
+			bIsHost
+			&& LobbyState
+			&& LobbyState->CanHostStartMatch()
+			&& LobbyPhase == EFALobbyPhase::WaitingForReady;
+
+		Button_Start->SetIsEnabled(bCanClickStart);
 	}
+	if (Button_Ready)
+	{
+		const bool bCanChangeReady = LobbyPhase == EFALobbyPhase::WaitingForPlayers
+								|| LobbyPhase == EFALobbyPhase::WaitingForReady
+								|| LobbyPhase == EFALobbyPhase::Countdown;
+		
+		Button_Ready->SetIsEnabled(bCanChangeReady);
+		
+		// switch (LobbyPhase)
+		// {
+		// case EFALobbyPhase::Traveling:
+		// case EFALobbyPhase::LockingSession:
+		// 	Button_Ready->SetIsEnabled(false);
+		// 	break;
+		// case EFALobbyPhase::WaitingForPlayers:
+		// case EFALobbyPhase::WaitingForReady:
+		// case EFALobbyPhase::Countdown:
+		// 	Button_Ready->SetIsEnabled(true);
+		// 	break;
+		// }
+	}
+	
 }
 
 void UFALobbyMainWidget::OnReadybuttonClicked()
@@ -200,19 +220,23 @@ void UFALobbyMainWidget::OnReadybuttonClicked()
 
 void UFALobbyMainWidget::OnStartbuttonClicked()
 {
+	AFALobbyPlayerController* PlayerController = Cast<AFALobbyPlayerController>(GetOwningPlayer());
+	if (!PlayerController)
+		return;
 	
+	PlayerController->RequestStartCountdown();
 }
 
 void UFALobbyMainWidget::UpdateCountdownText()
 {
-	if (!BoundLobbyGameState || !Text_Countdown)
+	if (!BoundedLobbyGameState || !Text_Countdown)
 	{
 		return;
 	}
-
+	
 	const int32 RemainingSeconds =
-		BoundLobbyGameState->GetRemainingCountdownSeconds();
-
+		BoundedLobbyGameState->GetRemainingCountdownSeconds();
+	
 	Text_Countdown->SetText(
 		FText::Format(
 			NSLOCTEXT(
@@ -220,11 +244,9 @@ void UFALobbyMainWidget::UpdateCountdownText()
 				"MatchStartCountdown",
 				"{0}초 후 게임 시작"),
 			FText::AsNumber(RemainingSeconds)));
-
+	
 	Text_Countdown->SetVisibility(
 		ESlateVisibility::HitTestInvisible);
-	
-
 }
 
 void UFALobbyMainWidget::StartCountdownUiTimer()

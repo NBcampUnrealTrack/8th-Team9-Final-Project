@@ -50,14 +50,20 @@ public:
 		int32 InReadyCount,
 		int32 InMinPlayers,
 		EFALobbyPhase InPhase,
+		bool InCanStartMatch,
 		float InCountdownEndServerTime = 0.f
-	);
+		);
 	
-	float GetCounddownEndServerTime() const;
+	float GetCountdownEndServerTime() const;
 	
 	float GetRemainingCountdownSeconds() const;
 	
 	void SetSelectedMapId(FName InMapId);
+	
+	UFUNCTION(BlueprintPure)
+	bool CanHostStartMatch() const;
+	
+	void SetCanHostStartMatch(bool InCanStart);
 	
 	UPROPERTY(BlueprintAssignable)
 	FFALobbyStateChanged OnLobbyStateChanged;
@@ -86,6 +92,9 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_LobbyState)
 	EFALobbyPhase LobbyPhase = EFALobbyPhase::WaitingForPlayers;
 
+	UPROPERTY(ReplicatedUsing = OnRep_LobbyState)
+	bool bCanHostStartMatch = false;
+	
 	UPROPERTY(ReplicatedUsing = OnRep_SelectedMapId)
 	FName SelectedMapId;
 	

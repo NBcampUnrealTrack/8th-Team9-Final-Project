@@ -165,12 +165,17 @@ void AFALobbyGameMode::RefreshLobbyState()
 			: EFALobbyPhase::WaitingForReady;
 	}
 
+	const bool bCanStart =
+		CanStartGame(PlayerCount, ReadyCount);
 	LobbyGameState->SetLobbySnapshot(
 		PlayerCount,
 		ReadyCount,
 		MinPlayersToStart,
 		Phase,
-		ReplicatedCountdownEndTime);
+		bCanStart,
+		ReplicatedCountdownEndTime
+		);
+	
 }
 
 void AFALobbyGameMode::EvaluateLobby()
@@ -182,21 +187,15 @@ void AFALobbyGameMode::EvaluateLobby()
 
 	int32 PlayerCount;
 	int32 ReadyCount;
-	bool CanStart = CanStartGame(PlayerCount, ReadyCount);
-	if (CanStart)
-	{
-		if (IsCountdownActive())
-			return;
-		
-		StartGameCountdown();
-		RefreshLobbyState();
-
-		return;
-	}
-	if (IsCountdownActive())
+	bool bCanStart = CanStartGame(PlayerCount, ReadyCount);
+	
+	// Countdown 중 시작 조건이 깨지면 즉시 취소.
+	if (!bCanStart && IsCountdownActive())
 	{
 		CancelGameCountdown();
 	}
+
+	// 전원 Ready여도 자동 시작하지 않고 UI 상태만 갱신.
 	RefreshLobbyState();
 }
 
@@ -245,8 +244,8 @@ void AFALobbyGameMode::CommitGameStart()
 
 	int32 PlayerCount;
 	int32 ReadyCount;
-
-	if (!CanStartGame(PlayerCount, ReadyCount))
+	bool bCanStart = CanStartGame(PlayerCount, ReadyCount);
+	if (!bCanStart)
 	{
 		return;
 	}
@@ -258,7 +257,10 @@ void AFALobbyGameMode::CommitGameStart()
 		PlayerCount,
 		ReadyCount,
 		MinPlayersToStart,
-		EFALobbyPhase::LockingSession);
+		EFALobbyPhase::LockingSession,
+		bCanStart,
+		CountdownEndServerTime
+		);
 
 	const FName MapId = LobbyState->GetSelectedMapId();
 
@@ -290,8 +292,8 @@ void AFALobbyGameMode::HandleSessionPrepared(bool bSuccess)
 
 	int32 PlayerCount;
 	int32 ReadyCount;
-
-	if (!CanStartGame(PlayerCount, ReadyCount))
+	bool bCanStart = CanStartGame(PlayerCount, ReadyCount);
+	if (!bCanStart)
 	{
 		RollbackGameStart();
 		return;
@@ -303,7 +305,9 @@ void AFALobbyGameMode::HandleSessionPrepared(bool bSuccess)
 			PlayerCount,
 			ReadyCount,
 			MinPlayersToStart,
-			EFALobbyPhase::Traveling);
+			EFALobbyPhase::Traveling,
+			bCanStart,
+			CountdownEndServerTime);
 	}
 
 	TravelToSelectedMap();
@@ -382,14 +386,49 @@ AFALobbyGameState* AFALobbyGameMode::GetLobbyGameState() const
 	return GetGameState<AFALobbyGameState>();
 }
 
+void AFALobbyGameMode::RequestStartCountDown(APlayerController* RequestingController)
+{
+	bool bHasAuthority = HasAuthority();
+	bool bIsHostController = IsHostController(RequestingController);
+	bool bIsCounddownActive = IsCountdownActive();
+	if (  !bHasAuthority
+		|| !bIsHostController// 호스트가 아니거나
+		|| bGameStartCommitted// 이미 시작했거나
+		|| bRollbackInProgress// 롤백중이거나
+		|| bIsCounddownActive)// 카운트다운중이라면
+	{
+		return;
+	}
+	int32 PlayerCount = 0;
+	int32 ReadyCount = 0;
+	
+	if (!CanStartGame(PlayerCount, ReadyCount))
+	{
+		RefreshLobbyState();
+		return;
+	}
+
+	StartGameCountdown();
+}
+
+
+
+bool AFALobbyGameMode::IsHostController(APlayerController* Controller)
+{
+	return Controller //nullCkeck
+	&& Controller->HasAuthority()//서버 권한 체크
+	&& Controller->IsLocalController()//동시에 로컬 컨트롤러인지 체크
+	&& GetNetMode() == NM_ListenServer;//넷모드 체크
+}
+
 void AFALobbyGameMode::StartGameCountdown()
 {
 	if (IsCountdownActive() || bGameStartCommitted)
 		return;
 	int32 PlayerCount = 0;
 	int32 ReadyCount = 0;
-
-	if (!CanStartGame(PlayerCount, ReadyCount))
+	bool bCanStart = CanStartGame(PlayerCount, ReadyCount);
+	if (!bCanStart)
 	{
 		return;
 	}
@@ -410,6 +449,7 @@ void AFALobbyGameMode::StartGameCountdown()
 		ReadyCount,
 		MinPlayersToStart,
 		EFALobbyPhase::Countdown,
+		bCanStart,
 		CountdownEndServerTime);
 	
 	// 실제 타이머 시작
@@ -451,5 +491,6 @@ void AFALobbyGameMode::HandleGameCountdownFinished()
 bool AFALobbyGameMode::IsCountdownActive() const
 {
 	//핸들로 작동중 확인
-	return GetWorldTimerManager().IsTimerActive(GameStartCountdownTimerHandle);
+	bool bIsCountdownActive = GetWorldTimerManager().IsTimerActive(GameStartCountdownTimerHandle);
+	return bIsCountdownActive;
 }

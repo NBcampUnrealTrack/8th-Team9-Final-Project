@@ -28,6 +28,15 @@ public:
 	
 	virtual void PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel) override;
 	
+	UFUNCTION(BlueprintPure, Category="FallingApart|Lobby")
+	bool IsLobbyHost() const;
+	
+	UFUNCTION(BlueprintCallable, Category="FallingApart|Lobby")
+	void RequestStartCountdown();
+	
+	UFUNCTION(Server, Reliable)
+	void Server_RequestStartCountdown();
+	
 protected:
 	virtual void BeginPlay() override;
 	

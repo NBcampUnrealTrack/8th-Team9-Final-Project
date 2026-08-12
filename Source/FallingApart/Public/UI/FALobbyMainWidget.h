@@ -87,7 +87,7 @@ private:
 	TObjectPtr<UTextBlock> Text_Countdown;
 
 	UPROPERTY(Transient)
-	TObjectPtr<AFALobbyGameState> BoundLobbyGameState;
+	TObjectPtr<AFALobbyGameState> BoundedLobbyGameState;
 
 	FTimerHandle CountdownUiTimerHandle;
 	

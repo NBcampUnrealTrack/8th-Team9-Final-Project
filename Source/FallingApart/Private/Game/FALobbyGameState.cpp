@@ -14,7 +14,7 @@ void AFALobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AFALobbyGameState, MinPlayersToStart);
 	DOREPLIFETIME(AFALobbyGameState, SelectedMapId);
 	DOREPLIFETIME(AFALobbyGameState, CountdownEndServerTime);
-	
+	DOREPLIFETIME(AFALobbyGameState, bCanHostStartMatch);
 }
 
 int32 AFALobbyGameState::GetConnectedPlayerCount() const
@@ -59,7 +59,7 @@ bool AFALobbyGameState::IsInteractionLocked() const
 }
 
 void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCount, int32 InMinPlayers,
-	EFALobbyPhase InPhase, float InCountdownEndServerTime)
+	EFALobbyPhase InPhase, bool InCanStartMatch, float InCountdownEndServerTime)
 {
 	if (!HasAuthority())
 		return;
@@ -67,6 +67,8 @@ void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCo
 	ReadyPlayerCount = InReadyCount;
 	MinPlayersToStart = InMinPlayers;
 	LobbyPhase = InPhase;
+	bCanHostStartMatch = InCanStartMatch;
+	
 	
 	CountdownEndServerTime = 
 		InPhase == EFALobbyPhase::Countdown
@@ -78,7 +80,7 @@ void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCo
 	ForceNetUpdate();
 }
 
-float AFALobbyGameState::GetCounddownEndServerTime() const
+float AFALobbyGameState::GetCountdownEndServerTime() const
 {
 	return CountdownEndServerTime;
 }
@@ -98,6 +100,20 @@ float AFALobbyGameState::GetRemainingCountdownSeconds() const
 void AFALobbyGameState::SetSelectedMapId(FName InMapId)
 {
 	SelectedMapId = InMapId;
+}
+
+bool AFALobbyGameState::CanHostStartMatch() const
+{
+	return bCanHostStartMatch;
+}
+
+void AFALobbyGameState::SetCanHostStartMatch(bool InCanStart)
+{
+	// 호스트만 받도록 분기
+	if (!HasAuthority())
+		return;
+	
+	bCanHostStartMatch = InCanStart;
 }
 
 

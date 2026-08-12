@@ -83,6 +83,12 @@ private:
 	
 	
 #pragma region StartTimer
+public:
+	void RequestStartCountDown(APlayerController* RequestingController);
+private:
+	bool IsHostController(APlayerController* Controller);
+	
+	
 	void StartGameCountdown();
 	void CancelGameCountdown();
 	void HandleGameCountdownFinished();
