@@ -58,6 +58,13 @@ void UFALobbyMainWidget::NativeConstruct()
 void UFALobbyMainWidget::NativeDestruct()
 {
 	Super::NativeDestruct();
+	if (BoundLobbyGameState)
+	{
+		BoundLobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleLobbyStateChanged);
+		
+	}
 	if (Button_Ready)
 	{
 		Button_Ready->OnClicked.RemoveAll(this);
@@ -82,8 +89,16 @@ void UFALobbyMainWidget::InitializeLobby()
 	{
 		return;
 	}
-
-	LobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
+	if (BoundLobbyGameState && LobbyGameState != BoundLobbyGameState)
+	{
+		
+		LobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleLobbyStateChanged);
+	}
+	//
+	BoundLobbyGameState = LobbyGameState;
+	BoundLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::HandleLobbyStateChanged);
 
@@ -105,6 +120,16 @@ void UFALobbyMainWidget::RefreshLobby()
 	
 	RefreshPlayerList(LobbyGameState->PlayerArray);
 	RefreshInteractionState(LobbyGameState->GetLobbyPhase());
+	
+	const EFALobbyPhase LobbyPhase = LobbyGameState->GetLobbyPhase();
+	if (LobbyPhase == EFALobbyPhase::Countdown)
+	{
+		StartCountdownUiTimer();
+	}
+	else
+	{
+		StopCountdownUiTimer();
+	}
 }
 
 void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> PlayerArray)
@@ -140,15 +165,19 @@ void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> Play
 
 void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 {
+	if (!Button_Ready)
+		return;
+		
 	switch (LobbyPhase)
 	{
-	case EFALobbyPhase::Countdown:
+		
 	case EFALobbyPhase::Traveling:
 	case EFALobbyPhase::LockingSession:
 		Button_Ready->SetIsEnabled(false);
 		break;
 	case EFALobbyPhase::WaitingForPlayers:
 	case EFALobbyPhase::WaitingForReady:
+	case EFALobbyPhase::Countdown:
 		Button_Ready->SetIsEnabled(true);
 		break;
 	}
@@ -172,4 +201,58 @@ void UFALobbyMainWidget::OnReadybuttonClicked()
 void UFALobbyMainWidget::OnStartbuttonClicked()
 {
 	
+}
+
+void UFALobbyMainWidget::UpdateCountdownText()
+{
+	if (!BoundLobbyGameState || !Text_Countdown)
+	{
+		return;
+	}
+
+	const int32 RemainingSeconds =
+		BoundLobbyGameState->GetRemainingCountdownSeconds();
+
+	Text_Countdown->SetText(
+		FText::Format(
+			NSLOCTEXT(
+				"FALobby",
+				"MatchStartCountdown",
+				"{0}초 후 게임 시작"),
+			FText::AsNumber(RemainingSeconds)));
+
+	Text_Countdown->SetVisibility(
+		ESlateVisibility::HitTestInvisible);
+	
+
+}
+
+void UFALobbyMainWidget::StartCountdownUiTimer()
+{
+	if (GetWorld()->GetTimerManager().IsTimerActive(CountdownUiTimerHandle))
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(
+		CountdownUiTimerHandle,
+		this,
+		&ThisClass::UpdateCountdownText,
+		0.1f,
+		true);
+
+	UpdateCountdownText();
+
+}
+
+void UFALobbyMainWidget::StopCountdownUiTimer()
+{
+	GetWorld()->GetTimerManager().ClearTimer(
+	CountdownUiTimerHandle);
+
+	if (Text_Countdown)
+	{
+		Text_Countdown->SetVisibility(
+			ESlateVisibility::Collapsed);
+	}
 }

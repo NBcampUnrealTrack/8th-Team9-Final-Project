@@ -13,6 +13,7 @@ void AFALobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AFALobbyGameState, ReadyPlayerCount);
 	DOREPLIFETIME(AFALobbyGameState, MinPlayersToStart);
 	DOREPLIFETIME(AFALobbyGameState, SelectedMapId);
+	DOREPLIFETIME(AFALobbyGameState, CountdownEndServerTime);
 	
 }
 
@@ -58,7 +59,7 @@ bool AFALobbyGameState::IsInteractionLocked() const
 }
 
 void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCount, int32 InMinPlayers,
-	EFALobbyPhase InPhase)
+	EFALobbyPhase InPhase, float InCountdownEndServerTime)
 {
 	if (!HasAuthority())
 		return;
@@ -67,9 +68,31 @@ void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCo
 	MinPlayersToStart = InMinPlayers;
 	LobbyPhase = InPhase;
 	
+	CountdownEndServerTime = 
+		InPhase == EFALobbyPhase::Countdown
+		? InCountdownEndServerTime
+		: 0.f;
+	
 	OnRep_LobbyState();
 	// 강제로 복제 실행하여 모든 클라이언트에 전파함.
 	ForceNetUpdate();
+}
+
+float AFALobbyGameState::GetCounddownEndServerTime() const
+{
+	return CountdownEndServerTime;
+}
+
+float AFALobbyGameState::GetRemainingCountdownSeconds() const
+{
+	if (LobbyPhase != EFALobbyPhase::Countdown)
+	{
+		return 0;
+	}
+
+	const float RemainingSeconds = CountdownEndServerTime - GetServerWorldTimeSeconds();
+
+	return FMath::Max(0, FMath::CeilToInt(RemainingSeconds));
 }
 
 void AFALobbyGameState::SetSelectedMapId(FName InMapId)
@@ -85,5 +108,6 @@ void AFALobbyGameState::OnRep_LobbyState()
 
 void AFALobbyGameState::OnRep_SelectedMapId()
 {
+	//TODO : 맵 선택시 UI갱신
 	
 }

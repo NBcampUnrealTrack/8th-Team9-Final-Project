@@ -54,6 +54,9 @@ private:
 	
 	AFALobbyGameState* GetLobbyGameState() const;
 	
+
+
+	
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	int32 MinPlayersToStart = 2;
 
@@ -77,5 +80,21 @@ private:
 	
 	bool bGameStartCommitted = false;
 	bool bRollbackInProgress = false;
+	
+	
+#pragma region StartTimer
+	void StartGameCountdown();
+	void CancelGameCountdown();
+	void HandleGameCountdownFinished();
+	bool IsCountdownActive() const;
+	
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
+	float GameStartCountdownDelayInSeconds = 5.f;
+	
+	FTimerHandle GameStartCountdownTimerHandle;
+	
+	float CountdownEndServerTime = 0.f;
+	
+#pragma endregion StartTimer
 };
 

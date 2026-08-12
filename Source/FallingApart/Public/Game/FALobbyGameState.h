@@ -49,8 +49,13 @@ public:
 		int32 InConnectedCount,
 		int32 InReadyCount,
 		int32 InMinPlayers,
-		EFALobbyPhase InPhase
+		EFALobbyPhase InPhase,
+		float InCountdownEndServerTime = 0.f
 	);
+	
+	float GetCounddownEndServerTime() const;
+	
+	float GetRemainingCountdownSeconds() const;
 	
 	void SetSelectedMapId(FName InMapId);
 	
@@ -84,4 +89,6 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_SelectedMapId)
 	FName SelectedMapId;
 	
+	UPROPERTY(ReplicatedUsing=OnRep_LobbyState)
+	float CountdownEndServerTime = 0.0f;
 };

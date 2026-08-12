@@ -39,14 +39,20 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+	//접속시 카운트다운 취소.
+	if (IsCountdownActive())
+		CancelGameCountdown();
+	
 	AFALobbyPlayerState* LobbyPlayerState = NewPlayer ? NewPlayer->GetPlayerState<AFALobbyPlayerState>() : nullptr;
 	
 	if (!LobbyPlayerState)
+	{
+		RefreshLobbyState();
 		return;
+	}
 	
 	LobbyPlayerState->ResetLobbyState();
 
-	RefreshLobbyState();
 	EvaluateLobby();
 }
 
@@ -59,8 +65,10 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		RollbackGameStart();
 		return;
 	}
+	//플레이어 이탈시 카운트다운 초기화, Evaluate 결과에 따라 재시작됨.
+	if (IsCountdownActive())
+		CancelGameCountdown();
 
-	RefreshLobbyState();
 	EvaluateLobby();
 }
 
@@ -82,7 +90,7 @@ void AFALobbyGameMode::SetPlayerReady(APlayerController* PlayerController, bool 
 		return;
 	
 	LobbyplayerState->SetLobbyReady(bReady);
-	RefreshLobbyState();
+	
 	EvaluateLobby();
 }
 
@@ -117,6 +125,7 @@ void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		OnlineSessionSubsystem->OnSessionPreparedForMatch.Remove(PreparedForMatchDelegateHandle);
 		OnlineSessionSubsystem->OnSessionReopenedForLobby.Remove(ReopenedForLobbyDelegateHandle);
 	}
+	GetWorldTimerManager().ClearTimer(GameStartCountdownTimerHandle);
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -141,17 +150,27 @@ void AFALobbyGameMode::RefreshLobbyState()
 		if (LobbyPlayerState->IsLobbyReady())
 			ReadyCount++;
 	}
-	//최소 시장에 필요한 수보다 적으면 WaitingForPlayer, 넘겼으면 WaitingForReady
-	EFALobbyPhase Phase =
-		PlayerCount < MinPlayersToStart
+	float ReplicatedCountdownEndTime = 0.f;
+	EFALobbyPhase Phase;
+	if (IsCountdownActive())
+	{
+		Phase = EFALobbyPhase::Countdown;
+		ReplicatedCountdownEndTime = CountdownEndServerTime;
+	}
+	else
+	{
+		//최소 시장에 필요한 수보다 적으면 WaitingForPlayer, 넘겼으면 WaitingForReady
+		Phase =	PlayerCount < MinPlayersToStart
 			? EFALobbyPhase::WaitingForPlayers
 			: EFALobbyPhase::WaitingForReady;
+	}
 
 	LobbyGameState->SetLobbySnapshot(
 		PlayerCount,
 		ReadyCount,
 		MinPlayersToStart,
-		Phase);
+		Phase,
+		ReplicatedCountdownEndTime);
 }
 
 void AFALobbyGameMode::EvaluateLobby()
@@ -166,8 +185,19 @@ void AFALobbyGameMode::EvaluateLobby()
 	bool CanStart = CanStartGame(PlayerCount, ReadyCount);
 	if (CanStart)
 	{
-		CommitGameStart();
+		if (IsCountdownActive())
+			return;
+		
+		StartGameCountdown();
+		RefreshLobbyState();
+
+		return;
 	}
+	if (IsCountdownActive())
+	{
+		CancelGameCountdown();
+	}
+	RefreshLobbyState();
 }
 
 bool AFALobbyGameMode::CanStartGame(int32& OutPlayerCount, int32& OutReadyCount) const
@@ -350,4 +380,76 @@ void AFALobbyGameMode::RollbackGameStart()
 AFALobbyGameState* AFALobbyGameMode::GetLobbyGameState() const
 {
 	return GetGameState<AFALobbyGameState>();
+}
+
+void AFALobbyGameMode::StartGameCountdown()
+{
+	if (IsCountdownActive() || bGameStartCommitted)
+		return;
+	int32 PlayerCount = 0;
+	int32 ReadyCount = 0;
+
+	if (!CanStartGame(PlayerCount, ReadyCount))
+	{
+		return;
+	}
+
+	AFALobbyGameState* LobbyState = GetLobbyGameState();
+	if (!LobbyState)
+	{
+		return;
+	}
+	// 설정된 시간만큼 타이머 설정함
+	CountdownEndServerTime =
+		LobbyState->GetServerWorldTimeSeconds()
+		+ GameStartCountdownDelayInSeconds;
+	
+	// GameState에 전파
+	LobbyState->SetLobbySnapshot(
+		PlayerCount,
+		ReadyCount,
+		MinPlayersToStart,
+		EFALobbyPhase::Countdown,
+		CountdownEndServerTime);
+	
+	// 실제 타이머 시작
+	GetWorldTimerManager().SetTimer(
+		GameStartCountdownTimerHandle,
+		this,
+		&ThisClass::HandleGameCountdownFinished,
+		GameStartCountdownDelayInSeconds,
+		false);
+	
+}
+
+void AFALobbyGameMode::CancelGameCountdown()
+{
+	//취소 타이머 핸들 해제
+	GetWorldTimerManager().ClearTimer(GameStartCountdownTimerHandle);
+	CountdownEndServerTime = 0.f;
+}
+
+void AFALobbyGameMode::HandleGameCountdownFinished()
+{
+	CountdownEndServerTime = 0.0f;
+
+	int32 PlayerCount = 0;
+	int32 ReadyCount = 0;
+
+	// 카운트 다운 종료후 마지막으로 추가검증.
+	if (!CanStartGame(PlayerCount, ReadyCount))
+	{
+		RefreshLobbyState();
+		return;
+	}
+	
+	//문제 없으면 시작.
+	CommitGameStart();
+}
+
+
+bool AFALobbyGameMode::IsCountdownActive() const
+{
+	//핸들로 작동중 확인
+	return GetWorldTimerManager().IsTimerActive(GameStartCountdownTimerHandle);
 }

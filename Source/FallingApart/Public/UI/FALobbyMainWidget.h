@@ -11,9 +11,12 @@ class UButton;
 class UTextBlock;
 class UListView;
 class UFALobbyPlayerEntryWidget;
+class AFALobbyGameState;
 enum class EFALobbyPhase : uint8;
+
 /**
- * 
+ * 로비 레벨에서 사용할UI
+ * 준비, 시작버튼과 시작 카운트다운 기능
  */
 UCLASS()
 class FALLINGAPART_API UFALobbyMainWidget : public UUserWidget
@@ -27,6 +30,7 @@ public:
 	
 	void SetReadyInteractionEnabled(bool bEnable);
 	
+	//TODO : 레벨 변경간에 레벨 지정 및 로딩화면 Async Loading Screen플러그인 또는 Persistent Level 확인해보기
 	void ShowLoadingScreen();
 	
 	void InitializeLobby();
@@ -47,6 +51,23 @@ protected:
 		
 	void RefreshInteractionState(EFALobbyPhase LobbyPhase);
 	
+	
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|WidgetClass")
+	TSubclassOf<UFALobbyPlayerEntryWidget> LobbyPlayerEntryWidgetClass;
+	
+private:
+	UFUNCTION()
+	void OnReadybuttonClicked();
+	
+	UFUNCTION()
+	void OnStartbuttonClicked();
+	
+	void UpdateCountdownText();
+	
+	void StartCountdownUiTimer();
+	
+	void StopCountdownUiTimer();
+
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UListView> PlayerListView;
 	
@@ -62,15 +83,12 @@ protected:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UButton> Button_Start;
 	
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|WidgetClass")
-	TSubclassOf<UFALobbyPlayerEntryWidget> LobbyPlayerEntryWidgetClass;
-	
-private:
-	
-	UFUNCTION()
-	void OnReadybuttonClicked();
-	
-	UFUNCTION()
-	void OnStartbuttonClicked();
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_Countdown;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AFALobbyGameState> BoundLobbyGameState;
+
+	FTimerHandle CountdownUiTimerHandle;
 	
 };
