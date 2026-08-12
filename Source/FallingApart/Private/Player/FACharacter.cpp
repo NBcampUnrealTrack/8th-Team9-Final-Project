@@ -116,7 +116,7 @@ void AFACharacter::InitializeAbilitySystem()
 void AFACharacter::SetTeamStateTag(EFATeam NewTeam)
 {
 	if (!HasAuthority() || !AbilitySystemComponent)
-	{ 
+	{
 		return;
 	}
 
@@ -154,76 +154,6 @@ void AFACharacter::ApplyInvulnerability(float Duration)
 	}
 }
 
-void AFACharacter::StartQTESync()
-{
-	GetWorldTimerManager().SetTimer(QTESyncTimerHandle, this, &AFACharacter::SyncQTEPressesWithServer, 0.15f, true);
-}
-
-void AFACharacter::StopQTESync()
-{
-	GetWorldTimerManager().ClearTimer(QTESyncTimerHandle);
-	LocalQTEPressCount = 0;
-	QTE_TargetVictim = nullptr;
-}
-
-void AFACharacter::ReceiveQTEPress(AFACharacter* InstigatorCharacter, int32 Presses)
-{
-	if (!HasAuthority() || !InstigatorCharacter)
-		return;
-
-	UAbilitySystemComponent* InstigatorASC = InstigatorCharacter->GetAbilitySystemComponent();
-
-	if (!InstigatorASC || !AbilitySystemComponent)
-		return;
-
-	const FAGameplayTags& FATags = FAGameplayTags::Get();
-
-	// 잡힌 사람에게 더 이상 'State_Contesting' 태그가 없다면, 이미 승패가 결정난 이후에 네트워크 지연으로 뒤늦게 도착한 패킷이므로 무시
-	if (!AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
-		return;
-
-	if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Zombie) && InstigatorASC->HasMatchingGameplayTag(FATags.State_Grabbing))
-	{
-		CurrentQTEGauge -= Presses * 4.0f;
-	}
-	else if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Human))
-	{
-		if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Grabbed))
-		{
-			CurrentQTEGauge += Presses * 1.0f;
-		}
-		else
-		{
-			CurrentQTEGauge += Presses * 2.0f;
-		}
-	}
-
-	CurrentQTEGauge = FMath::Clamp(CurrentQTEGauge, 0.f, 100.f);
-
-	if (CurrentQTEGauge >= 100.f)
-	{
-		AbilitySystemComponent->SetLooseGameplayTagCount(FATags.State_Contesting, 0);
-		StopQTESync();
-
-		// TODO: 인간 승리 로직
-	}
-	else if (CurrentQTEGauge <= 0.f)
-	{
-		AbilitySystemComponent->SetLooseGameplayTagCount(FATags.State_Contesting, 0);
-		StopQTESync();
-
-		// TODO: 좀비 승리 로직
-	}
-}
-
-void AFACharacter::ResetQTEGauge()
-{
-	if (HasAuthority())
-	{
-		CurrentQTEGauge = 50.f;
-	}
-}
-
 void AFACharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -232,12 +162,6 @@ void AFACharacter::Tick(float DeltaTime)
 	{
 		UpdateCameraCollision(DeltaTime);
 	}
-}
-
-void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AFACharacter, CurrentQTEGauge);
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -325,30 +249,30 @@ void AFACharacter::Look(const FInputActionValue& Value)
 
 void AFACharacter::Input_Jump()
 {
-	// QTE 진행 중이면 점프를 막고 연타 카운트 증가
-	const FGameplayTag QTETag = FAGameplayTags::Get().State_Contesting;
+	if (!AbilitySystemComponent) return;
 
-	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(QTETag))
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
 	{
-		LocalQTEPressCount++;
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_ContestMash));
 		return;
 	}
 
-	const FGameplayTag JumpTag = FAGameplayTags::Get().Ability_Jump;
+	// 평상시 점프 어빌리티
+	const FGameplayTag JumpTag = FATags.Ability_Jump;
 
-	if (AbilitySystemComponent)
+	if (AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(JumpTag)))
 	{
-		if (AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(JumpTag)))
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.Ability->GetAssetTags().HasTagExact(JumpTag))
 		{
 			return;
-		}
-
-		for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
-		{
-			if (Spec.Ability && Spec.Ability->GetAssetTags().HasTagExact(JumpTag))
-			{
-				return;
-			}
 		}
 	}
 
@@ -455,38 +379,18 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 
 void AFACharacter::TriggerPrimary()
 {
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
-}
+	// 행동 불가 상태 검사 (QTE 중이거나 기절 상태면 무시)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+		return;
 
-void AFACharacter::OnRep_QTEGauge()
-{
-	// UI 처리
-
-	if (GEngine)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Cyan, FString::Printf(TEXT("QTE 게이지: %.1f"), CurrentQTEGauge));
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Grab));
 	}
-}
-
-void AFACharacter::SyncQTEPressesWithServer()
-{
-	if (LocalQTEPressCount > 0)
+	else if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human))
 	{
-		Server_SendQTEPresses(LocalQTEPressCount);
-		LocalQTEPressCount = 0;
-	}
-}
-
-bool AFACharacter::Server_SendQTEPresses_Validate(int32 Presses)
-{
-	return (Presses >= 0 && Presses <= 15); // 비정상 입력 차단
-}
-
-void AFACharacter::Server_SendQTEPresses_Implementation(int32 Presses)
-{
-	if (IsValid(QTE_TargetVictim))
-	{
-		// 지정된 타겟(잡힌 인간)에게 클릭 횟수 전달
-		QTE_TargetVictim->ReceiveQTEPress(this, Presses);
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
 	}
 }
