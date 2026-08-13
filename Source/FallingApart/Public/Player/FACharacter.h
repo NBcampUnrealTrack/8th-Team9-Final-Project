@@ -176,6 +176,14 @@ protected:
 	/** 머리 위 감염 게이지 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupCaptureMarker();
 
+	/**
+	 * 이 프레임에 머리 위 게이지를 그려야 하는가.
+	 *
+	 * 잡힌 쪽인지 · 보는 사람이 본인인지 · 거리가 컬링 범위 안인지를 전부 여기서 판정한다.
+	 * 스크린 스페이스 위젯 컴포넌트는 SetOwnerNoSee() 도 SetCullDistance() 도 먹지 않는다.
+	 */
+	bool ShouldShowCaptureMarker() const;
+
 	/** 복제된 포획 · QTE 상태를 머리 위 위젯으로 흘려보낸다. 매 프레임. */
 	void UpdateCaptureMarker();
 
