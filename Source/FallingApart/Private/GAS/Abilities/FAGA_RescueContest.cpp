@@ -9,18 +9,16 @@
 #include "Abilities/Tasks/AbilityTask_WaitAttributeChange.h"
 #include "Abilities/Tasks/AbilityTask_WaitDelay.h"
 
-UFAGA_RescueContest::UFAGA_RescueContest()
-{
-	// QTE 판정 및 게이지 동기화는 서버 권한으로 일원화한다.
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
-	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-}
-
 void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	if (!CommitAbility(Handle, ActorInfo, ActivationInfo) || !TriggerEventData)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	if (!HasAuthority(&ActivationInfo))
+	{
 		return;
 	}
 
