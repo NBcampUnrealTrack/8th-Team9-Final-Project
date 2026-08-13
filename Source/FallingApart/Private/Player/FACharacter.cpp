@@ -9,6 +9,7 @@
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Materials/MaterialInterface.h"
@@ -17,6 +18,7 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "UI/FACaptureMarkerWidget.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
@@ -92,8 +94,10 @@ void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	// 자기 화면의 게이지 전용이라 남에게 보낼 이유가 없다.
-	DOREPLIFETIME_CONDITION(AFACharacter, CaptureState, COND_OwnerOnly);
+	// 머리 위 감염 게이지를 주변 사람이 봐야 해서 전원에게 보낸다.
+	// 포획 중이 아닐 때는 값이 안 움직이므로 평상시 대역폭은 0 이다.
+	DOREPLIFETIME(AFACharacter, CaptureState);
+	DOREPLIFETIME(AFACharacter, ContestState);
 }
 
 //~ ---------------- 포획 감염 게이지 ----------------
@@ -181,6 +185,149 @@ void AFACharacter::EndCaptureState()
 	CaptureState = FFACaptureState();
 }
 
+//~ ---------------- 구출 QTE ----------------
+
+float AFACharacter::GetContestTimeRemaining() const
+{
+	if (!ContestState.IsActive())
+	{
+		return 0.0f;
+	}
+
+	return FMath::Max(0.0f, ContestState.EndServerTime - GetServerWorldTime());
+}
+
+void AFACharacter::BeginContestState(EFAContestRole InRole, AActor* InHostZombie, float Duration)
+{
+	if (!HasAuthority() || InRole == EFAContestRole::None)
+	{
+		return;
+	}
+
+	ContestState.Role = InRole;
+	ContestState.HostZombie = InHostZombie;
+	ContestState.EndServerTime = GetServerWorldTime() + FMath::Max(0.0f, Duration);
+
+	// 줄다리기는 항상 중립에서 시작한다. 지난 QTE 의 마지막 값이 한 프레임 비치면 안 된다.
+	ContestState.Gauge = 0.5f;
+}
+
+void AFACharacter::SetContestGauge(float Gauge01)
+{
+	if (!HasAuthority() || !ContestState.IsActive())
+	{
+		return;
+	}
+
+	ContestState.Gauge = FMath::Clamp(Gauge01, 0.0f, 1.0f);
+}
+
+void AFACharacter::EndContestState()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	ContestState = FFAContestState();
+}
+
+bool AFACharacter::IsInRescueContest() const
+{
+	if (ContestState.IsActive())
+	{
+		return true;
+	}
+
+	return AbilitySystemComponent
+		&& AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().State_Contesting);
+}
+
+//~ ---------------- 머리 위 감염 게이지 ----------------
+
+void AFACharacter::SetupCaptureMarker()
+{
+	// 데디케이티드 서버는 아무것도 그리지 않는다.
+	if (CaptureMarkerWidgetClass == nullptr || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	CaptureMarker = NewObject<UWidgetComponent>(this);
+	CaptureMarker->SetWidgetSpace(EWidgetSpace::Screen);
+
+	// DrawAtDesiredSize 를 켜면 WBP 원본 크기가 그대로 화면 픽셀이 된다.
+	CaptureMarker->SetDrawAtDesiredSize(false);
+	CaptureMarker->SetDrawSize(CaptureMarkerDrawSize);
+	CaptureMarker->SetWidgetClass(CaptureMarkerWidgetClass);
+	CaptureMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CaptureMarker->RegisterComponent();
+	CaptureMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	CaptureMarker->SetRelativeLocation(CaptureMarkerOffset);
+	CaptureMarker->SetVisibility(false);
+}
+
+bool AFACharacter::ShouldShowCaptureMarker() const
+{
+	// 잡힌 쪽만 머리 위에 띄운다. 잡고 있는 좀비 머리 위에도 뜨면 누가 인질인지 헷갈린다.
+	if (!CaptureState.IsActive() || !CaptureState.bIsVictim)
+	{
+		return false;
+	}
+
+	// 잡힌 본인은 HUD 게이지를 이미 보고 있다 — 3인칭에서 자기 머리 위에 같은 게 하나 더 뜨면 겹친다.
+	if (IsLocallyControlled())
+	{
+		return false;
+	}
+
+	if (CaptureMarkerCullDistance > 0.0f)
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+		if (!LocalController)
+		{
+			return false;
+		}
+
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		if (FVector::DistSquared(ViewLocation, GetActorLocation()) > FMath::Square(CaptureMarkerCullDistance))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void AFACharacter::UpdateCaptureMarker()
+{
+	if (!CaptureMarker)
+	{
+		return;
+	}
+
+	const bool bShouldShow = ShouldShowCaptureMarker();
+
+	if (bShouldShow != CaptureMarker->IsVisible())
+	{
+		CaptureMarker->SetVisibility(bShouldShow);
+	}
+
+	if (!bShouldShow)
+	{
+		return;
+	}
+
+	if (UFACaptureMarkerWidget* MarkerWidget = Cast<UFACaptureMarkerWidget>(CaptureMarker->GetUserWidgetObject()))
+	{
+		MarkerWidget->UpdateMarker(GetCaptureInfectionRatio(), ContestState.Role, ContestState.Gauge);
+	}
+}
+
 void AFACharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -190,6 +337,8 @@ void AFACharacter::BeginPlay()
 	// 인게임에서는 진영이 정해지는 순간 HandleTeamChanged 가 다시 덮는다.
 	const AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
 	ApplyTeamMaterial(FAPlayerState ? FAPlayerState->GetTeam() : EFATeam::None);
+
+	SetupCaptureMarker();
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -460,6 +609,9 @@ void AFACharacter::Tick(float DeltaTime)
 	{
 		UpdateCameraCollision(DeltaTime);
 	}
+
+	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
+	UpdateCaptureMarker();
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -552,7 +704,7 @@ void AFACharacter::Input_Jump()
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
 	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
-	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
+	if (IsInRescueContest())
 	{
 		// 연타 감각은 누른 본인에게만 필요.
 		if (IsLocallyControlled())
@@ -686,7 +838,7 @@ void AFACharacter::TriggerPrimary()
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
 	// 행동 불가 상태 검사 (QTE 중이거나 기절 상태면 무시)
-	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+	if (IsInRescueContest() || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
 		return;
 
 	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))

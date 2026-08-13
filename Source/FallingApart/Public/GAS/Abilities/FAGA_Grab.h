@@ -34,6 +34,11 @@ public:
 		bool bWasCancelled) override;
 
 public:
+	/**
+	 * 이 ASC 에서 지금 돌고 있는 포획 어빌리티 인스턴스. 없으면 nullptr.
+	 */
+	static UFAGA_Grab* FindActiveInstance(UAbilitySystemComponent* ASC);
+
 	/** QTE 진입 시 외부에서 감염 타이머를 일시 정지하기 위한 함수 */
 	void PauseInfectTimer();
 
