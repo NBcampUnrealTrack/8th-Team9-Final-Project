@@ -18,6 +18,7 @@ class UInputAction;
 class UFAVoiceComponent;
 class UAudioComponent;
 class AFAPlayerState;
+class UFACharacterStatusComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -146,6 +147,9 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TSubclassOf<UGameplayEffect> InvulnerabilityEffect;
+	
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))

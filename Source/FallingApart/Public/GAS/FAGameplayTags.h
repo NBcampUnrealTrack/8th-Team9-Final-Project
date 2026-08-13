@@ -56,6 +56,9 @@ public:
 	/* Z13 뒤엉킨 신경 / H10 뒤엉킨 신경 -  5초 마다 좌우 입력 반전 */
 	FGameplayTag Rule_Input_FlipLR;
 	
+	
+	
+	
 	// ~ ==========================Vision Tag ===================
 	
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
@@ -85,7 +88,8 @@ public:
 	FGameplayTag State_Grabbed;
 	FGameplayTag State_Contesting;
 	
-	
+	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
+	FGameplayTag State_Input_Flipped;
 	
 
 	//~ ========================= 어빌리티 태그 =========================

@@ -7,6 +7,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Rule/FARuleSettings.h"
 #include "Rule/FARuleTypes.h"
+#include "AttributeSet/FAAttributeSet.h"
 
 UFAAbilitySystemComponent::UFAAbilitySystemComponent()
 {
@@ -101,6 +102,16 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 
 	// ApplyGameplayEffectSpecToSelf()는 그 효과를 실제로 ASC에 적용하는 단계 효과 적용
 	const FActiveGameplayEffectHandle Handle = ApplyGameplayEffectSpecToSelf(Spec);
+	
+	if (const UFAAttributeSet* Attributes = GetSet<UFAAttributeSet>())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[Rule] RuleId=%s 적용 직후 AirControl=%.2f"),
+			*RuleId.ToString(),
+			Attributes->GetAirControl());
+	}
 	// 해당 Handle 이 유효한지 확인
 	if (!Handle.IsValid())
 	{

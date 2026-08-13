@@ -27,7 +27,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Move_ForceForward = AddTag(TEXT("Rule.Move.ForceForward"), TEXT("Z05/H05 자동 전진. 멈출 수 없고 좌우 조향만 가능."));
 	Rule_Move_Seizure      = AddTag(TEXT("Rule.Move.Seizure"),      TEXT("Z07/H06 경련·발작. 6초마다 1.5초 State.Stunned."));
 	Rule_Move_NoAriControl = AddTag(TEXT("Rule.Move.NoAriControl"),  TEXT("Z09/H08 공중 마비. 공중 제어 0 "));
-	Rule_Move_LandStun	   = AddTag(TEXT("Rule.Move.Seizure"),      TEXT("Z11/H09 착지 경직 . 착지 시 1초 정지 "));
+	Rule_Move_LandStun	   = AddTag(TEXT("Rule.Move.LandStun"),      TEXT("Z11/H09 착지 경직 . 착지 시 1초 정지 "));
 	
 	//~ 룰 - Input
 	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
@@ -46,6 +46,7 @@ void FAGameplayTags::AddAllTags()
 	State_Grabbing      = AddTag(TEXT("State.Grabbing"),      TEXT("좀비가 포획 중 (설계문서 §3.1)."));
 	State_Grabbed       = AddTag(TEXT("State.Grabbed"),       TEXT("인간이 포획당한 상태."));
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
+	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
 
 	//~ 어빌리티
 	Ability_Jump = AddTag(TEXT("Ability.Jump"),						TEXT("GA_Jump 식별 태그."));
