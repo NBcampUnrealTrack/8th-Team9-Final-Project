@@ -9,6 +9,13 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 
+namespace FARescueAudio
+{
+	// ServerOnly 어빌리티라 소리는 AFACharacter 의 멀티캐스트를 거친다.
+	static const FName Start(TEXT("Rescue_Start"));
+	static const FName QTEStart(TEXT("QTE_Start"));
+}
+
 UFAGA_Rescue::UFAGA_Rescue()
 {
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
@@ -61,6 +68,9 @@ void UFAGA_Rescue::ActivateAbility(
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
+
+	// 구출 시도가 시작됐다는 신호. 선딜레이가 있으면 이 소리가 그 대기 시간을 메운다.
+	Rescuer->Multicast_PlayFASoundAtLocation(FARescueAudio::Start);
 
 	float RescueDelay = RescuerASC->GetNumericAttribute(UFAAttributeSet::GetRescueDurationAttribute());
 	if (RescueDelay > 0.0f)
@@ -117,6 +127,9 @@ void UFAGA_Rescue::StartRescueContest(AFACharacter* Rescuer, AFACharacter* Grabb
 			}
 		}
 	}
+
+	// 줄다리기 개시 — 세 사람(구조자 · 좀비 · 인질) 주변에 다 들려야 하므로 좀비 위치에서 낸다.
+	ZombieGrabber->Multicast_PlayFASoundAtLocation(FARescueAudio::QTEStart);
 
 	// 줄다리기(QTE) 어빌리티 발동을 위한 GameplayEvent 데이터 세팅
 	FGameplayEventData Payload;

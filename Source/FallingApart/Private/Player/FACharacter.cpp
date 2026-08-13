@@ -4,6 +4,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Camera/CameraComponent.h"
+#include "Components/AudioComponent.h"
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
@@ -16,6 +17,17 @@
 #include "Voice/FAVoiceComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
+
+namespace FACharacterAudio
+{
+	// 표의 RowName 과 같아야 한다 (DT_Sound_Character).
+	static const FName CrouchIn(TEXT("Crouch_In"));
+	static const FName CrouchOut(TEXT("Crouch_Out"));
+	static const FName JumpStart(TEXT("Jump_Start"));
+	static const FName JumpLand(TEXT("Jump_Land"));
+	static const FName LandHeavy(TEXT("Land_Heavy"));
+	static const FName GrowlZombieLoop(TEXT("Growl_Zombie_Loop"));
+}
 
 AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	// 기본 CMC 를 룰 반응형 CMC 로 교체한다. 이동 룰은 전부 여기서 소비된다.
@@ -71,6 +83,7 @@ void AFACharacter::PossessedBy(AController* NewController)
 	Super::PossessedBy(NewController);
 
 	InitializeAbilitySystem();
+	BindTeamNotify();
 }
 
 void AFACharacter::OnRep_PlayerState()
@@ -78,6 +91,111 @@ void AFACharacter::OnRep_PlayerState()
 	Super::OnRep_PlayerState();
 
 	InitializeAbilitySystem();
+	BindTeamNotify();
+}
+
+void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (AFAPlayerState* FAPlayerState = TeamNotifySource.Get())
+	{
+		FAPlayerState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
+	}
+	TeamNotifySource.Reset();
+
+	// bAutoDestroy 가 꺼진 루프라 액터가 사라져도 알아서 멎지 않는다.
+	if (GrowlLoopComponent)
+	{
+		GrowlLoopComponent->Stop();
+		GrowlLoopComponent = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void AFACharacter::BindTeamNotify()
+{
+	AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
+	if (!FAPlayerState || TeamNotifySource.Get() == FAPlayerState)
+	{
+		return;
+	}
+
+	if (AFAPlayerState* PreviousState = TeamNotifySource.Get())
+	{
+		PreviousState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
+	}
+
+	TeamNotifySource = FAPlayerState;
+	FAPlayerState->OnTeamChanged.AddDynamic(this, &AFACharacter::HandleTeamChanged);
+
+	// 이미 진영이 정해진 뒤에 물렸을 수 있다 — 지금 상태로 한 번 맞춘다.
+	HandleTeamChanged(FAPlayerState->GetTeam());
+}
+
+void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
+{
+	const bool bWantsGrowl = (NewTeam == EFATeam::Zombie);
+
+	if (!bWantsGrowl)
+	{
+		if (GrowlLoopComponent)
+		{
+			GrowlLoopComponent->Stop();
+			GrowlLoopComponent = nullptr;
+		}
+		return;
+	}
+
+	// 이미 돌고 있으면 그대로 둔다. 다시 걸면 루프가 처음부터 튄다.
+	if (GrowlLoopComponent)
+	{
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		GrowlLoopComponent = Audio->PlaySoundAttached(FACharacterAudio::GrowlZombieLoop, GetMesh());
+	}
+}
+
+void AFACharacter::Multicast_PlayFASoundAtLocation_Implementation(FName SoundId)
+{
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySoundAtLocation(SoundId, GetActorLocation());
+	}
+}
+
+void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this);
+	if (!Audio)
+	{
+		return;
+	}
+
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	const EMovementMode NewMode = Movement ? Movement->MovementMode.GetValue() : MOVE_None;
+
+	// 땅 -> 공중. 룰로 점프가 막혀 있으면 애초에 여기까지 오지 않는다.
+	if (NewMode == MOVE_Falling && PrevMovementMode != MOVE_Falling)
+	{
+		PeakFallSpeed = 0.0f;
+		Audio->PlaySoundAtLocation(FACharacterAudio::JumpStart, GetActorLocation());
+		return;
+	}
+
+	// 공중 -> 땅. 얼마나 세게 떨어졌는지는 낙하 중에 재둔 값으로 판정한다.
+	if (PrevMovementMode == MOVE_Falling && NewMode != MOVE_Falling)
+	{
+		const bool bHeavy = PeakFallSpeed >= HeavyLandSpeed;
+		PeakFallSpeed = 0.0f;
+
+		Audio->PlaySoundAtLocation(bHeavy ? FACharacterAudio::LandHeavy : FACharacterAudio::JumpLand,
+			GetActorLocation());
+	}
 }
 
 void AFACharacter::InitializeAbilitySystem()
@@ -158,6 +276,16 @@ void AFACharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// 착지 순간에는 속도가 이미 죽어 있다 — 낙하하는 동안 최고 속도를 재둬야 세게 떨어졌는지 안다.
+	// 복제된 Velocity 를 보므로 남의 캐릭터에서도 같은 판정이 나온다.
+	if (const UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		if (Movement->MovementMode == MOVE_Falling)
+		{
+			PeakFallSpeed = FMath::Max(PeakFallSpeed, -Movement->Velocity.Z);
+		}
+	}
+
 	if (!bIsFirstPerson && !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
 	{
 		UpdateCameraCollision(DeltaTime);
@@ -189,7 +317,7 @@ void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 	// 크라우치는 bIsCrouched 가 복제되면서 모든 머신에서 이 함수가 불리므로 주변 사람에게도 들린다.
 	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
 	{
-		Audio->PlaySoundAtLocation(TEXT("Crouch_In"), GetActorLocation());
+		Audio->PlaySoundAtLocation(FACharacterAudio::CrouchIn, GetActorLocation());
 	}
 
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
@@ -208,7 +336,7 @@ void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdj
 
 	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
 	{
-		Audio->PlaySoundAtLocation(TEXT("Crouch_Out"), GetActorLocation());
+		Audio->PlaySoundAtLocation(FACharacterAudio::CrouchOut, GetActorLocation());
 	}
 
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);

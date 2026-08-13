@@ -3,9 +3,16 @@
 
 #include "UI/FASessionEntryWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+
+namespace FASessionEntryAudio
+{
+	static const FName Click(TEXT("UI_Click"));
+	static const FName Hover(TEXT("UI_Hover"));
+}
 
 bool UFASessionEntryWidget::Initialize()
 {
@@ -13,14 +20,21 @@ bool UFASessionEntryWidget::Initialize()
 	{
 		return false;
 	}
-	
+
 	if (Button_Join)
 	{
 		Button_Join->OnClicked.AddUniqueDynamic(this, &ThisClass::OnJoinButtonClicked);
+		Button_Join->OnHovered.AddUniqueDynamic(this, &ThisClass::OnJoinButtonHovered);
 	}
-	
-	
+
+
 	return true;
+}
+
+void UFASessionEntryWidget::OnJoinButtonHovered()
+{
+	// 방 목록은 여러 줄이라 마우스가 빠르게 훑고 지나간다 — 표의 0.04초 쿨다운이 연사를 막는다.
+	UFAAudioSubsystem::PlayFASound(this, FASessionEntryAudio::Hover);
 }
 
 void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Result)
@@ -47,6 +61,8 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 }
 void UFASessionEntryWidget::OnJoinButtonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FASessionEntryAudio::Click);
+
 	if (EntryData.IsValid())
 	{
 		OnSessionEntrySelected.Broadcast(EntryData);
