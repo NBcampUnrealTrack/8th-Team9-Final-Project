@@ -83,11 +83,14 @@ void UFAGA_Grab::ActivateAbility(
 
 	// 포획 성공 처리
 	GrabbedVictim = TargetHuman;
-	ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Success);
 	UAbilitySystemComponent* TargetASC = TargetHuman->GetAbilitySystemComponent();
 
 	if (TargetASC)
 	{
+		// 성공음은 실제로 붙잡는 처리 안에서 낸다 — 밖에서 내면 아래가 통째로 건너뛰었을 때
+		// 아무 일도 안 일어났는데 소리만 나간다.
+		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Success);
+
 		// Effect 적용
 		if (GrabberGrabbingEffectClass)
 		{
@@ -169,9 +172,10 @@ void UFAGA_Grab::OnInfectTimerExpired()
 {
 	if (GrabbedVictim.IsValid())
 	{
-		// 감염이 성립한 지점의 소리. 당사자 화면의 Sting_Infected · Infect_Blackout 은
-		// 진영 복제를 보고 UFAHUDWidget 이 따로 낸다 — 그쪽은 2D 라 여기서 겹쳐 내면 안 된다.
-		GrabbedVictim->Multicast_PlayFASoundAtLocation(FAGrabAudio::InfectComplete);
+		// 감염이 성립한 지점의 소리 — 주변 사람이 "저기서 한 명 넘어갔다"를 듣는 용도다.
+		// 당사자에게는 UFAHUDWidget 이 진영 복제를 보고 Infect_Blackout + Sting_Infected 라는
+		// 전용 2D 소리를 내주므로, 본인 화면에서는 이걸 빼야 같은 순간에 세 겹으로 겹치지 않는다.
+		GrabbedVictim->Multicast_PlayFASoundAtLocation(FAGrabAudio::InfectComplete, /*bSkipLocalOwner=*/true);
 
 		// TODO: 진영 전환(Rule.Team.Zombie) 및 개인 점수 +2 지급
 	}

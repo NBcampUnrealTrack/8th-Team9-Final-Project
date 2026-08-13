@@ -154,6 +154,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
 	float TickIntervalFast = 0.25f;
 
+	/**
+	 * 점수 무효화 소리를 감염 순간에서 얼마나 뒤로 미룰지(초).
+	 * 0 이면 Infect_Blackout · Sting_Infected 와 같은 프레임에 겹친다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
+	float ScoreVoidedDelay = 0.8f;
+
 private:
 	//~ 델리게이트 핸들러 — AddDynamic 대상.
 	UFUNCTION()
@@ -207,6 +214,12 @@ private:
 	/** Round_LastMinute 을 이번 라운드에 이미 울렸는가. 초침 구간을 벗어나면 다시 false 가 된다. */
 	bool bLastMinuteAnnounced = false;
 
+	/**
+	 * 초침 구간(TickStartSeconds).
+	 * 이게 false 인 채로 구간 안에 들어와 있다면 '넘어선' 게 아니라 '이미 지난 뒤에 붙은' 것이다.
+	 */
+	bool bSawAboveTickWindow = false;
+
 	//~ 점수 소리 판정용 직전 값. -1 이면 아직 기준이 없다는 뜻이라 첫 갱신에서는 소리를 내지 않는다.
 	int32 LastPersonalScore = -1;
 	int32 LastTeamScore = -1;
@@ -215,6 +228,9 @@ private:
 	//~ 감염 소리 판정용. 기준이 없으면 첫 호출에서는 소리를 내지 않는다.
 	EFATeam LastLocalTeam = EFATeam::None;
 	bool bHasTeamBaseline = false;
+
+	/** Score_Voided 를 감염 순간에서 떼어놓기 위한 타이머. */
+	FTimerHandle ScoreVoidedTimerHandle;
 
 	int32 LastCurrentRound = -1;
 	int32 LastMaxRound = -1;
