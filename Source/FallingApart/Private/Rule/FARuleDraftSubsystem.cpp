@@ -1,13 +1,32 @@
 #include "Rule/FARuleDraftSubsystem.h"
 
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "GAS/FAAbilitySystemComponent.h"
+#include "Game/FAGameState.h"
 #include "GameFramework/GameStateBase.h"
+#include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
+#include "Rule/FARuleSettings.h"
+#include "Rule/FARuleTypes.h"
 #include "TimerManager.h"
 
 namespace FADraft
 {
 	static constexpr float SelectionTimeLimit = 10.0f;
+	static constexpr float ChainDraftInterval = 6.0f;
+}
+
+bool UFARuleDraftSubsystem::IsDraftAllowed() const
+{
+	const AFAGameState* FAGameState = GetWorld() ? GetWorld()->GetGameState<AFAGameState>() : nullptr;
+	if (!FAGameState)
+	{
+		return false;
+	}
+
+	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
+	return Phase != EFARoundPhase::DeathMatch && Phase != EFARoundPhase::MatchEnd;
 }
 
 void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
@@ -16,6 +35,12 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
 	if (!GameState)
 	{
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 데스매치·매치 종료 중이라 정규 드래프트를 돌리지 않는다 (DraftIndex=%d)"), DraftIndex);
 		return;
 	}
 
@@ -29,8 +54,25 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 			continue;
 		}
 
+		// 이미 걸려 있는 룰은 후보에서 뺀다 — 뽑아도 ApplyRuleCard 가 거부해 선택이 통째로 낭비된다.
+		TArray<FName> HeldRuleIds;
+		if (const AFACharacter* Character = Cast<AFACharacter>(FAPlayerState->GetPawn()))
+		{
+			if (const UFAAbilitySystemComponent* ASC = Character->GetFAAbilitySystemComponent())
+			{
+				HeldRuleIds = ASC->GetActiveRuleIds();
+			}
+		}
+
 		// 플레이어 1명당 후보 3장을 각각 새로 뽑는다 (전원 동일 후보가 아니라 개인별 후보).
-		const TArray<FFADraftCandidate> Candidates = GenerateCandidates(FAPlayerState->GetTeam(), DraftIndex);
+		const TArray<FFADraftCandidate> Candidates = GenerateCandidates(FAPlayerState->GetTeam(), DraftIndex, HeldRuleIds);
+		if (Candidates.Num() == 0)
+		{
+			// 이 진영에 뽑을 카드가 남지 않았다. 빈 창을 띄우거나 빈 타임아웃을 걸지 않는다.
+			UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 에게 줄 후보가 없다 (진영=%d, 보유=%d장)"),
+				*FAPlayerState->GetPlayerName(), static_cast<int32>(FAPlayerState->GetTeam()), HeldRuleIds.Num());
+			continue;
+		}
 
 		TWeakObjectPtr<AFAPlayerState> WeakPlayer(FAPlayerState);
 
@@ -43,7 +85,7 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 			CandidateIds.Add(Candidate.RuleId);
 		}
 
-		FAPlayerState->Client_ShowDraftUI(CandidateIds);
+		FAPlayerState->Client_ShowDraftUI(CandidateIds, FADraft::SelectionTimeLimit);
 
 		// 혹시 이전 드래프트의 타이머가 아직 남아있으면 지우고 새로 건다.
 		if (FTimerHandle* ExistingHandle = PendingTimers.Find(WeakPlayer))
@@ -138,48 +180,76 @@ void UFARuleDraftSubsystem::ApplyDraftResult(AFAPlayerState* ForPlayer, const FF
 
 	UE_LOG(LogTemp, Log, TEXT("[Draft] %s 룰 확정: %s"), *ForPlayer->GetPlayerName(), *Chosen.RuleId.ToString());
 
-	// TODO: 다음 단계에서 실제 GE 적용(ApplyGameplayEffectToSelf), 4장 초과 시 최선입 제거 로직 추가
+	const AFACharacter* Character = Cast<AFACharacter>(ForPlayer->GetPawn());
+	if (!Character)
+	{
+		// 관전 중이거나 폰이 아직 없는 상태. 카드는 버려진다 — 드래프트는 라운드 진행 중에만 돈다.
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 의 캐릭터가 없어 룰을 적용하지 못했다"), *ForPlayer->GetPlayerName());
+		return;
+	}
+
+	if (UFAAbilitySystemComponent* ASC = Character->GetFAAbilitySystemComponent())
+	{
+		// 상한(4장) 초과 시 최선입 제거까지 ASC 가 알아서 한다.
+		ASC->ApplyRuleCard(Chosen.RuleId);
+	}
 }
 
 void UFARuleDraftSubsystem::StartChainDraft(AFAPlayerState* Victim, int32 RemovedRuleCount)
 {
-	if (!Victim)
+	if (!Victim || RemovedRuleCount <= 0 || !IsDraftAllowed())
 	{
 		return;
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Draft] StartChainDraft called — Victim=%s, RemovedRuleCount=%d"),
 		*Victim->GetPlayerName(), RemovedRuleCount);
-	
-	// TODO: RemovedRuleCount 만큼 좀비 카드 연속 드래프트 (1장당 6초)
+
+	ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState>(Victim), RemovedRuleCount);
 }
 
-TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForTeam, int32 DraftIndex, int32 Count) const
+TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForTeam, int32 DraftIndex, const TArray<FName>& ExcludeRuleIds) const
 {
 	// 이번 회차의 슬롯별 요구 티어 (예: 2회차 = [1, 1, 2]). GDD 4.2 티어 곡선.
 	const TArray<int32> TierComposition = GetTierComposition(DraftIndex);
-	const TArray<FFADummyRuleEntry> Pool = GetDummyRulePool();
+	const TArray<FFADummyRuleEntry> Pool = GetRulePool();
 
 	TArray<FFADraftCandidate> Result;
 	TArray<FName> AlreadyPicked; // 같은 회차 안에서 같은 룰이 중복으로 안 뽑히게
+
+	// 이 진영 + 지정 티어 + 아직 안 뽑혔고 보유 중도 아닌 카드만 모은다.
+	auto CollectTier = [&](int32 Tier, TArray<FFADummyRuleEntry>& OutPool)
+	{
+		for (const FFADummyRuleEntry& Entry : Pool)
+		{
+			if (Entry.Team == ForTeam
+				&& Entry.Tier == Tier
+				&& !AlreadyPicked.Contains(Entry.RuleId)
+				&& !ExcludeRuleIds.Contains(Entry.RuleId))
+			{
+				OutPool.Add(Entry);
+			}
+		}
+	};
 
 	for (int32 Slot = 0; Slot < TierComposition.Num(); ++Slot)
 	{
 		const int32 WantedTier = TierComposition[Slot];
 
-		// 이 진영 + 이 슬롯이 요구하는 정확한 티어 + 아직 안 뽑힌 것만 후보로 남긴다.
 		TArray<FFADummyRuleEntry> SlotPool;
-		for (const FFADummyRuleEntry& Entry : Pool)
+		CollectTier(WantedTier, SlotPool);
+
+		// 요구 티어가 바닥나면 가까운 티어에서 대신 채운다.
+		// 카드가 14종을 다 채우기 전까지는 이 폴백이 없으면 후보가 1~2장으로 줄어든다.
+		for (int32 Offset = 1; Offset <= 2 && SlotPool.Num() == 0; ++Offset)
 		{
-			if (Entry.Team == ForTeam && Entry.Tier == WantedTier && !AlreadyPicked.Contains(Entry.RuleId))
-			{
-				SlotPool.Add(Entry);
-			}
+			CollectTier(WantedTier - Offset, SlotPool);
+			CollectTier(WantedTier + Offset, SlotPool);
 		}
 
 		if (SlotPool.Num() == 0)
 		{
-			// 더미 풀에 해당 티어가 부족해서 생기는 임시 한계 — URuleCardData 로 교체되면 해소된다.
+			// 이 진영에 줄 수 있는 카드가 아예 남지 않았다 — 후보가 3장 미만이 된다.
 			continue;
 		}
 
@@ -193,6 +263,41 @@ TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForT
 	}
 
 	return Result;
+}
+
+TArray<FFADummyRuleEntry> UFARuleDraftSubsystem::GetRulePool() const
+{
+	const UDataTable* Table = UFARuleSettings::GetRuleCardTable();
+	if (!Table)
+	{
+		return GetDummyRulePool();
+	}
+
+	TArray<FFADummyRuleEntry> Pool;
+
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FFARuleCardRow* Row = reinterpret_cast<const FFARuleCardRow*>(Pair.Value);
+		if (!Row || !Row->IsDraftable())
+		{
+			// GE 애셋을 아직 안 만든 행은 자동으로 빠진다 — 표를 미리 다 채워둬도 안전하다.
+			continue;
+		}
+
+		FFADummyRuleEntry Entry;
+		Entry.RuleId = Pair.Key;
+		Entry.Team = Row->Team;
+		Entry.Tier = static_cast<int32>(Row->Tier);
+		Pool.Add(Entry);
+	}
+
+	if (Pool.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] DT 는 있으나 뽑을 수 있는 카드가 0장이다 — 더미 풀로 폴백"));
+		return GetDummyRulePool();
+	}
+
+	return Pool;
 }
 
 TArray<FFADummyRuleEntry> UFARuleDraftSubsystem::GetDummyRulePool() const
@@ -232,4 +337,70 @@ TArray<int32> UFARuleDraftSubsystem::GetTierComposition(int32 DraftIndex) const
 	case 5: return { 2, 2, 3 };
 	default: return { 3, 3, 3 }; // 6회차
 	}
+}
+
+void UFARuleDraftSubsystem::ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount)
+{
+	if (RemainingCount <= 0 || !ForPlayer.IsValid())
+	{
+		// 타이머가 도는 사이 접속이 끊겼거나, 다 뽑았으면 조용히 종료.
+		return;
+	}
+
+	if (!IsDraftAllowed())
+	{
+		// 6초 간격으로 이어지는 사이에 매치가 끝났다면 남은 장수는 버린다.
+		UE_LOG(LogTemp, Log, TEXT("[Draft] 매치가 끝나 %s 의 연속 드래프트를 중단한다 (남은 %d장)"),
+			*ForPlayer->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	AFAPlayerState* PlayerState = ForPlayer.Get();
+
+	const AFACharacter* Character = Cast<AFACharacter>(PlayerState->GetPawn());
+	UFAAbilitySystemComponent* ASC = Character ? Character->GetFAAbilitySystemComponent() : nullptr;
+	if (!ASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 의 캐릭터/ASC 가 없어 연속 드래프트를 중단한다 (남은 %d장)"),
+			*PlayerState->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	// 이미 보유 중인 룰은 제외하고, 좀비 진영 전체 풀에서 무작위 1장을 뽑는다 — 선택 없이 즉시 적용.
+	const TArray<FName> HeldRuleIds = ASC->GetActiveRuleIds();
+
+	TArray<FFADummyRuleEntry> Candidates;
+	for (const FFADummyRuleEntry& Entry : GetRulePool())
+	{
+		if (Entry.Team == EFATeam::Zombie && !HeldRuleIds.Contains(Entry.RuleId))
+		{
+			Candidates.Add(Entry);
+		}
+	}
+
+	if (Candidates.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] %s 에게 줄 좀비 룰이 남지 않아 연속 드래프트를 중단한다 (남은 %d장)"),
+			*PlayerState->GetPlayerName(), RemainingCount);
+		return;
+	}
+
+	const FFADummyRuleEntry& Picked = Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
+
+	UE_LOG(LogTemp, Log, TEXT("[Draft] %s 연속 드래프트 적용: %s (남은 %d장)"),
+		*PlayerState->GetPlayerName(), *Picked.RuleId.ToString(), RemainingCount - 1);
+
+	ASC->ApplyRuleCard(Picked.RuleId);
+
+	if (RemainingCount - 1 <= 0)
+	{
+		// 마지막 1장까지 적용했으면 여기서 끝.
+		return;
+	}
+
+	FTimerDelegate NextDelegate = FTimerDelegate::CreateUObject(
+		this, &UFARuleDraftSubsystem::ProcessNextChainDraft, ForPlayer, RemainingCount - 1);
+
+	FTimerHandle Handle;
+	GetWorld()->GetTimerManager().SetTimer(Handle, NextDelegate, FADraft::ChainDraftInterval, false);
 }

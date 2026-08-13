@@ -3,8 +3,11 @@
 
 #include "Player/FAPlayerState.h"
 
+#include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/FACharacter.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "UI/FAHUD.h"
 
 AFAPlayerState::AFAPlayerState()
 {
@@ -24,6 +27,7 @@ void AFAPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AFAPlayerState, Team);
 	DOREPLIFETIME(AFAPlayerState, RoundScore);
 	DOREPLIFETIME(AFAPlayerState, MatchScore);
+	DOREPLIFETIME(AFAPlayerState, DeathMatchPlacement);
 }
 
 void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
@@ -36,6 +40,7 @@ void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
 		FAPlayerState->Team = Team;
 		FAPlayerState->RoundScore = RoundScore;
 		FAPlayerState->MatchScore = MatchScore;
+		FAPlayerState->DeathMatchPlacement = DeathMatchPlacement;
 	}
 }
 
@@ -69,6 +74,12 @@ void AFAPlayerState::SetTeam(EFATeam NewTeam)
 
 	Team = NewTeam;
 
+	// 진영은 GAS 쪽에서도 태그(State.Human / State.Zombie)로 표현.
+	if (AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn()))
+	{
+		FACharacter->SetTeamStateTag(NewTeam);
+	}
+
 	OnRep_Team();
 }
 
@@ -83,10 +94,12 @@ void AFAPlayerState::ResetForNewMatch()
 	RoundScore.Reset();
 	SurvivalClockStart = -1.0f;
 	Team = EFATeam::None;
+	DeathMatchPlacement = 0;
 
 	OnRep_Team();
 	OnRep_RoundScore();
 	OnRep_MatchScore();
+	OnRep_DeathMatchPlacement();
 }
 
 void AFAPlayerState::ResetForNewRound()
@@ -201,6 +214,18 @@ void AFAPlayerState::CommitRoundScore()
 	OnRep_MatchScore();
 }
 
+void AFAPlayerState::SetDeathMatchPlacement(int32 InPlacement)
+{
+	if (!ensure(HasAuthority()) || DeathMatchPlacement == InPlacement)
+	{
+		return;
+	}
+
+	DeathMatchPlacement = InPlacement;
+
+	OnRep_DeathMatchPlacement();
+}
+
 void AFAPlayerState::OnRep_Team()
 {
 	OnTeamChanged.Broadcast(Team);
@@ -216,16 +241,38 @@ void AFAPlayerState::OnRep_MatchScore()
 	OnScoreChanged.Broadcast();
 }
 
-void AFAPlayerState::Client_ShowDraftUI_Implementation(const TArray<FName>& CandidateRuleIds)
+void AFAPlayerState::OnRep_DeathMatchPlacement()
 {
-	UE_LOG(LogTemp, Log, TEXT("[Draft] Client_ShowDraftUI 수신 — 후보 %d장"), CandidateRuleIds.Num());
+	// 순위가 바뀌는 값이라 순위표를 다시 그리게 해야 한다.
+	OnScoreChanged.Broadcast();
+}
+
+void AFAPlayerState::Client_ShowDraftUI_Implementation(const TArray<FName>& CandidateRuleIds, float SelectionTime)
+{
+	UE_LOG(LogTemp, Log, TEXT("[Draft] Client_ShowDraftUI 수신 — 후보 %d장 (제한 %.0f초)"),
+		CandidateRuleIds.Num(), SelectionTime);
 
 	for (const FName& RuleId : CandidateRuleIds)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[Draft]   클라이언트가 받은 후보 - %s"), *RuleId.ToString());
 	}
 
-	// TODO: 실제 드래프트 UI 위젯을 여는 코드로 교체
+	// 리슨 서버에서는 APlayerState::GetPlayerController() 가 로컬 플레이어가 아닌 PS 에도 답하므로
+	// 반드시 이 PS 의 주인 컨트롤러로만 UI 를 연다.
+	APlayerController* OwningController = GetPlayerController();
+	if (!OwningController || !OwningController->IsLocalController())
+	{
+		return;
+	}
+
+	if (AFAHUD* FAHUD = Cast<AFAHUD>(OwningController->GetHUD()))
+	{
+		FAHUD->ShowDraftUI(CandidateRuleIds, SelectionTime);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Draft] HUD 가 AFAHUD 가 아니라 드래프트 UI 를 열지 못했다 — GameMode 의 HUD Class 를 확인할 것"));
+	}
 }
 
 void AFAPlayerState::Server_ConfirmDraft_Implementation(int32 SelectedIndex)

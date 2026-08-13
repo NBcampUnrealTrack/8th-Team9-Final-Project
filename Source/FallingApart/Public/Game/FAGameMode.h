@@ -56,6 +56,12 @@ public:
 	void SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders);
 
 	/**
+	 * 데스매치가 끝났으니(또는 열지 못했으니) 매치를 최종 종료 상태로 되돌린다.
+	 * UFADeathMatchSubsystem 만 호출. 관전 해제 · 최종 순위표 표시가 여기서 일어난다.
+	 */
+	void FinishMatchAfterDeathMatch();
+
+	/**
 	 * 보이스 기준으로 관전자인가.
 	 */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
@@ -66,6 +72,7 @@ public:
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
 
 protected:
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
 	virtual bool ReadyToStartMatch_Implementation() override;
 	virtual void HandleMatchHasStarted() override;
@@ -104,6 +111,9 @@ protected:
 
 	void ClearRoundTimers();
 
+	/** 최종 순위를 로그로 찍고 전 클라이언트에 순위표 UI 를 띄운다. */
+	void ShowFinalRanking();
+
 	float GetServerTime() const;
 
 	AFAGameState* GetFAGameState() const;
@@ -135,6 +145,10 @@ protected:
 	/** 라운드당 드래프트 횟수 — 0:30 부터 3:00 까지 6회 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
 	int32 DraftsPerRound = 6;
+
+	/** 감염 직후 무적 시간(초). 연속 드래프트를 뽑는 동안 즉사하지 않게 한다 (GDD 3.4). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
+	float InfectionInvulnerabilityTime = 2.0f;
 
 	/** 0 이면 인원수에 따라 자동 결정, 1 이상이면 방장 지정값으로 취급한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Game")
@@ -187,4 +201,11 @@ private:
 	FTimerHandle RoundTimerHandle;
 	FTimerHandle DraftTimerHandle;
 	FTimerHandle RoundEndTimerHandle;
+	
+	
+	// 박지석 추가, 로비에서 전환했는지 구분을 위한 값 추가. InitGame 함수에서 설정함.
+	int32 ExpectedPlayersToStart = 0;
+
+	bool bHasLobbyMatchContext = false;
+	
 };

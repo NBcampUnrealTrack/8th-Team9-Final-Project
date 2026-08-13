@@ -4,19 +4,20 @@
 #include "Game/FAGameMode.h"
 
 #include "EngineUtils.h"
+#include "GAS/FAAbilitySystemComponent.h"
+#include "GAS/FAGameplayTags.h"
 #include "Game/FAGameState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FAPlayerState.h"
 #include "Player/FAPlayerController.h"
 #include "Player/FACharacter.h"
 #include "Player/FASpectatorPawn.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Rule/FARuleDraftSubsystem.h"
+#include "Rule/FADeathMatchSubsystem.h"
 #include "UI/FAHUD.h"
-
-//구현 안된 것들
-// #include "Game/FADeathMatchSubsystem.h"
 
 AFAGameMode::AFAGameMode()
 {
@@ -53,8 +54,17 @@ bool AFAGameMode::ReadyToStartMatch_Implementation()
 	{
 		return false;
 	}
+	//로비에서 넘어온 경우
+	if (bHasLobbyMatchContext)
+	{
+		return NumPlayers>= ExpectedPlayersToStart;
+	}
+	else
+	{
+		return (NumPlayers + NumBots) >= FMath::Max(1, MinPlayersToStart);
+	}
 
-	return (NumPlayers + NumBots) >= FMath::Max(1, MinPlayersToStart);
+	
 }
 
 void AFAGameMode::HandleMatchHasStarted()
@@ -304,12 +314,6 @@ void AFAGameMode::HandleMatchHasEnded()
 	TArray<AFAPlayerState*> Ranked;
 	FAGameState->GetRankedPlayerStates(Ranked);
 
-	for (int32 Index = 0; Index < Ranked.Num(); ++Index)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[FA] Rank %d: %s (%d pts)"), Index + 1, *Ranked[Index]->GetPlayerName(),
-			Ranked[Index]->GetMatchTotalScore());
-	}
-
 	// 1등이 타이브레이크 3차까지 완전 동점이면 데스매치 대상 (GDD 5.4 / 5.5).
 	int32 TiedFirstPlaceCount = 0;
 	if (Ranked.Num() > 0)
@@ -327,29 +331,96 @@ void AFAGameMode::HandleMatchHasEnded()
 
 	if (TiedFirstPlaceCount >= 2 && TiedFirstPlaceCount <= 3)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — deathmatch pending (co-winners for now)"), TiedFirstPlaceCount);
+		UE_LOG(LogTemp, Log, TEXT("[FA] %d-way tie for 1st — 데스매치 진입"), TiedFirstPlaceCount);
 
-		// TODO: UFADeathMatchSubsystem 구현 후 활성화 (1분 · 1층 제한 · 룰 전부 Remove · 나머지 자동 관전)
 		// SetRoundPhase 를 먼저 바꾸고 SetDeathMatchContenders 를 호출해야 관전자 판정이 맞는다.
-		// FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
-		// TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
-		// SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
-		// if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
-		// {
-		//     DeathMatch->StartDeathMatch(Contenders);
-		// }
+		FAGameState->SetRoundPhase(EFARoundPhase::DeathMatch);
+		TArray<AFAPlayerState*> Contenders(Ranked.GetData(), TiedFirstPlaceCount);
+		SetDeathMatchContenders(Contenders);   // 나머지는 여기서 관전자로 전환되고 보이스도 분리된다
+
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+			// 참가자가 2명이 아니는 등 데스매치를 열 수 없으면 이 안에서 FinishMatchAfterDeathMatch() 로 되돌린다.
+			DeathMatch->StartDeathMatch(Contenders);
+		}
+		else
+		{
+			FinishMatchAfterDeathMatch();
+		}
+
+		return;
+	}
+
+	ShowFinalRanking();
+}
+
+void AFAGameMode::FinishMatchAfterDeathMatch()
+{
+	AFAGameState* FAGameState = GetFAGameState();
+	if (!FAGameState)
+	{
+		return;
+	}
+
+	// 페이즈를 먼저 되돌려야 IsVoiceSpectator() 가 전원 비관전으로 답한다.
+	FAGameState->SetRoundPhase(EFARoundPhase::MatchEnd);
+
+	// 관전 해제 + 보이스 원복. 빈 배열이라 전원이 다시 근접 채널로 돌아온다.
+	SetDeathMatchContenders(TArray<AFAPlayerState*>());
+
+	ShowFinalRanking();
+}
+
+void AFAGameMode::ShowFinalRanking()
+{
+	const AFAGameState* FAGameState = GetFAGameState();
+	if (!FAGameState)
+	{
+		return;
+	}
+
+	TArray<AFAPlayerState*> Ranked;
+	FAGameState->GetRankedPlayerStates(Ranked);
+
+	for (int32 Index = 0; Index < Ranked.Num(); ++Index)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[FA] Rank %d: %s (%d pts)"), Index + 1, *Ranked[Index]->GetPlayerName(),
+			Ranked[Index]->GetMatchTotalScore());
+	}
+
+	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(Iterator->Get()))
+		{
+			FAPlayerController->Client_ShowMatchResult();
+		}
 	}
 }
 
 void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infector)
 {
 	AFAGameState* FAGameState = GetFAGameState();
-	if (!FAGameState || !FAGameState->IsRoundInProgress())
+	if (!FAGameState || !Victim)
 	{
 		return;
 	}
 
-	if (!Victim || !Victim->IsHuman())
+	// 데스매치 중 포획은 점수 정산·연속 드래프트 없이 승패 판정만 한다 — 일반 감염과 완전히 다른 경로.
+	if (FAGameState->GetRoundPhase() == EFARoundPhase::DeathMatch)
+	{
+		if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+		{
+			DeathMatch->NotifyContenderCaught(Victim);
+		}
+		return;
+	}
+
+	if (!FAGameState->IsRoundInProgress())
+	{
+		return;
+	}
+
+	if (!Victim->IsHuman())
 	{
 		return;
 	}
@@ -366,30 +437,27 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 	UE_LOG(LogTemp, Log, TEXT("[FA] %s infected by %s"), *Victim->GetPlayerName(),
 		Infector ? *Infector->GetPlayerName() : TEXT("None"));
 
-	// --- 미구현 시스템 연동 (캐릭터 / GAS / 드래프트) ---
-	// TODO: AFACharacter · ASC · UFARuleDraftSubsystem 구현 후 활성화
-	// if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
-	// {
-	//     UAbilitySystemComponent* ASC = VictimCharacter->GetAbilitySystemComponent();
-	//
-	//     // 1) 인간 룰 전부 제거 — 제거된 장수 N 을 센다 (설계 결정 ③)
-	//     const int32 RemovedRuleCount = ASC->RemoveActiveEffectsWithGrantedTags(
-	//         FGameplayTagContainer(FAGameplayTags::Get().Rule_Team_Human));
-	//
-	//     // 2) 진영 태그 전환 + 부활 직후 2초 무적 (GDD 3.4)
-	//     ASC->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Human);
-	//     ASC->AddLooseGameplayTag(FAGameplayTags::Get().State_Zombie);
-	//     VictimCharacter->ApplyInvulnerability(2.0f);
-	//
-	//     // 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
-	//     if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
-	//     {
-	//         Draft->StartChainDraft(Victim, RemovedRuleCount);
-	//     }
-	//
-	//     // 4) 암전 · 시야 필터 전환 연출은 클라이언트 로컬 처리
-	//     VictimCharacter->PlayInfectionSequence();
-	// }
+	if (AFACharacter* VictimCharacter = Cast<AFACharacter>(Victim->GetPawn()))
+	{
+		int32 RemovedRuleCount = 0;
+
+		if (UFAAbilitySystemComponent* ASC = VictimCharacter->GetFAAbilitySystemComponent())
+		{
+			// 1) 인간 룰 전부 제거 — 제거된 장수 N 이 곧 연속 드래프트 횟수
+			RemovedRuleCount = ASC->RemoveRulesOfTeam(FAGameplayTags::Get().Rule_Team_Human);
+		}
+
+		// 2) 감염 직후 2초 무적
+		VictimCharacter->ApplyInvulnerability(InfectionInvulnerabilityTime);
+
+		// 3) 제거된 장수만큼 좀비 카드 연속 드래프트 (1장당 6초)
+		if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+		{
+			Draft->StartChainDraft(Victim, RemovedRuleCount);
+		}
+
+		// TODO: 암전 · 시야 필터 전환 연출(PlayInfectionSequence)은 캐릭터 담당자 작업 후 연결.
+	}
 
 	UpdateTeamCounts();
 }
@@ -429,6 +497,37 @@ int32 AFAGameMode::GetStartingZombieCount(int32 InPlayerCount) const
 	}
 
 	return (InPlayerCount >= PlayerCountForTwoZombies) ? 2 : 1;
+}
+
+void AFAGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	// 다른 액터가 초기화되기 전에 가장 먼저 실행되는 Gamemode 초기화 가상함수. 규칙설정에 적절함.
+	Super::InitGame(MapName, Options, ErrorMessage);
+	
+	UGameInstance* GameInstance = GetGameInstance();
+	if (!GameInstance)
+	{
+		return;
+	}
+
+	UFAOnlineSessionSubsystem* SessionSubsystem =
+		GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
+
+	if (!SessionSubsystem)
+	{
+		return;
+	}
+
+	FFAPendingMatchContext MatchContext;
+	if (!SessionSubsystem->GetPendingMatchContext(MatchContext))
+	{
+		return;
+	}
+
+	ExpectedPlayersToStart =
+		FMath::Max(1, MatchContext.ExpectedPlayerCount);
+
+	bHasLobbyMatchContext = true;
 }
 
 void AFAGameMode::AssignStartingTeams()
@@ -678,7 +777,15 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		for (TActorIterator<APlayerStart> Iterator(GetWorld()); Iterator; ++Iterator)
 		{
 			APlayerStart* PlayerStart = *Iterator;
-			if (PlayerStart && PlayerStart->PlayerStartTag == WantedTag)
+
+			// 데스매치 전용 스폰은 1층에 몰려 있어 일반 라운드에 쓰면 안 된다.
+			if (UFADeathMatchSubsystem::IsArenaPlayerStart(PlayerStart))
+			{
+				continue;
+			}
+
+			// Player Start Tag 든 액터 태그든 인정한다 — 레벨이 액터 태그로 진영을 구분해 두었다.
+			if (UFADeathMatchSubsystem::PlayerStartHasTag(PlayerStart, WantedTag))
 			{
 				Candidates.Add(PlayerStart);
 			}
@@ -688,6 +795,12 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		{
 			return Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
 		}
+
+		// 여기까지 오면 진영 스폰을 하나도 못 찾았다는 뜻이다. 엔진 기본값은 아무 PlayerStart 나
+		// 고르므로 인간이 좀비 스폰에서 시작할 수 있다 — 조용히 넘어가면 안 된다.
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] '%s' 태그가 붙은 PlayerStart 를 찾지 못했다 — 진영 스폰이 무시되고 아무 자리에서나 시작한다 (맵 확인)"),
+			*WantedTag.ToString());
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);

@@ -78,6 +78,13 @@ public:
 	/** 주 진영 점수 ÷ 총점. 주 진영이 서로 다른 두 플레이어를 비교할 때 쓴다. */
 	float GetMainSideRatio() const;
 
+	/**
+	 * 데스매치 최종 순위 — 1 이 승자, 2 가 패자. 0 이면 데스매치에 나가지 않았다는 뜻.
+	 * 타이브레이크 4차 기준. 완전 동점자끼리만 값이 붙으므로 0 과 섞어 비교할 일은 없다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Score")
+	int32 GetDeathMatchPlacement() const { return DeathMatchPlacement; }
+
 	//~ 서버 전용 — GameMode 만 호출
 	/** 진영을 설정. 감염 처리는 MarkInfected() 를 쓸 것. */
 	void SetTeam(EFATeam NewTeam);
@@ -107,10 +114,17 @@ public:
 
 	/** 라운드 점수를 매치 누적에 합산하고 라운드 점수를 비운다. */
 	void CommitRoundScore();
+
+	/** 데스매치 결과 확정. UFADeathMatchSubsystem 만 호출한다. */
+	void SetDeathMatchPlacement(int32 InPlacement);
 	
-	/** 드래프트 UI를 여는 신호. 서버가 후보 3장을 담아 호출한다. */
+	/**
+	 * 드래프트 UI를 여는 신호. 서버가 후보 3장을 담아 호출한다.
+	 * @param SelectionTime 선택 제한 시간(초). 이 시간이 지나면 서버가 무작위로 확정하므로
+	 *                      클라이언트 카운트다운은 반드시 서버가 준 이 값을 써야 한다.
+	 */
 	UFUNCTION(Client, Reliable)
-	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds);
+	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds, float SelectionTime);
 	
 	/** 플레이어가 후보 중 하나를 골랐을 때 클라이언트가 호출. 서버가 검증 후 확정한다. */
 	UFUNCTION(Server, Reliable, WithValidation)
@@ -125,7 +139,10 @@ protected:
 
 	UFUNCTION()
 	void OnRep_MatchScore();
-	
+
+	UFUNCTION()
+	void OnRep_DeathMatchPlacement();
+
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_Team, VisibleAnywhere, Category = "FallingApart|Game")
@@ -136,6 +153,10 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_MatchScore, VisibleAnywhere, Category = "FallingApart|Score")
 	FFAPlayerScore MatchScore;
+
+	/** 0 = 데스매치 미참가, 1 = 승, 2 = 패. 최종 순위표가 이 값으로 완전 동점을 가른다. */
+	UPROPERTY(ReplicatedUsing = OnRep_DeathMatchPlacement, VisibleAnywhere, Category = "FallingApart|Score")
+	int32 DeathMatchPlacement = 0;
 
 	/**
 	 * 인간 상태에 진입한 서버 월드 시간. 음수면 계측 중이 아님
