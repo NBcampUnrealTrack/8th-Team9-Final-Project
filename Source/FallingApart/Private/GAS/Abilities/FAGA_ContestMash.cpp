@@ -42,19 +42,37 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 	float ScoreDelta = 0.0f;
 
-	// 진영별 QTE 가중치 계산
-	if (SourceASC->HasMatchingGameplayTag(Tags.State_Zombie))
+	// 역할은 서버가 QTE 를 열 때 지목해 둔 값을 그대로 쓴다.
+	// 태그(State.Grabbed)로 인질과 구조자를 가르면 GE 애셋이 비어 있을 때 둘 다 구조자로 잡힌다.
+	EFAContestRole Role = AvatarChar->GetContestState().Role;
+	if (Role == EFAContestRole::None)
 	{
-		ScoreDelta = -4.0f; // 좀비는 누를 때마다 게이지 감소
-	}
-	else if (SourceASC->HasMatchingGameplayTag(Tags.State_Human))
-	{
-		if (SourceASC->HasMatchingGameplayTag(Tags.State_Grabbed))
+		// QTE 상태가 아직 안 왔거나 예전 경로로 들어온 경우의 폴백.
+		if (SourceASC->HasMatchingGameplayTag(Tags.State_Zombie))
 		{
-			ScoreDelta = 1.0f; // 잡힌 인간
+			Role = EFAContestRole::Zombie;
+		}
+		else if (SourceASC->HasMatchingGameplayTag(Tags.State_Human))
+		{
+			Role = SourceASC->HasMatchingGameplayTag(Tags.State_Grabbed)
+				? EFAContestRole::Victim
+				: EFAContestRole::Rescuer;
+		}
+	}
 
-			// 인질만 몸부림 소리를 낸다 — 구조자 쪽에서 나면 누가 잡혀 있는지 헷갈린다.
-			// 연타 주기보다 훨씬 성기게 내보낸다.
+	// 역할별 QTE 가중치 계산
+	switch (Role)
+	{
+	case EFAContestRole::Zombie:
+		ScoreDelta = -4.0f; // 좀비는 누를 때마다 게이지 감소
+		break;
+
+	case EFAContestRole::Victim:
+		ScoreDelta = 1.0f; // 잡힌 인간
+
+		// 인질만 몸부림 소리를 낸다 — 구조자 쪽에서 나면 누가 잡혀 있는지 헷갈린다.
+		// 연타 주기보다 훨씬 성기게 내보낸다.
+		{
 			const UWorld* World = GetWorld();
 			const float Now = World ? World->GetTimeSeconds() : 0.0f;
 			if (Now - LastStruggleSendTime >= FAContestAudio::StruggleSendInterval)
@@ -63,10 +81,14 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 				AvatarChar->Multicast_PlayFASoundAtLocation(FAContestAudio::Struggle);
 			}
 		}
-		else
-		{
-			ScoreDelta = 2.0f; // 구출하러 온 인간
-		}
+		break;
+
+	case EFAContestRole::Rescuer:
+		ScoreDelta = 2.0f; // 구출하러 온 인간
+		break;
+
+	default:
+		break;
 	}
 
 	// 연타 타격감(QTE_Press)은 여기서 내지 않는다.
@@ -89,6 +111,13 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 AFACharacter* UFAGA_ContestMash::FindTargetZombie(AFACharacter* Avatar)
 {
+	// 서버가 QTE 를 열 때 게이지 주인을 직접 지목해 뒀다면 그걸 그대로 쓴다.
+	// 아래 주변 탐색은 태그와 거리에 둘 다 의존해서, 셋 중 하나만 어긋나도 연타가 통째로 먹통이 된다.
+	if (AFACharacter* HostZombie = Cast<AFACharacter>(Avatar->GetContestState().HostZombie))
+	{
+		return HostZombie;
+	}
+
 	UAbilitySystemComponent* ASC = Avatar->GetAbilitySystemComponent();
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 

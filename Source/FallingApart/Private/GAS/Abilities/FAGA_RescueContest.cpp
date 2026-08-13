@@ -11,6 +11,12 @@
 
 UFAGA_RescueContest::UFAGA_RescueContest()
 {
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	FGameplayTagContainer AssetTags;
+	AssetTags.AddTag(Tags.Ability_RescueContest);
+	SetAssetTags(AssetTags);
+
 	// QTE 판정 및 게이지 동기화는 서버 권한으로 일원화한다.
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -56,6 +62,20 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 		}
 	}
 
+	// QTE 참가 상태를 3명 각자에게 심는다.
+	if (TargetZombie.IsValid())
+	{
+		TargetZombie->BeginContestState(EFAContestRole::Zombie, TargetZombie.Get(), ContestDuration);
+	}
+	if (GrabbedVictim.IsValid())
+	{
+		GrabbedVictim->BeginContestState(EFAContestRole::Victim, TargetZombie.Get(), ContestDuration);
+	}
+	if (Rescuer.IsValid())
+	{
+		Rescuer->BeginContestState(EFAContestRole::Rescuer, TargetZombie.Get(), ContestDuration);
+	}
+
 	// QTE 게이지 50(중립)으로 초기화
 	SourceASC->SetNumericAttributeBase(UFAAttributeSet::GetContestGaugeAttribute(), 50.0f);
 
@@ -79,8 +99,8 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	TaskZombieWin->OnChange.AddDynamic(this, &UFAGA_RescueContest::OnZombieWin);
 	TaskZombieWin->ReadyForActivation();
 
-	// [3초 타임아웃]
-	UAbilityTask_WaitDelay* TaskDelay = UAbilityTask_WaitDelay::WaitDelay(this, 3.0f);
+	// [제한 시간 타임아웃]
+	UAbilityTask_WaitDelay* TaskDelay = UAbilityTask_WaitDelay::WaitDelay(this, FMath::Max(0.1f, ContestDuration));
 	TaskDelay->OnFinish.AddDynamic(this, &UFAGA_RescueContest::OnTimeOut);
 	TaskDelay->ReadyForActivation();
 }
@@ -97,7 +117,7 @@ void UFAGA_RescueContest::OnZombieWin()
 
 void UFAGA_RescueContest::OnTimeOut()
 {
-	// 3초 타임아웃 시 무승부는 없고, 50 초과면 인간 승리, 아니면 좀비 승리.
+	// 타임아웃 시 무승부는 없고, 50 초과면 인간 승리, 아니면 좀비 승리.
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
 	float FinalGauge = SourceASC->GetNumericAttribute(UFAAttributeSet::GetContestGaugeAttribute());
 	ResolveContestOutcome(FinalGauge > 50.0f);
@@ -111,7 +131,7 @@ void UFAGA_RescueContest::HandleContestGaugeChanged(const FOnAttributeChangeData
 
 void UFAGA_RescueContest::BroadcastResistRatio(float Ratio)
 {
-	// 게이지가 이미 떠 있는 두 사람만 대상이다 — 구조자는 포획 상태가 아니라 값을 받아도 쓸 곳이 없다.
+	// 포획 게이지 위의 줄다리기 표시는 이미 게이지가 떠 있는 두 사람 몫이다.
 	if (TargetZombie.IsValid())
 	{
 		TargetZombie->SetCaptureResistRatio(Ratio);
@@ -119,6 +139,16 @@ void UFAGA_RescueContest::BroadcastResistRatio(float Ratio)
 	if (GrabbedVictim.IsValid())
 	{
 		GrabbedVictim->SetCaptureResistRatio(Ratio);
+	}
+
+	// QTE 프롬프트는 구조자까지 셋 다 봐야 한다.
+	AFACharacter* Participants[] = { TargetZombie.Get(), GrabbedVictim.Get(), Rescuer.Get() };
+	for (AFACharacter* Participant : Participants)
+	{
+		if (Participant)
+		{
+			Participant->SetContestGauge(Ratio);
+		}
 	}
 }
 
@@ -149,7 +179,7 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 			}
 		}
 
-		// 구출 성공 +1 은 게임모드가 매긴다. 위 CancelAbilities 가 GA_Grab 을 끝내면서
+		// 구출 성공 점수는 게임모드가 매긴다. 위 CancelAbilities 가 GA_Grab 을 끝내면서
 		// 포획 게이지까지 같이 내려가므로, 점수는 그 뒤에 붙여도 순서 문제가 없다.
 		AFAPlayerState* RescuerState = Rescuer.IsValid() ? Rescuer->GetPlayerState<AFAPlayerState>() : nullptr;
 		AFAPlayerState* VictimState = GrabbedVictim.IsValid() ? GrabbedVictim->GetPlayerState<AFAPlayerState>() : nullptr;
@@ -167,20 +197,9 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 		// [좀비 승리] 정지해 두었던 감염 타이머를 재개한다.
 		if (TargetZombie.IsValid())
 		{
-			UAbilitySystemComponent* ZombieASC = TargetZombie->GetAbilitySystemComponent();
-			for (const FGameplayAbilitySpec& Spec : ZombieASC->GetActivatableAbilities())
+			if (UFAGA_Grab* GrabAbility = UFAGA_Grab::FindActiveInstance(TargetZombie->GetAbilitySystemComponent()))
 			{
-				if (Spec.IsActive())
-				{
-					for (UGameplayAbility* ActiveInstance : Spec.GetAbilityInstances())
-					{
-						if (UFAGA_Grab* GrabAbility = Cast<UFAGA_Grab>(ActiveInstance))
-						{
-							GrabAbility->ResumeInfectTimer();
-							break;
-						}
-					}
-				}
+				GrabAbility->ResumeInfectTimer();
 			}
 		}
 	}
@@ -201,8 +220,19 @@ void UFAGA_RescueContest::EndAbility(const FGameplayAbilitySpecHandle Handle, co
 		ContestGaugeChangedHandle.Reset();
 	}
 
-	// 좀비가 이겨서 포획이 계속되는 경우 게이지는 그대로 남는다 — 줄다리기 표시만 지운다.
+	// 좀비가 이겨서 포획이 계속되는 경우 감염 게이지는 그대로 남는다 — 줄다리기 표시만 지운다.
 	BroadcastResistRatio(0.0f);
+
+	// QTE 참가 상태 해제. 이게 내려가야 세 사람의 스페이스바 프롬프트가 사라지고
+	// 스페이스바가 다시 점프로, 좌클릭이 다시 포획·구출로 돌아간다.
+	AFACharacter* Participants[] = { TargetZombie.Get(), GrabbedVictim.Get(), Rescuer.Get() };
+	for (AFACharacter* Participant : Participants)
+	{
+		if (Participant)
+		{
+			Participant->EndContestState();
+		}
+	}
 
 	// 어빌리티 종료 시 참가자 3명 전원의 Contesting 상태를 일괄 해제한다.
 	for (auto& Pair : ContestingHandles)

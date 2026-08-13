@@ -96,6 +96,9 @@ protected:
 	/** 30초 주기 드래프트 타이머 */
 	void OnDraftTimer();
 
+	/** 생존 틱 타이머 — 그 시점에 인간인 사람에게만 점수를 붙인다. */
+	void OnSurvivalTick();
+
 	/** 라운드 점수 정산 (GDD 5.1 / 5.2 · 기술문서 4.2) */
 	void SettleRoundScore(EFARoundResult Result);
 
@@ -165,23 +168,52 @@ protected:
 	//~ 점수 배점 — GDD 5.1
 	/** 감염 성공 (개인 · 좀비) */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
-	int32 InfectionScore = 2;
+	int32 InfectionScore = 3;
 
 	/** 구출 QTE 승리 (개인 · 인간) */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
-	int32 RescueScore = 1;
+	int32 RescueScore = 2;
 
-	/** 인간 생존 — 생존자 1인당 (팀 · 인간 전원) */
+	/**
+	 * 생존 틱 (개인 · 인간). 인간으로 살아 있는 동안 SurvivalTickInterval 마다 지급.
+	 *
+	 * 라운드 안에서 실시간으로 오르는 유일한 인간 수입
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
-	int32 SurvivorScorePerHead = 1;
+	int32 SurvivalTickScore = 1;
 
-	/** 인간 전멸 (팀 · 좀비 전원) */
+	/**
+	 * 생존 틱 주기(초). DraftInterval 과 같은 값으로 두면 "카드 받는 순간 점수도 오른다"는
+	 * 리듬이 생겨서 라운드 구조가 플레이어에게 체감된다.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
-	int32 WipeOutScore = 5;
+	float SurvivalTickInterval = 30.0f;
 
-	/** 최장 생존 (개인 · 인간, 동률 시 전원) */
+	/**
+	 * 라운드 완주 (팀 · 인간). 감염 이력 없이 끝까지 남은 인간에게 고정으로 준다.
+	 *
+	 * 예전의 '생존자 수 × 1' 은 혼자 살아남은 가장 어려운 판이 가장 적게 받는 역전이 있었다.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
-	int32 LongestSurvivorScore = 2;
+	int32 RoundCompleteScore = 3;
+
+	/**
+	 * 인간 전멸 상한 (팀 · 좀비 전원). 실제 지급액은 남은 시간 비율만큼 깎인다.
+	 *
+	 * 고정 지급이면 종료 직전에 감염당한 사람도 만점을 챙기므로, 인간이 던지는 게 이득이 된다.
+	 * 늦은 전멸일수록 값이 떨어져야 그 유인이 사라지고 좀비 쪽엔 '빨리 쓸어담아라'가 남는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
+	int32 WipeOutScore = 6;
+
+	/**
+	 * 시작 좀비 수당 (개인 · 좀비). 라운드 배정 즉시 지급.
+	 *
+	 * 시작 좀비는 생존 틱·완주 같은 인간 수입이 원천 봉쇄된 자리다. 출발선을 맞춰 주지 않으면
+	 * 뽑히는 것 자체가 벌칙이 된다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Score")
+	int32 StartingZombieBonus = 3;
 
 	//~ 스폰
 	/** 인간 스폰 지점으로 쓸 PlayerStart 의 Player Start Tag */
@@ -197,10 +229,19 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<AFAPlayerState>> DeathMatchContenders;
 
+	/**
+	 * 직전 라운드의 시작 좀비. 다음 라운드 추첨에서 후보 밖으로 뺀다.
+	 *
+	 * AssignStartingTeams 는 매 라운드 순수 랜덤이라 5라운드 중 같은 사람이 두 번 뽑히는 일이
+	 * 드물지 않은데, 시작 좀비 자리는 인간 수입이 없으므로 연속으로 걸린 사람만 손해를 본다.
+	 */
+	TArray<TWeakObjectPtr<AFAPlayerState>> LastStartingZombies;
+
 	FTimerHandle RoundStartTimerHandle;
 	FTimerHandle RoundTimerHandle;
 	FTimerHandle DraftTimerHandle;
 	FTimerHandle RoundEndTimerHandle;
+	FTimerHandle SurvivalTickTimerHandle;
 	
 	
 	// 박지석 추가, 로비에서 전환했는지 구분을 위한 값 추가. InitGame 함수에서 설정함.

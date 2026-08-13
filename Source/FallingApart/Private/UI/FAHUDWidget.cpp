@@ -41,8 +41,9 @@ void UFAHUDWidget::NativeConstruct()
 	RefreshBindings();
 	UpdatePolledValues(0.0f);
 
-	// 게이지의 시작 상태를 여기서 한 번 못박는다.
+	// 게이지·프롬프트의 시작 상태를 여기서 한 번 못박는다.
 	OnCaptureGaugeHidden();
+	OnContestPromptHidden();
 }
 
 void UFAHUDWidget::NativeDestruct()
@@ -66,8 +67,9 @@ void UFAHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	RefreshBindings();
 	UpdatePolledValues(InDeltaTime);
 
-	// UpdatePolledValues 는 GameState 가 없으면 그냥 빠져나가므로 게이지는 따로 부른다.
+	// UpdatePolledValues 는 GameState 가 없으면 그냥 빠져나가므로 게이지·프롬프트는 따로 부른다.
 	UpdateCaptureGauge();
+	UpdateContestPrompt();
 }
 
 float UFAHUDWidget::GetRoundTimeRemaining() const
@@ -237,6 +239,59 @@ void UFAHUDWidget::UpdateCaptureGauge()
 	}
 
 	SetCaptureProgress(OwningCharacter->GetCaptureInfectionRatio(), State.ResistRatio);
+}
+
+EFAContestRole UFAHUDWidget::GetLocalContestRole() const
+{
+	const APlayerController* OwningController = GetOwningPlayer();
+	const AFACharacter* OwningCharacter = OwningController ? Cast<AFACharacter>(OwningController->GetPawn()) : nullptr;
+
+	return OwningCharacter ? OwningCharacter->GetContestState().Role : EFAContestRole::None;
+}
+
+float UFAHUDWidget::GetContestTimeRemaining() const
+{
+	const APlayerController* OwningController = GetOwningPlayer();
+	const AFACharacter* OwningCharacter = OwningController ? Cast<AFACharacter>(OwningController->GetPawn()) : nullptr;
+
+	return OwningCharacter ? OwningCharacter->GetContestTimeRemaining() : 0.0f;
+}
+
+void UFAHUDWidget::UpdateContestPrompt()
+{
+	const APlayerController* OwningController = GetOwningPlayer();
+	const AFACharacter* OwningCharacter = OwningController ? Cast<AFACharacter>(OwningController->GetPawn()) : nullptr;
+
+	// QTE 가 끝났거나, 아직 빙의 전이거나 — 전부 프롬프트를 내린다.
+	if (!OwningCharacter || !OwningCharacter->GetContestState().IsActive())
+	{
+		if (bContestPromptVisible)
+		{
+			bContestPromptVisible = false;
+			LastContestGauge = -1.0f;
+
+			OnContestPromptHidden();
+		}
+		return;
+	}
+
+	const FFAContestState& State = OwningCharacter->GetContestState();
+
+	// 역할은 띄우는 순간에 한 번만 넘긴다 — QTE 도중에 바뀌지 않는다.
+	if (!bContestPromptVisible)
+	{
+		bContestPromptVisible = true;
+		LastContestGauge = -1.0f;
+
+		OnContestPromptShown(State.Role);
+	}
+
+	if (!FMath::IsNearlyEqual(State.Gauge, LastContestGauge, 0.001f))
+	{
+		LastContestGauge = State.Gauge;
+
+		OnContestGaugeChanged(State.Gauge);
+	}
 }
 
 void UFAHUDWidget::RefreshBindings()
@@ -419,6 +474,15 @@ void UFAHUDWidget::HandleRoundPhaseChanged(EFARoundPhase NewPhase)
 	if (NewPhase != EFARoundPhase::InProgress)
 	{
 		HideCaptureGauge();
+
+		// 라운드가 끝나면 QTE 도 같이 끝난다. 복제가 한 프레임 늦게 와도 프롬프트가 남지 않게 여기서 내린다.
+		if (bContestPromptVisible)
+		{
+			bContestPromptVisible = false;
+			LastContestGauge = -1.0f;
+
+			OnContestPromptHidden();
+		}
 	}
 
 	OnRoundPhaseChanged(NewPhase);
@@ -461,12 +525,12 @@ void UFAHUDWidget::HandleLocalTeamChanged(EFATeam NewTeam)
 
 void UFAHUDWidget::HandleLocalScoreChanged()
 {
-	UpdateScoreAudio();
+	UpdateScoreFeedback();
 
 	OnLocalScoreChanged(GetLocalDisplayScore());
 }
 
-void UFAHUDWidget::UpdateScoreAudio()
+void UFAHUDWidget::UpdateScoreFeedback()
 {
 	const AFAPlayerState* FAPlayerState = CachedPlayerState.Get();
 	if (!FAPlayerState)
@@ -501,13 +565,20 @@ void UFAHUDWidget::UpdateScoreAudio()
 		}
 
 		// 늘어날 때만. CommitRoundScore() 가 라운드 점수를 0 으로 비우는 건 소리를 낼 일이 아니다.
+		//
+		// "+N" 도 같은 판정을 쓴다. 라운드 점수 기준이라 정산 시점의 이동(라운드 -> 매치 누적)에는
+		// 반응하지 않고, 표시 총점은 그 이동으로 변하지 않으므로 숫자와 팝업이 어긋나지 않는다.
+		const int32 DisplayTotal = GetLocalDisplayScore();
+
 		if (Personal > LastPersonalScore)
 		{
 			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScorePersonal);
+			OnScorePopup(Personal - LastPersonalScore, /*bIsTeamScore=*/false, DisplayTotal);
 		}
 		if (Team > LastTeamScore)
 		{
 			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScoreTeam);
+			OnScorePopup(Team - LastTeamScore, /*bIsTeamScore=*/true, DisplayTotal);
 		}
 	}
 

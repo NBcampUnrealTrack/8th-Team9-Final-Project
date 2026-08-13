@@ -135,6 +135,32 @@ void UFAGA_Grab::ActivateAbility(
 	}
 }
 
+UFAGA_Grab* UFAGA_Grab::FindActiveInstance(UAbilitySystemComponent* ASC)
+{
+	if (!ASC)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		for (UGameplayAbility* Instance : Spec.GetAbilityInstances())
+		{
+			if (UFAGA_Grab* GrabAbility = Cast<UFAGA_Grab>(Instance))
+			{
+				return GrabAbility;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 void UFAGA_Grab::PauseInfectTimer()
 {
 	if (UWorld* World = GetWorld())

@@ -79,6 +79,9 @@ void AFAGameMode::HandleMatchHasStarted()
 	// 지난 매치의 데스매치 참가자가 남아 있으면 관전자 판정이 어긋남.
 	DeathMatchContenders.Reset();
 
+	// 새 매치의 1라운드는 전원이 시작 좀비 후보다.
+	LastStartingZombies.Reset();
+
 	// 매치 시작 점수 비움.
 	for (APlayerState* PlayerState : GameState->PlayerArray)
 	{
@@ -145,6 +148,31 @@ void AFAGameMode::BeginRoundPlay()
 	{
 		// 첫 드래프트는 0:30, 이후 30초마다 반복.
 		GetWorldTimerManager().SetTimer(DraftTimerHandle, this, &AFAGameMode::OnDraftTimer, DraftInterval, true, DraftInterval);
+	}
+
+	// 생존 틱도 같은 주기로 돈다. 감염되면 IsHuman() 이 false 가 되므로 틱 쪽에 해제 처리가 따로 필요 없다.
+	if (SurvivalTickInterval > 0.0f && SurvivalTickScore != 0)
+	{
+		GetWorldTimerManager().SetTimer(SurvivalTickTimerHandle, this, &AFAGameMode::OnSurvivalTick,
+			SurvivalTickInterval, true, SurvivalTickInterval);
+	}
+}
+
+void AFAGameMode::OnSurvivalTick()
+{
+	const AFAGameState* FAGameState = GetFAGameState();
+	if (!FAGameState || !FAGameState->IsRoundInProgress())
+	{
+		return;
+	}
+
+	for (APlayerState* PlayerState : GameState->PlayerArray)
+	{
+		AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(PlayerState);
+		if (FAPlayerState && FAPlayerState->IsHuman())
+		{
+			FAPlayerState->AddHumanPersonalScore(SurvivalTickScore);
+		}
 	}
 }
 
@@ -224,53 +252,38 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 
 	if (Result == EFARoundResult::HumanWin)
 	{
-		// 생존 +1 × 생존자 수 — 감염 이력이 없는 인간 전원에게 지급 (GDD 5.1 / 5.2).
-		int32 SurvivorCount = 0;
-		for (const AFAPlayerState* FAPlayerState : AllPlayerStates)
-		{
-			if (FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound())
-			{
-				++SurvivorCount;
-			}
-		}
-
+		// 라운드 완주 — 감염 이력 없이 끝까지 인간으로 남은 사람에게 고정 지급.
 		for (AFAPlayerState* FAPlayerState : AllPlayerStates)
 		{
 			if (FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound())
 			{
-				FAPlayerState->AddHumanTeamScore(SurvivorCount * SurvivorScorePerHead);
+				FAPlayerState->AddHumanTeamScore(RoundCompleteScore);
 			}
 		}
 	}
 	else if (Result == EFARoundResult::ZombieWin)
 	{
-		// 인간 전멸 +5 — 좀비 진영 전원 (시작 좀비 · 전환 좀비 동일)
+		// 전멸 보너스는 남은 시간에 비례한다 — 올림이라 종료 직전 전멸도 최소 1점은 남는다.
+		// EndRound 는 페이즈를 RoundEnd 로 바꾸기 '전에' 여기를 부르므로 아직 남은 시간을 읽을 수 있다.
+		const AFAGameState* FAGameState = GetFAGameState();
+		const float RemainingRatio = FAGameState
+			? FMath::Clamp(FAGameState->GetRoundTimeRemaining() / FMath::Max(RoundDuration, 1.0f), 0.0f, 1.0f)
+			: 0.0f;
+
+		const int32 WipeOutAward = FMath::Max(1, FMath::CeilToInt(WipeOutScore * RemainingRatio));
+
 		for (AFAPlayerState* FAPlayerState : AllPlayerStates)
 		{
 			if (FAPlayerState->IsZombie())
 			{
-				FAPlayerState->AddZombieTeamScore(WipeOutScore);
+				FAPlayerState->AddZombieTeamScore(WipeOutAward);
 			}
 		}
 	}
 
-	// 최장 생존 +2 — 동률이면 전원에게 준다 (GDD 5.1 각주).
-	float BestSurvivalTime = 0.0f;
-	for (const AFAPlayerState* FAPlayerState : AllPlayerStates)
-	{
-		BestSurvivalTime = FMath::Max(BestSurvivalTime, FAPlayerState->GetRoundScore().SurvivalTime);
-	}
-
-	if (BestSurvivalTime > 0.01f)
-	{
-		for (AFAPlayerState* FAPlayerState : AllPlayerStates)
-		{
-			if (FMath::IsNearlyEqual(FAPlayerState->GetRoundScore().SurvivalTime, BestSurvivalTime, 0.01f))
-			{
-				FAPlayerState->AddHumanPersonalScore(LongestSurvivorScore);
-			}
-		}
-	}
+	// 최장 생존 보너스는 생존 틱이 대신한다. 예전 방식은 생존자 전원의 SurvivalTime 이 같은 Now 로
+	// 확정돼 소수점까지 동률이라, 사실상 '생존자 전원 +2' 로 동작하고 있었다.
+	// SurvivalTime 계측 자체는 최종 순위 타이브레이크 3차 기준이라 그대로 남는다.
 
 	// 정산이 끝난 라운드 점수를 매치 누적으로 넘긴다.
 	for (AFAPlayerState* FAPlayerState : AllPlayerStates)
@@ -425,7 +438,7 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 		return;
 	}
 
-	// 감염 성공 +2 — 개인 점수 (시작 좀비 · 전환 좀비 동일)
+	// 감염 성공 — 개인 점수 (시작 좀비 · 전환 좀비 동일)
 	if (Infector && Infector != Victim && Infector->IsZombie())
 	{
 		Infector->AddZombiePersonalScore(InfectionScore);
@@ -470,7 +483,7 @@ void AFAGameMode::HandleRescueSuccess(AFAPlayerState* Rescuer, AFAPlayerState* V
 		return;
 	}
 
-	// 구출 성공 +1 — 개인 점수. (GDD 11.3).
+	// 구출 성공 — 개인 점수. (GDD 11.3).
 	if (Rescuer && Rescuer->IsHuman())
 	{
 		Rescuer->AddHumanPersonalScore(RescueScore);
@@ -548,12 +561,36 @@ void AFAGameMode::AssignStartingTeams()
 
 	const int32 ZombieCount = GetStartingZombieCount(Candidates.Num());
 
+	// 직전 라운드의 시작 좀비는 후보에서 뺀다. 빼고 나서 인원이 모자랄 때만 전원 풀로 되돌린다
+	// (3인 테스트처럼 인원이 적으면 연속 배정이 불가피하다).
+	TArray<AFAPlayerState*> Preferred = Candidates.FilterByPredicate(
+		[this](const AFAPlayerState* Candidate)
+		{
+			return !LastStartingZombies.ContainsByPredicate(
+				[Candidate](const TWeakObjectPtr<AFAPlayerState>& Previous)
+				{
+					return Previous.Get() == Candidate;
+				});
+		});
+
+	TArray<AFAPlayerState*>& Pool = (Preferred.Num() >= ZombieCount) ? Preferred : Candidates;
+
+	LastStartingZombies.Reset();
+
 	// 시작 좀비는 서버 RNG 로 무작위 선정
-	for (int32 Index = 0; Index < ZombieCount && Candidates.Num() > 0; ++Index)
+	for (int32 Index = 0; Index < ZombieCount && Pool.Num() > 0; ++Index)
 	{
-		const int32 PickedIndex = FMath::RandRange(0, Candidates.Num() - 1);
-		Candidates[PickedIndex]->SetTeam(EFATeam::Zombie);
-		Candidates.RemoveAtSwap(PickedIndex);
+		const int32 PickedIndex = FMath::RandRange(0, Pool.Num() - 1);
+		AFAPlayerState* Picked = Pool[PickedIndex];
+		Pool.RemoveAtSwap(PickedIndex);
+
+		Picked->SetTeam(EFATeam::Zombie);
+
+		// 수당은 배정 직후에 붙인다 — 위에서 ResetForNewRound() 로 라운드 점수를 이미 비웠으므로
+		// 이 시점에 더하면 라운드 시작과 동시에 HUD 에 찍힌다.
+		Picked->AddZombiePersonalScore(StartingZombieBonus);
+
+		LastStartingZombies.Add(Picked);
 	}
 
 	UpdateTeamCounts(false);
@@ -813,6 +850,7 @@ void AFAGameMode::ClearRoundTimers()
 	TimerManager.ClearTimer(RoundTimerHandle);
 	TimerManager.ClearTimer(DraftTimerHandle);
 	TimerManager.ClearTimer(RoundEndTimerHandle);
+	TimerManager.ClearTimer(SurvivalTickTimerHandle);
 }
 
 float AFAGameMode::GetServerTime() const

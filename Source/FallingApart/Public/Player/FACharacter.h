@@ -20,6 +20,8 @@ class UAudioComponent;
 class UMaterialInterface;
 class AFAPlayerState;
 class UFACharacterStatusComponent;
+class UFACaptureMarkerWidget;
+class UWidgetComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -90,6 +92,27 @@ public:
 	/** 포획 종료 — 감염 성공·취소 어느 쪽이든 반드시 불러야 게이지가 내려간다. */
 	void EndCaptureState();
 
+	//~ ---------------- 구출 QTE (줄다리기) ----------------
+	//~ 포획과 달리 참가자가 셋(좀비 · 인질 · 구조자)이라 상태를 따로 들고 있다.
+
+	/** QTE 참가 상태. 구조자도 여기 들어오므로 이 값이 곧 "지금 QTE 중인가" 다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Contest")
+	const FFAContestState& GetContestState() const { return ContestState; }
+
+	/** QTE 남은 시간(초). QTE 중이 아니면 0. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Contest")
+	float GetContestTimeRemaining() const;
+
+	//~ 서버 전용 — UFAGA_RescueContest 만 호출한다.
+	/** QTE 참가 시작. Duration 초 뒤에 타임아웃 판정이 난다. */
+	void BeginContestState(EFAContestRole InRole, AActor* InHostZombie, float Duration);
+
+	/** 줄다리기 게이지 0~1 갱신 (1 이면 인간 승리 직전). */
+	void SetContestGauge(float Gauge01);
+
+	/** QTE 종료 — 승패 어느 쪽이든 반드시 불러야 프롬프트가 내려간다. */
+	void EndContestState();
+
 protected:
 	/** GameState 기준 서버 월드 시각. GameState 가 아직 없으면 로컬 시각으로 폴백. */
 	float GetServerWorldTime() const;
@@ -144,6 +167,17 @@ protected:
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
+
+	/**
+	 * 지금 줄다리기 중인가. 스페이스바를 점프가 아니라 연타로 보낼지, 좌클릭을 막을지 판정.
+	 */
+	bool IsInRescueContest() const;
+
+	/** 머리 위 감염 게이지 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
+	void SetupCaptureMarker();
+
+	/** 복제된 포획 · QTE 상태를 머리 위 위젯으로 흘려보낸다. 매 프레임. */
+	void UpdateCaptureMarker();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -210,12 +244,40 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
 	TObjectPtr<UMaterialInterface> ZombieMaterial;
 
+	//~ ---------------- 머리 위 감염 게이지 ----------------
+
+	/**
+	 * 잡힌 사람 머리 위에 뜨는 감염 게이지 WBP.
+	 * 비워두면 3D 표시 없이 당사자의 HUD 게이지만 돈다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
+	TSubclassOf<UFACaptureMarkerWidget> CaptureMarkerWidgetClass;
+
+	/** 캡슐 원점 기준 위젯 위치. 캐릭터 머리보다 조금 위. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
+	FVector CaptureMarkerOffset = FVector(0.0f, 0.0f, 110.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
+	FVector2D CaptureMarkerDrawSize = FVector2D(180.0f, 44.0f);
+
+	/** 이 거리 밖에서는 그리지 않는다. 0 이면 컬링하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
+	float CaptureMarkerCullDistance = 3000.0f;
+
 private:
 	/**
-	 * 포획 진행 상태. 자기 화면의 게이지에만 쓰이므로 소유 클라이언트에게만 보낸다.
+	 * 포획 진행 상태.
 	 */
 	UPROPERTY(Replicated)
 	FFACaptureState CaptureState;
+
+	/** 구출 QTE 참가 상태. 참가자 3명 전원이 각자 자기 몫을 들고 있다. */
+	UPROPERTY(Replicated)
+	FFAContestState ContestState;
+
+	/** 머리 위 감염 게이지. 서버 전용 인스턴스에서는 만들지 않는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> CaptureMarker;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;

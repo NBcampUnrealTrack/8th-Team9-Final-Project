@@ -18,6 +18,7 @@ class FALLINGAPART_API UFAGA_RescueContest : public UFAGameplayAbility
 
 public:
 	UFAGA_RescueContest();
+
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
@@ -29,6 +30,10 @@ protected:
 	/** 인간 승리 시 좀비에게 적용할 기절 GE (기본 2초 / Z30 룰 적용 시 8초) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> ZombieStunEffectClass;
+
+	/** 줄다리기 제한 시간(초). 이 시간이 지나면 게이지가 50 을 넘었는지로 승패를 가른다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Contest")
+	float ContestDuration = 3.0f;
 
 private:
 	//~ GAS Tasks 콜백
@@ -45,11 +50,16 @@ private:
 	void ResolveContestOutcome(bool bHumanWon);
 
 	/**
-	 * 줄다리기 게이지가 움직일 때마다 잡힌 인간 · 좀비 양쪽 HUD 로 흘려보낸다.
+	 * 줄다리기 게이지가 움직일 때마다 참가자 3명의 화면으로 흘려보낸다.
 	 */
 	void HandleContestGaugeChanged(const struct FOnAttributeChangeData& Data);
 
-	/** 참가자 전원의 포획 게이지에 줄다리기 진행도를 써 넣는다. */
+	/**
+	 * 참가자 전원에게 줄다리기 진행도를 써 넣는다.
+	 *
+	 * 포획 게이지(잡힌 인간 · 좀비)와 QTE 상태(3명 전원) 양쪽에 같이 넣는다.
+	 * 구조자는 포획 상태가 아예 없어서 QTE 상태 쪽에만 값이 들어간다.
+	 */
 	void BroadcastResistRatio(float Ratio);
 
 private:

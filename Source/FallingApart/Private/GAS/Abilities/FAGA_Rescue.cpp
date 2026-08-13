@@ -2,6 +2,7 @@
 
 #include "GAS/Abilities/FAGA_Rescue.h"
 #include "GAS/Abilities/FAGA_Grab.h"
+#include "GAS/Abilities/FAGA_RescueContest.h"
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Player/FACharacter.h"
@@ -107,42 +108,65 @@ void UFAGA_Rescue::StartRescueContest(AFACharacter* Rescuer, AFACharacter* Grabb
 		return;
 	}
 
-	// 좀비의 활성화된 UFAGA_Grab 어빌리티 인스턴스를 찾아 감염 타이머를 일시정지시킴
 	UAbilitySystemComponent* ZombieASC = ZombieGrabber->GetAbilitySystemComponent();
-	if (ZombieASC)
+	if (!ZombieASC)
 	{
-		TArray<FGameplayAbilitySpec> ActivatableAbilities = ZombieASC->GetActivatableAbilities();
-		for (const FGameplayAbilitySpec& Spec : ActivatableAbilities)
-		{
-			if (Spec.IsActive())
-			{
-				for (UGameplayAbility* ActiveAbilityInstance : Spec.GetAbilityInstances())
-				{
-					if (UFAGA_Grab* GrabAbility = Cast<UFAGA_Grab>(ActiveAbilityInstance))
-					{
-						GrabAbility->PauseInfectTimer();
-						break;
-					}
-				}
-			}
-		}
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+		return;
+	}
+
+	// 좀비의 활성화된 포획 어빌리티를 찾아 감염 타이머를 멈춘다 — 줄다리기 하는 동안
+	// 감염 게이지가 혼자 차면 QTE 를 이겨도 이미 늦은 상황이 나온다.
+	UFAGA_Grab* GrabAbility = UFAGA_Grab::FindActiveInstance(ZombieASC);
+	if (GrabAbility)
+	{
+		GrabAbility->PauseInfectTimer();
 	}
 
 	// 줄다리기 개시 — 세 사람(구조자 · 좀비 · 인질) 주변에 다 들려야 하므로 좀비 위치에서 낸다.
 	ZombieGrabber->Multicast_PlayFASoundAtLocation(FARescueAudio::QTEStart);
 
-	// 줄다리기(QTE) 어빌리티 발동을 위한 GameplayEvent 데이터 세팅
+	// 줄다리기(QTE)는 좀비 쪽에서 인스턴스 하나만 돈다 — ContestGauge Attribute 의 주인이 좀비다.
+	// 참가자 3명은 페이로드로 넘긴다.
 	FGameplayEventData Payload;
+	Payload.EventTag = Tags.Ability_RescueContest;
 	Payload.Instigator = Rescuer;         // 구조자 (인간)
 	Payload.Target = ZombieGrabber;       // 대결 상대 (좀비)
 	Payload.OptionalObject = GrabbedAlly; // 인질 (잡힌 아군)
 
-	// 구조자와 좀비 양측의 줄다리기 어빌리티(Ability.RescueContest) 트리거
-	UAbilitySystemComponent* RescuerASC = GetAbilitySystemComponentFromActorInfo();
-	if (ZombieASC)
+	// 예전에는 이 페이로드를 만들어 놓고 아무 데도 보내지 않은 채, 대신 GA_Grab 을 취소하고 끝냈다.
+	// 그래서 QTE 가 한 번도 열리지 않았고 좌클릭 한 번에 판정 없이 인질이 풀려났다.
+	//
+	// HandleGameplayEvent 대신 스펙을 직접 찾아 발동시킨다. 이벤트 경로를 쓰려면 GA_RescueContest
+	// 애셋의 AbilityTriggers 에 GameplayEvent 항목이 있어야 하는데, 그건 BP 에서 빠뜨리기 쉽고
+	// 빠졌을 때 아무 일도 안 일어난 채 조용히 넘어간다 — 이 어빌리티가 죽은 이유가 바로 그런 종류였다.
+	bool bContestStarted = false;
+
+	for (const FGameplayAbilitySpec& Spec : ZombieASC->GetActivatableAbilities())
 	{
-		FGameplayTagContainer GrabTagContainer(Tags.Ability_Grab);
-		ZombieASC->CancelAbilities(&GrabTagContainer);
+		// 클래스로 먼저 본다 — 태그는 BP 의 Asset Tags 칸에 의존하고, 그 칸은 비어 있어도 경고가 없다.
+		const bool bIsContestAbility = Spec.Ability
+			&& (Spec.Ability->IsA<UFAGA_RescueContest>()
+				|| Spec.Ability->GetAssetTags().HasTagExact(Tags.Ability_RescueContest));
+
+		if (!bIsContestAbility)
+		{
+			continue;
+		}
+
+		bContestStarted = ZombieASC->TriggerAbilityFromGameplayEvent(
+			Spec.Handle, ZombieASC->AbilityActorInfo.Get(), Tags.Ability_RescueContest, &Payload, *ZombieASC);
+		break;
+	}
+
+	if (!bContestStarted)
+	{
+		// 좀비가 GA_RescueContest 를 아예 지급받지 못한 경우(DefaultAbilities 누락).
+		// 감염 타이머를 멈춘 채로 빠져나가면 인질이 영원히 잡힌 상태로 남으므로 반드시 되돌린다.
+		if (GrabAbility)
+		{
+			GrabAbility->ResumeInfectTimer();
+		}
 	}
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
