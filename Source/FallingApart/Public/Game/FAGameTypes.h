@@ -43,8 +43,7 @@ enum class EFARoundResult : uint8
 };
 
 /**
- * 포획(감염) 진행 상태. 서버가 채우고 잡은 좀비 · 잡힌 인간 양쪽 캐릭터에 복제된다.
- * 각 클라이언트의 UFAHUDWidget 이 이 상태를 폴링해서 한다.
+ * 포획(감염) 진행 상태. 서버가 채우고 전 클라이언트에 복제된다.
  */
 USTRUCT(BlueprintType)
 struct FFACaptureState
@@ -75,6 +74,48 @@ struct FFACaptureState
 	float ResistRatio = 0.0f;
 
 	bool IsActive() const { return TotalDuration > 0.0f; }
+};
+
+/** 구출 QTE(줄다리기)에서 이 캐릭터가 맡은 역할. */
+UENUM(BlueprintType)
+enum class EFAContestRole : uint8
+{
+	/** QTE 중이 아님 */
+	None	= 0,
+	/** 붙잡고 있는 좀비 — ContestGauge 를 들고 있는 호스트 */
+	Zombie	= 1,
+	/** 붙잡힌 인질 */
+	Victim	= 2,
+	/** 구하러 온 인간 */
+	Rescuer	= 3
+};
+
+/**
+ * 구출 QTE 진행 상태. 참가자 3명(좀비 · 인질 · 구조자) 전원의 캐릭터에 서버가 채우고 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFAContestState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	EFAContestRole Role = EFAContestRole::None;
+
+	/** 줄다리기 게이지 0~1. 1 이면 인간 승리(구출 성공) 직전, 0 이면 좀비 승리 직전. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	float Gauge = 0.5f;
+
+	/** QTE 가 끝나는 서버 월드 시각(초). 프롬프트의 남은 시간 표시용. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	float EndServerTime = 0.0f;
+
+	/**
+	 * 게이지를 들고 있는 좀비.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	TObjectPtr<AActor> HostZombie = nullptr;
+
+	bool IsActive() const { return Role != EFAContestRole::None; }
 };
 
 /**
