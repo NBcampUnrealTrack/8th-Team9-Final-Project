@@ -46,8 +46,10 @@ void UFAGA_Grab::ActivateAbility(
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[UFAGA_Grab] 1. ActivateAbility 호출됨"));
 	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
+		UE_LOG(LogTemp, Error, TEXT("[UFAGA_Grab] 2. CommitAbility 실패 (조건 미달)"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -56,15 +58,18 @@ void UFAGA_Grab::ActivateAbility(
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
 	if (!ZombieChar || !SourceASC)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[UFAGA_Grab] 2. 유효하지 않은 좀비 캐릭터 또는 ASC"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
 
 	if (!HasAuthority(&ActivationInfo))
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[UFAGA_Grab] 2. 권한 없음 (HasAuthority == false). 실행 중단."));
 		return;
 	}
 
+	UE_LOG(LogTemp, Warning, TEXT("[UFAGA_Grab] 3. 서버 권한 확인됨. 타겟 탐색 시작"));
 	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 QTE 의 남은 시간이 남아 있으면 안 된다.
 	RemainingInfectTime = 0.0f;
 
