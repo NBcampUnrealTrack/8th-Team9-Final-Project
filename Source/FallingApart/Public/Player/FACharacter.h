@@ -18,6 +18,7 @@ class UInputAction;
 class UFAVoiceComponent;
 class UAudioComponent;
 class AFAPlayerState;
+class UFACharacterStatusComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -136,6 +137,7 @@ public:
 	 * 기본 지급 어빌리티. 서버가 빙의 시점에 1회 지급한다.
 	 * 점프처럼 '룰로 봉인될 수 있는 행동'은 전부 어빌리티여야 한다 — 그래야 태그 하나로 막힌다.
 	 */
+	// 기본룰 ?..
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TArray<TSubclassOf<UFAGameplayAbility>> DefaultAbilities;
 
@@ -145,6 +147,9 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TSubclassOf<UGameplayEffect> InvulnerabilityEffect;
+	
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
@@ -155,6 +160,7 @@ private:
 	 * 이 게임은 라운드 중 리스폰이 없고(감염되면 같은 폰이 좀비가 된다),
 	 * 룰 효과의 소비자가 전부 캐릭터(CMC·카메라·PostProcess)라 아바타 옆에 두는 편이 참조가 짧다.
 	 */
+	//UFAAbilitySystemComponent 언리얼 형태의 포인터 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAAbilitySystemComponent> AbilitySystemComponent;
 

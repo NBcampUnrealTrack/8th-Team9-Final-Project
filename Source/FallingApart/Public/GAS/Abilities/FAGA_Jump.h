@@ -19,12 +19,14 @@ class FALLINGAPART_API UFAGA_Jump : public UFAGameplayAbility
 public:
 	UFAGA_Jump();
 
+	// 어빌리티 활성화 
 	virtual void ActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
+	// 어빌리티 가능여부 
 	virtual bool CanActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
