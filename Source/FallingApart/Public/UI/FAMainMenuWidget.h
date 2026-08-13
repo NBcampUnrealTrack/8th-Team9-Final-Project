@@ -104,7 +104,14 @@ private:
 	
 	UFUNCTION()
 	void ReturnToMainMenuButtonClicked();
-	
+
+	/** 버튼 전체가 공유하는 호버 소리. 표의 쿨다운(0.04초)이 목록을 빠르게 훑을 때의 연사를 막는다. */
+	UFUNCTION()
+	void OnButtonHovered();
+
+	/** 버튼 하나에 클릭·호버 소리를 한 번에 물린다. null 이면 아무것도 하지 않는다. */
+	void BindButtonAudio(UButton* Button);
+
 	void CloseMenu();
 	
 	void RestoreGameInputMode();

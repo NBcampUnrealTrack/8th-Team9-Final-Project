@@ -48,3 +48,15 @@ int32 UFARuleSettings::GetMaxActiveRules()
 	const UFARuleSettings* Settings = GetDefault<UFARuleSettings>();
 	return Settings ? FMath::Max(1, Settings->MaxActiveRules) : 4;
 }
+
+float UFARuleSettings::GetSelectionTimeLimit()
+{
+	const UFARuleSettings* Settings = GetDefault<UFARuleSettings>();
+	return Settings ? FMath::Max(1.0f, Settings->SelectionTimeLimit) : 10.0f;
+}
+
+float UFARuleSettings::GetChainDraftInterval()
+{
+	const UFARuleSettings* Settings = GetDefault<UFARuleSettings>();
+	return Settings ? FMath::Max(0.5f, Settings->ChainDraftInterval) : 6.0f;
+}

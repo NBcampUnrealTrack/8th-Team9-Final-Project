@@ -132,9 +132,34 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	/** 남은 시간이 이 값 이하면 bIsFinalCountdown 이 true 로. */
+	/**
+	 * 남은 시간이 이 값 이하면 bIsFinalCountdown 이 true 로.
+	 * 초침 간격이 좁아지기 시작하는 지점도 겸한다
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
 	float FinalCountdownSeconds = 30.0f;
+
+	//~ ---------------- 라운드 시계 소리 ----------------
+	//~ 짧은 tick 단발을 간격만 좁혀가며 반복.
+
+	/** 초침이 들리기 시작하는 남은 시간(초). 이 순간 Round_LastMinute 이 한 번 울린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
+	float TickStartSeconds = 60.0f;
+
+	/** FinalCountdownSeconds 위에서 쓰는 초침 간격(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
+	float TickIntervalSlow = 1.0f;
+
+	/** 남은 시간 0 에서의 초침 간격(초). FinalCountdownSeconds 부터 여기까지 선형으로 좁아진다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
+	float TickIntervalFast = 0.25f;
+
+	/**
+	 * 점수 무효화 소리를 감염 순간에서 얼마나 뒤로 미룰지(초).
+	 * 0 이면 Infect_Blackout · Sting_Infected 와 같은 프레임에 겹친다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD|Audio")
+	float ScoreVoidedDelay = 0.8f;
 
 private:
 	//~ 델리게이트 핸들러 — AddDynamic 대상.
@@ -166,13 +191,52 @@ private:
 	 * RoundPhase 와 CurrentRound 는 별개 복제 프로퍼티라 OnRep 순서가 보장되지 않음.
 	 * 폴링이면 그 순서에 의존하지 않음.
 	 */
-	void UpdatePolledValues();
+	void UpdatePolledValues(float DeltaTime);
+
+	/**
+	 * 내 캐릭터의 복제된 포획 상태를 읽어 게이지를 띄우고 · 갱신하고 · 내린다.
+	 * 포획 어빌리티는 ServerOnly 라 화면을 직접 못 건드리므로 이쪽에서 폴링한다.
+	 */
+	void UpdateCaptureGauge();
+
+	/** 초침을 울릴 때가 됐는지 누산기로 판정한다. 표시 초와 분리돼 있어야 1초보다 촘촘해질 수 있다. */
+	void UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInProgress, float DeltaTime);
+
+	/** 남은 시간에 대응하는 초침 간격(초). */
+	float GetRoundTickInterval(float SecondsRemaining) const;
+
+	/** 점수 종류별로 다른 소리를 내기 위해 직전 라운드 점수와 비교한다. */
+	void UpdateScoreAudio();
 
 	TWeakObjectPtr<AFAGameState> CachedGameState;
 	TWeakObjectPtr<AFAPlayerState> CachedPlayerState;
 
 	/** 마지막으로 이벤트를 내보낸 표시 초. -1 이면 아직 한 번도 안 냈다. */
 	int32 LastDisplayedSeconds = -1;
+
+	/** 마지막 초침 이후 흐른 시간(초). */
+	float TickAccumulator = 0.0f;
+
+	/** Round_LastMinute 을 이번 라운드에 이미 울렸는가. 초침 구간을 벗어나면 다시 false 가 된다. */
+	bool bLastMinuteAnnounced = false;
+
+	/**
+	 * 초침 구간(TickStartSeconds).
+	 * 이게 false 인 채로 구간 안에 들어와 있다면 '넘어선' 게 아니라 '이미 지난 뒤에 붙은' 것이다.
+	 */
+	bool bSawAboveTickWindow = false;
+
+	//~ 점수 소리 판정용 직전 값. -1 이면 아직 기준이 없다는 뜻이라 첫 갱신에서는 소리를 내지 않는다.
+	int32 LastPersonalScore = -1;
+	int32 LastTeamScore = -1;
+	bool bLastWasInfectedThisRound = false;
+
+	//~ 감염 소리 판정용. 기준이 없으면 첫 호출에서는 소리를 내지 않는다.
+	EFATeam LastLocalTeam = EFATeam::None;
+	bool bHasTeamBaseline = false;
+
+	/** Score_Voided 를 감염 순간에서 떼어놓기 위한 타이머. */
+	FTimerHandle ScoreVoidedTimerHandle;
 
 	int32 LastCurrentRound = -1;
 	int32 LastMaxRound = -1;

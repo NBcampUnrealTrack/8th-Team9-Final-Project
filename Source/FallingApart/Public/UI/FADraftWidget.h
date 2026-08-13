@@ -255,6 +255,9 @@ private:
 	/** 마지막으로 이벤트를 내보낸 표시 초. -1 이면 아직 한 번도 안 냈다. */
 	int32 LastDisplayedSeconds = -1;
 
+	/** 마지막 초침 이후 흐른 시간(초). 표시 초와 분리돼 있어야 간격이 1초 밑으로 내려간다. */
+	float TickAccumulator = 0.0f;
+
 	bool bIsOpen = false;
 
 	//~ GatherCardWidgets() 가 채우는 인덱스 접근용 사본. 원본은 위의 Btn_CardN … 이다.

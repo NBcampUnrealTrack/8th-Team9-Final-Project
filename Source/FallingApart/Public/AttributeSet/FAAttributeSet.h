@@ -97,6 +97,14 @@ public:
 
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, VisionRange)
 
+	// 카메라 시야각
+	//Vision.NarrowFOV
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_FieldOfView,Category = "Attribute|Vision")
+	FGameplayAttributeData FieldOfView;
+
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, FieldOfView)
+
+
 #pragma endregion
 
 #pragma region GrabAndRescue
@@ -151,6 +159,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_VisionRange(const FGameplayAttributeData& OldValue);
+	
+	UFUNCTION()
+	void OnRep_FieldOfView(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
 	void OnRep_GrabRange(const FGameplayAttributeData& OldValue);

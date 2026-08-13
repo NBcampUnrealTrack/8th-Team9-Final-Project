@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -34,6 +34,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Rule", meta = (ClampMin = "1"))
 	int32 MaxActiveRules = 4;
 
+	/** 드래프트 후보 선택 제한 시간(초). 이 시간이 지나면 서버가 무작위로 확정한다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "1.0"))
+	float SelectionTimeLimit = 10.0f;
+
+	/** 연속 드래프트 1장당 간격(초) (GDD 3.4 · 4번 다이어그램 "연속 드래프트 N회 · 1장당 6초"). */
+	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "0.5"))
+	float ChainDraftInterval = 6.0f;
+
 	//~ ---------------- 조회 헬퍼 ----------------
 
 	/** 표를 동기 로드해서 돌려준다. 미지정이면 nullptr (로그 1회). */
@@ -43,4 +51,10 @@ public:
 	static const FFARuleCardRow* FindRuleCard(FName RuleId);
 
 	static int32 GetMaxActiveRules();
+
+	/** 드래프트 후보 선택 제한 시간(초). */
+	static float GetSelectionTimeLimit();
+
+	/** 연속 드래프트 1장당 간격(초). */
+	static float GetChainDraftInterval();
 };
