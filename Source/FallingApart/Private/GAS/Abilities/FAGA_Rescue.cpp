@@ -18,7 +18,7 @@ namespace FARescueAudio
 
 UFAGA_Rescue::UFAGA_Rescue()
 {
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
