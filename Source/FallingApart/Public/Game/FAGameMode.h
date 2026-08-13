@@ -45,7 +45,9 @@ public:
 	/** 라운드를 즉시 종료한다. 승패가 이미 확정된 경우에만 호출할 것. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Game")
 	void EndRound(EFARoundResult Result);
-
+	
+	UFUNCTION(Exec)
+	void ForceEndRound();
 	/**
 	 * 데스매치 참가자 확정 (GDD 5.4 · 1등 완전 동점자 2~3명).
 	 *
@@ -74,6 +76,7 @@ public:
 protected:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual bool ReadyToStartMatch_Implementation() override;
 	virtual void HandleMatchHasStarted() override;
 	virtual void HandleMatchHasEnded() override;
@@ -207,5 +210,22 @@ private:
 	int32 ExpectedPlayersToStart = 0;
 
 	bool bHasLobbyMatchContext = false;
+	
+	// [박지석] - 최종 결과창 출력 10초후 로비로 다같이 돌아가는 시스템 관련
+private:
+	void BeginReturnToLobby();
+	void HandleSessionReopenForLobby(bool bSuccess);
+	void TravelToLobby();
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Lobby")
+	float ReturnToLobbyDelaySeconds = 10.f;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Lobby")
+	TSoftObjectPtr<UWorld> LobbyLevel;
+	
+	FTimerHandle ReturnToLobbyTimerHandle;
+	FDelegateHandle SessionReopenForlobbyDelegateHandle;
+	
+	bool bReturningToLobby = false;
 	
 };
