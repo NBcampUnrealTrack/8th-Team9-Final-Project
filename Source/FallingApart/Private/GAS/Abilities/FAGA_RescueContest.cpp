@@ -30,6 +30,11 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 		return;
 	}
 
+	if (!HasAuthority(&ActivationInfo))
+	{
+		return;
+	}
+
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
 
 	// InstancedPerActor 라 인스턴스가 QTE 사이에 재사용된다 — 안 지우면 두 번째 QTE 가 아예 판정되지 않는다.
