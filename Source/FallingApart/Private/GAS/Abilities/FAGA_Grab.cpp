@@ -9,6 +9,16 @@
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
 
+namespace FAGrabAudio
+{
+	// 표의 RowName 과 같아야 한다 (DT_Sound_Character).
+	// 이 어빌리티는 ServerOnly 라 소리는 반드시 AFACharacter 의 멀티캐스트를 거쳐야 한다.
+	static const FName Attempt(TEXT("Grab_Attempt"));
+	static const FName Success(TEXT("Grab_Success"));
+	static const FName Miss(TEXT("Grab_Miss"));
+	static const FName InfectComplete(TEXT("Infect_Complete"));
+}
+
 UFAGA_Grab::UFAGA_Grab()
 {
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
@@ -56,12 +66,17 @@ void UFAGA_Grab::ActivateAbility(
 	float GrabRange = SourceASC->GetNumericAttribute(UFAAttributeSet::GetGrabRangeAttribute());
 	if (GrabRange <= 0.0f) GrabRange = 200.0f;
 
+	// 휘두르는 소리는 맞았든 빗나갔든 먼저 난다 — 주변 인간이 반응할 수 있어야 한다.
+	ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Attempt);
+
 	float SphereRadius = 50.0f;
 	AFACharacter* TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
 
 	// 대상이 없거나 이미 다른 좀비에게 잡힌 상태인 경우
 	if (!TargetHuman || TargetHuman->GetAbilitySystemComponent()->HasMatchingGameplayTag(Tags.State_Grabbed))
 	{
+		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Miss);
+
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
@@ -72,6 +87,10 @@ void UFAGA_Grab::ActivateAbility(
 
 	if (TargetASC)
 	{
+		// 성공음은 실제로 붙잡는 처리 안에서 낸다 — 밖에서 내면 아래가 통째로 건너뛰었을 때
+		// 아무 일도 안 일어났는데 소리만 나간다.
+		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Success);
+
 		// Effect 적용
 		if (GrabberGrabbingEffectClass)
 		{
@@ -153,6 +172,11 @@ void UFAGA_Grab::OnInfectTimerExpired()
 {
 	if (GrabbedVictim.IsValid())
 	{
+		// 감염이 성립한 지점의 소리 — 주변 사람이 "저기서 한 명 넘어갔다"를 듣는 용도다.
+		// 당사자에게는 UFAHUDWidget 이 진영 복제를 보고 Infect_Blackout + Sting_Infected 라는
+		// 전용 2D 소리를 내주므로, 본인 화면에서는 이걸 빼야 같은 순간에 세 겹으로 겹치지 않는다.
+		GrabbedVictim->Multicast_PlayFASoundAtLocation(FAGrabAudio::InfectComplete, /*bSkipLocalOwner=*/true);
+
 		// TODO: 진영 전환(Rule.Team.Zombie) 및 개인 점수 +2 지급
 	}
 

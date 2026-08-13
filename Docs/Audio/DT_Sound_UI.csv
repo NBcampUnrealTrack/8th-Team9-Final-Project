@@ -16,8 +16,8 @@ UI_PlayerLeave,,UI,True,,,0.60,0.94,0.03,0.10,False,True
 Draft_Open,,Draft,True,,,1.00,1.00,0.00,0.00,False,True
 Draft_CardHover,,Draft,True,,,0.50,0.95,0.03,0.04,False,True
 Draft_CardSelect,,Draft,True,,,0.90,1.00,0.03,0.05,False,True
-Draft_TimerTick,,Draft,True,,,0.50,1.00,0.00,0.50,False,True
-Draft_TimerUrgent,,Draft,True,,,0.75,1.00,0.00,0.50,False,True
+Draft_TimerTick,,Draft,True,,,0.50,1.00,0.00,0.00,False,True
+Draft_TimerUrgent,,Draft,True,,,0.75,1.00,0.00,0.00,False,True
 Draft_AutoPick,,Draft,True,,,0.90,1.00,0.00,0.00,False,True
 Draft_RuleApplied_T1,,Draft,True,,,0.85,1.00,0.04,0.00,False,True
 Draft_RuleApplied_T2,,Draft,True,,,0.95,1.00,0.04,0.00,False,True

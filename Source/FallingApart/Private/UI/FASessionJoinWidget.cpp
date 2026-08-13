@@ -3,12 +3,23 @@
 
 #include "UI/FASessionJoinWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerState.h"
 #include "UI/FASessionEntryWidget.h"
+
+namespace FASessionJoinAudio
+{
+	static const FName Click(TEXT("UI_Click"));
+	static const FName Hover(TEXT("UI_Hover"));
+
+	/** 목록이 채워졌을 때 / 한 방도 못 찾았을 때. */
+	static const FName Success(TEXT("UI_Success"));
+	static const FName Denied(TEXT("UI_Denied"));
+}
 
 bool UFASessionJoinWidget::Initialize()
 {
@@ -26,9 +37,15 @@ bool UFASessionJoinWidget::Initialize()
 	if (RefreshButton)
 	{
 		RefreshButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshButtonClicked);
+		RefreshButton->OnHovered.AddUniqueDynamic(this, &ThisClass::HandleButtonHovered);
 	}
-	
+
 	return true;
+}
+
+void UFASessionJoinWidget::HandleButtonHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FASessionJoinAudio::Hover);
 }
 
 void UFASessionJoinWidget::AddSessionSearchResult(const FOnlineSessionSearchResult& Result)
@@ -69,6 +86,11 @@ void UFASessionJoinWidget::ShowSearchResults(const TArray<FOnlineSessionSearchRe
 	}
 
 	ShowStatusMessage(FText::GetEmpty());
+
+	// 검색은 몇 초씩 걸린다 — 목록을 계속 쳐다보지 않아도 끝났다는 걸 알아야 한다.
+	UFAAudioSubsystem::PlayFASound(this, SessionResults.Num() > 0
+		? FASessionJoinAudio::Success
+		: FASessionJoinAudio::Denied);
 }
 
 void UFASessionJoinWidget::ShowStatusMessage(const FText& Message)
@@ -87,6 +109,8 @@ void UFASessionJoinWidget::SetJoinInProgress(bool bIsJoining)
 
 void UFASessionJoinWidget::RefreshButtonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FASessionJoinAudio::Click);
+
 	RequestRefresh();
 }
 

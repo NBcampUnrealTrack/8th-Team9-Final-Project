@@ -16,6 +16,8 @@ class UFAGameplayAbility;
 class UGameplayEffect;
 class UInputAction;
 class UFAVoiceComponent;
+class UAudioComponent;
+class AFAPlayerState;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -49,12 +51,37 @@ public:
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
 
+	/**
+	 * 주인 화면에서는 재생하지 않는다.
+	 */
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayFASoundAtLocation(FName SoundId, bool bSkipLocalOwner = false);
+
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 
+	virtual void OnRep_Controller() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/**
+	 * 점프·착지 소리의 창구.
+	 */
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
+
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
+
+	/** 진영에 딸린 연출(좀비 그르렁 루프)을 현재 진영에 맞춘다. */
+	UFUNCTION()
+	void HandleTeamChanged(EFATeam NewTeam);
+
+	/**
+	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
+	 * PlayerState 와 Pawn 은 복제 도착 순서가 보장되지 않아 빙의 시점과 OnRep 양쪽에서 부른다.
+	 */
+	void BindTeamNotify();
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -138,6 +165,32 @@ private:
 
 	/** 어빌리티 중복 지급 방지 — PossessedBy 와 OnRep_PlayerState 가 둘 다 초기화를 부른다. */
 	bool bAbilitiesGranted = false;
+
+	//~ ---------------- 사운드 ----------------
+
+	/**
+	 * 좀비인 동안 계속 도는 그르렁 루프.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> GrowlLoopComponent;
+
+	/** 진영 알림을 이미 물린 PlayerState. 같은 대상에 두 번 묶지 않기 위한 것. */
+	TWeakObjectPtr<AFAPlayerState> TeamNotifySource;
+
+	/**
+	 * 이번 낙하에서 기록한 최대 하강 속도(cm/s, 양수).
+	 */
+	float PeakFallSpeed = 0.0f;
+
+	/** 이 속도 이상으로 떨어져 닿으면 Jump_Land 대신 Land_Heavy. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float HeavyLandSpeed = 900.0f;
+
+	/**
+	 * 공중에 뜨는 순간 위로 이만큼 이상 솟고 있으면 '스스로 점프한 것'으로 본다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float JumpDetectSpeed = 100.0f;
 
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
