@@ -44,6 +44,14 @@ private:
 	/** 대결 결과 확정 및 처리 */
 	void ResolveContestOutcome(bool bHumanWon);
 
+	/**
+	 * 줄다리기 게이지가 움직일 때마다 잡힌 인간 · 좀비 양쪽 HUD 로 흘려보낸다.
+	 */
+	void HandleContestGaugeChanged(const struct FOnAttributeChangeData& Data);
+
+	/** 참가자 전원의 포획 게이지에 줄다리기 진행도를 써 넣는다. */
+	void BroadcastResistRatio(float Ratio);
+
 private:
 	UPROPERTY()
 	TWeakObjectPtr<AFACharacter> TargetZombie;
@@ -56,4 +64,14 @@ private:
 
 	/** 어빌리티 종료 시 상태 일괄 해제를 위한 GE 핸들 맵 */
 	TMap<AFACharacter*, FActiveGameplayEffectHandle> ContestingHandles;
+
+	/** ContestGauge 변경 구독. EndAbility 에서 반드시 해제한다. */
+	FDelegateHandle ContestGaugeChangedHandle;
+
+	/**
+	 * 승패를 이미 확정했는가.
+	 * 완료 경로가 게이지 100 · 게이지 0 · 3초 타임아웃 세 갈래라 같은 프레임에 둘이 겹칠 수 있고,
+	 * 그러면 구출 점수가 두 번 붙는다.
+	 */
+	bool bOutcomeResolved = false;
 };

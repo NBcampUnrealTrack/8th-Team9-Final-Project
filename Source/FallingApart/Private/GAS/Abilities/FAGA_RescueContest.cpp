@@ -2,7 +2,9 @@
 #include "GAS/Abilities/FAGA_Grab.h"
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
+#include "Game/FAGameMode.h"
 #include "Player/FACharacter.h"
+#include "Player/FAPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitAttributeChange.h"
 #include "Abilities/Tasks/AbilityTask_WaitDelay.h"
@@ -23,6 +25,9 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	}
 
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
+
+	// InstancedPerActor 라 인스턴스가 QTE 사이에 재사용된다 — 안 지우면 두 번째 QTE 가 아예 판정되지 않는다.
+	bOutcomeResolved = false;
 
 	// 페이로드에서 참가자 3명 정보 파싱
 	Rescuer = Cast<AFACharacter>(const_cast<AActor*>(TriggerEventData->Instigator.Get()));
@@ -53,6 +58,12 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 
 	// QTE 게이지 50(중립)으로 초기화
 	SourceASC->SetNumericAttributeBase(UFAAttributeSet::GetContestGaugeAttribute(), 50.0f);
+
+	// 게이지를 양쪽 HUD 로 흘려보낸다. 초기화 뒤에 구독해야 50 을 두 번 쓰지 않는다.
+	ContestGaugeChangedHandle = SourceASC->GetGameplayAttributeValueChangeDelegate(
+		UFAAttributeSet::GetContestGaugeAttribute()).AddUObject(this, &UFAGA_RescueContest::HandleContestGaugeChanged);
+
+	BroadcastResistRatio(0.5f);
 
 	//~ GAS Tasks: 게이지 임계치 및 제한 시간 감시
 
@@ -92,8 +103,34 @@ void UFAGA_RescueContest::OnTimeOut()
 	ResolveContestOutcome(FinalGauge > 50.0f);
 }
 
+void UFAGA_RescueContest::HandleContestGaugeChanged(const FOnAttributeChangeData& Data)
+{
+	// 게이지 0~100 을 그대로 0~1 로. 1 에 가까울수록 인간이 이기고 있다는 뜻이다.
+	BroadcastResistRatio(Data.NewValue / 100.0f);
+}
+
+void UFAGA_RescueContest::BroadcastResistRatio(float Ratio)
+{
+	// 게이지가 이미 떠 있는 두 사람만 대상이다 — 구조자는 포획 상태가 아니라 값을 받아도 쓸 곳이 없다.
+	if (TargetZombie.IsValid())
+	{
+		TargetZombie->SetCaptureResistRatio(Ratio);
+	}
+	if (GrabbedVictim.IsValid())
+	{
+		GrabbedVictim->SetCaptureResistRatio(Ratio);
+	}
+}
+
 void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 {
+	// 먼저 도착한 판정만 유효하다.
+	if (bOutcomeResolved)
+	{
+		return;
+	}
+	bOutcomeResolved = true;
+
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
 	if (bHumanWon)
@@ -109,6 +146,19 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 			{
 				FGameplayEffectSpecHandle StunSpec = MakeOutgoingGameplayEffectSpec(ZombieStunEffectClass);
 				ZombieASC->ApplyGameplayEffectSpecToSelf(*StunSpec.Data.Get());
+			}
+		}
+
+		// 구출 성공 +1 은 게임모드가 매긴다. 위 CancelAbilities 가 GA_Grab 을 끝내면서
+		// 포획 게이지까지 같이 내려가므로, 점수는 그 뒤에 붙여도 순서 문제가 없다.
+		AFAPlayerState* RescuerState = Rescuer.IsValid() ? Rescuer->GetPlayerState<AFAPlayerState>() : nullptr;
+		AFAPlayerState* VictimState = GrabbedVictim.IsValid() ? GrabbedVictim->GetPlayerState<AFAPlayerState>() : nullptr;
+
+		if (const UWorld* World = GetWorld())
+		{
+			if (AFAGameMode* GameMode = World->GetAuthGameMode<AFAGameMode>())
+			{
+				GameMode->HandleRescueSuccess(RescuerState, VictimState);
 			}
 		}
 	}
@@ -140,6 +190,20 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 
 void UFAGA_RescueContest::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
+	// 구독을 남겨두면 다음 QTE 에서 죽은 인스턴스가 또 불린다.
+	if (ContestGaugeChangedHandle.IsValid())
+	{
+		if (UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo())
+		{
+			SourceASC->GetGameplayAttributeValueChangeDelegate(
+				UFAAttributeSet::GetContestGaugeAttribute()).Remove(ContestGaugeChangedHandle);
+		}
+		ContestGaugeChangedHandle.Reset();
+	}
+
+	// 좀비가 이겨서 포획이 계속되는 경우 게이지는 그대로 남는다 — 줄다리기 표시만 지운다.
+	BroadcastResistRatio(0.0f);
+
 	// 어빌리티 종료 시 참가자 3명 전원의 Contesting 상태를 일괄 해제한다.
 	for (auto& Pair : ContestingHandles)
 	{
