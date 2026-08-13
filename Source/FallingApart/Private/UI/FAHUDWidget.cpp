@@ -3,8 +3,23 @@
 
 #include "UI/FAHUDWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Game/FAGameState.h"
 #include "Player/FAPlayerState.h"
+
+namespace FAHUDAudio
+{
+	/** 표의 RowName 과 같아야 한다 (DT_Sound_Game). */
+	static const FName RoundTimerTick(TEXT("Round_Timer_Tick"));
+	static const FName RoundLastMinute(TEXT("Round_LastMinute"));
+	static const FName ScorePersonal(TEXT("Score_Personal"));
+	static const FName ScoreTeam(TEXT("Score_Team"));
+	static const FName ScoreVoided(TEXT("Score_Voided"));
+
+	/** 감염 확정 순간 로컬 플레이어에게만 나는 소리 (DT_Sound_Music · DT_Sound_Character). */
+	static const FName StingInfected(TEXT("Sting_Infected"));
+	static const FName InfectBlackout(TEXT("Infect_Blackout"));
+}
 
 namespace
 {
@@ -21,7 +36,7 @@ void UFAHUDWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	RefreshBindings();
-	UpdatePolledValues();
+	UpdatePolledValues(0.0f);
 }
 
 void UFAHUDWidget::NativeDestruct()
@@ -38,7 +53,7 @@ void UFAHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 	// 포인터 비교뿐이라 매 프레임 불러도 부담이 없움.
 	RefreshBindings();
-	UpdatePolledValues();
+	UpdatePolledValues(InDeltaTime);
 }
 
 float UFAHUDWidget::GetRoundTimeRemaining() const
@@ -236,6 +251,9 @@ void UFAHUDWidget::UnbindGameState()
 	LastDisplayedSeconds = -1;
 	LastCurrentRound = -1;
 	LastMaxRound = -1;
+
+	TickAccumulator = 0.0f;
+	bLastMinuteAnnounced = false;
 }
 
 void UFAHUDWidget::BindPlayerState(AFAPlayerState* NewPlayerState)
@@ -263,9 +281,16 @@ void UFAHUDWidget::UnbindPlayerState()
 	}
 
 	CachedPlayerState = nullptr;
+
+	// 다른 PlayerState 로 갈아타는 중이다 — 이전 주인의 점수·진영을 기준으로 삼으면 안 된다.
+	LastPersonalScore = -1;
+	LastTeamScore = -1;
+	bLastWasInfectedThisRound = false;
+	LastLocalTeam = EFATeam::None;
+	bHasTeamBaseline = false;
 }
 
-void UFAHUDWidget::UpdatePolledValues()
+void UFAHUDWidget::UpdatePolledValues(float DeltaTime)
 {
 	const AFAGameState* FAGameState = CachedGameState.Get();
 	if (!FAGameState)
@@ -283,14 +308,62 @@ void UFAHUDWidget::UpdatePolledValues()
 	}
 
 	const float SecondsRemaining = FAGameState->GetRoundTimeRemaining();
+	const bool bRoundInProgress = FAGameState->IsRoundInProgress();
+
 	const int32 DisplayedSeconds = FMath::Max(0, FMath::CeilToInt(SecondsRemaining));
 	if (DisplayedSeconds != LastDisplayedSeconds)
 	{
 		LastDisplayedSeconds = DisplayedSeconds;
 
-		const bool bIsFinalCountdown = FAGameState->IsRoundInProgress() && SecondsRemaining <= FinalCountdownSeconds;
+		const bool bIsFinalCountdown = bRoundInProgress && SecondsRemaining <= FinalCountdownSeconds;
 		OnRoundTimeChanged(FormatRoundTime(SecondsRemaining), SecondsRemaining, bIsFinalCountdown);
 	}
+
+	// 초침은 표시 초와 따로 논다 — 표시 초에 묶으면 1초보다 촘촘해질 수가 없다.
+	UpdateRoundTimerAudio(SecondsRemaining, bRoundInProgress, DeltaTime);
+}
+
+void UFAHUDWidget::UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInProgress, float DeltaTime)
+{
+	// 라운드가 도는 동안, 그것도 마지막 1분에만 들린다. 3분 내내 째깍거리면 아무도 못 견딘다.
+	if (!bRoundInProgress || SecondsRemaining > TickStartSeconds || SecondsRemaining <= 0.0f)
+	{
+		TickAccumulator = 0.0f;
+		bLastMinuteAnnounced = false;
+		return;
+	}
+
+	// "1분 남았다"는 신호는 초침과 별개로 딱 한 번.
+	if (!bLastMinuteAnnounced)
+	{
+		bLastMinuteAnnounced = true;
+		UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::RoundLastMinute);
+
+		// 스팅어와 첫 초침이 같은 프레임에 겹치지 않도록 여기서부터 새로 센다.
+		TickAccumulator = 0.0f;
+		return;
+	}
+
+	TickAccumulator += DeltaTime;
+	if (TickAccumulator < GetRoundTickInterval(SecondsRemaining))
+	{
+		return;
+	}
+
+	TickAccumulator = 0.0f;
+	UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::RoundTimerTick);
+}
+
+float UFAHUDWidget::GetRoundTickInterval(float SecondsRemaining) const
+{
+	if (SecondsRemaining >= FinalCountdownSeconds)
+	{
+		return TickIntervalSlow;
+	}
+
+	// 0 초에 가까워질수록 선형으로 촘촘해진다. 음정은 그대로라 '빨라지는 시계'로 들린다.
+	const float Alpha = FMath::Clamp(SecondsRemaining / FMath::Max(FinalCountdownSeconds, UE_KINDA_SMALL_NUMBER), 0.0f, 1.0f);
+	return FMath::Lerp(TickIntervalFast, TickIntervalSlow, Alpha);
 }
 
 void UFAHUDWidget::HandleRoundPhaseChanged(EFARoundPhase NewPhase)
@@ -321,10 +394,68 @@ void UFAHUDWidget::HandleRoundEnded(int32 RoundIndex, EFARoundResult Result)
 
 void UFAHUDWidget::HandleLocalTeamChanged(EFATeam NewTeam)
 {
+	// 감염은 되돌아오지 않는다 — Human -> Zombie 전환이 곧 "내가 당했다"는 신호다.
+	// 이 위젯은 로컬 플레이어 것만 들고 있으므로 여기서 내는 소리는 당사자에게만 들린다.
+	//
+	// 첫 호출은 기준을 잡기만 한다. BindPlayerState() 가 현재 진영으로 이 함수를 한 번 부르므로,
+	// 이미 좀비인 상태에서 HUD 가 다시 묶이면(늦은 접속 · 위젯 재생성) 감염 소리가 또 난다.
+	if (bHasTeamBaseline && LastLocalTeam == EFATeam::Human && NewTeam == EFATeam::Zombie)
+	{
+		UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::InfectBlackout);
+		UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::StingInfected);
+	}
+
+	LastLocalTeam = NewTeam;
+	bHasTeamBaseline = true;
+
 	OnLocalTeamChanged(NewTeam);
 }
 
 void UFAHUDWidget::HandleLocalScoreChanged()
 {
+	UpdateScoreAudio();
+
 	OnLocalScoreChanged(GetLocalDisplayScore());
+}
+
+void UFAHUDWidget::UpdateScoreAudio()
+{
+	const AFAPlayerState* FAPlayerState = CachedPlayerState.Get();
+	if (!FAPlayerState)
+	{
+		return;
+	}
+
+	// 진영이 바뀌어도 같은 칸을 계속 본다 — 인간 계와 좀비 계는 동시에 늘지 않는다.
+	const FFAPlayerScore& RoundScore = FAPlayerState->GetRoundScore();
+	const int32 Personal = RoundScore.HumanPersonal + RoundScore.ZombiePersonal;
+	const int32 Team = RoundScore.HumanTeam + RoundScore.ZombieTeam;
+	const bool bVoided = RoundScore.bWasInfectedThisRound;
+
+	// 첫 갱신은 기준을 잡기만 한다. 라운드 도중 접속해도 없던 점수가 울리지 않는다.
+	const bool bHasBaseline = LastPersonalScore >= 0 && LastTeamScore >= 0;
+
+	if (bHasBaseline)
+	{
+		// 감염으로 인간 팀 점수 자격을 잃는 순간. false -> true 로 바뀔 때만 울린다
+		// (라운드 정산에서 true -> false 로 되돌아가는 건 초기화지 무효화가 아니다).
+		if (bVoided && !bLastWasInfectedThisRound)
+		{
+			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScoreVoided);
+		}
+
+		// 늘어날 때만. CommitRoundScore() 가 라운드 점수를 0 으로 비우는 건 소리를 낼 일이 아니다.
+		if (Personal > LastPersonalScore)
+		{
+			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScorePersonal);
+		}
+		if (Team > LastTeamScore)
+		{
+			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScoreTeam);
+		}
+	}
+
+	LastPersonalScore = Personal;
+	LastTeamScore = Team;
+	bLastWasInfectedThisRound = bVoided;
 }

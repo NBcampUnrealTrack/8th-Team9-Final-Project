@@ -3,6 +3,7 @@
 
 #include "UI/FALobbyMainWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/ListView.h"
 #include "Components/TextBlock.h"
@@ -10,6 +11,18 @@
 #include "Player/FALobbyPlayerController.h"
 #include "Player/FALobbyPlayerState.h"
 #include "UI/FALobbyPlayerEntryWidget.h"
+
+namespace FALobbyAudio
+{
+	static const FName Click(TEXT("UI_Click"));
+	static const FName Hover(TEXT("UI_Hover"));
+
+	/** 준비 버튼은 켜고 끄는 토글이라 클릭음이 아니라 토글음을 쓴다. */
+	static const FName Toggle(TEXT("UI_Toggle"));
+
+	static const FName PlayerJoin(TEXT("UI_PlayerJoin"));
+	static const FName PlayerLeave(TEXT("UI_PlayerLeave"));
+}
 
 
 void UFALobbyMainWidget::MenuSetup()
@@ -33,20 +46,27 @@ void UFALobbyMainWidget::NativeOnInitialized()
 	if (Button_Ready)
 	{
 		Button_Ready->OnClicked.AddDynamic(this, &UFALobbyMainWidget::OnReadybuttonClicked);
+		Button_Ready->OnHovered.AddUniqueDynamic(this, &UFALobbyMainWidget::OnButtonHovered);
 	}
 	if (Button_Start)
 	{
-		// 일단은 리슨서버라면 
+		// 일단은 리슨서버라면
 		ENetMode NetMode = GetWorld()->GetNetMode();
 		if (NetMode == ENetMode::NM_ListenServer)
 		{
 			Button_Start->SetVisibility(ESlateVisibility::Visible);
 			Button_Start->OnClicked.AddDynamic(this, &UFALobbyMainWidget::OnStartbuttonClicked);
+			Button_Start->OnHovered.AddUniqueDynamic(this, &UFALobbyMainWidget::OnButtonHovered);
 		}else
 		{
 			Button_Start->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+}
+
+void UFALobbyMainWidget::OnButtonHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FALobbyAudio::Hover);
 }
 
 void UFALobbyMainWidget::NativeConstruct()
@@ -93,10 +113,12 @@ void UFALobbyMainWidget::InitializeLobby()
 void UFALobbyMainWidget::RefreshLobby()
 {
 	AFALobbyGameState* LobbyGameState = GetWorld()->GetGameState<AFALobbyGameState>();
-	
+
 	if (!LobbyGameState)
 		return;
-	
+
+	UpdateRosterAudio(LobbyGameState->GetConnectedPlayerCount());
+
 	Text_PlayerCount->SetText(
 		FText::AsNumber(LobbyGameState->GetConnectedPlayerCount()));
 
@@ -154,8 +176,23 @@ void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 	}
 }
 
+void UFALobbyMainWidget::UpdateRosterAudio(int32 ConnectedCount)
+{
+	// 첫 갱신은 기준만 잡는다. 로비에 들어서는 순간 이미 있던 사람 수만큼 소리가 나면 안 된다.
+	if (LastConnectedCount >= 0 && ConnectedCount != LastConnectedCount)
+	{
+		UFAAudioSubsystem::PlayFASound(this, ConnectedCount > LastConnectedCount
+			? FALobbyAudio::PlayerJoin
+			: FALobbyAudio::PlayerLeave);
+	}
+
+	LastConnectedCount = ConnectedCount;
+}
+
 void UFALobbyMainWidget::OnReadybuttonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FALobbyAudio::Toggle);
+
 	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 	AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(GetOwningPlayerState());
 	if (PlayerController && LobbyPlayerState)
@@ -171,5 +208,5 @@ void UFALobbyMainWidget::OnReadybuttonClicked()
 
 void UFALobbyMainWidget::OnStartbuttonClicked()
 {
-	
+	UFAAudioSubsystem::PlayFASound(this, FALobbyAudio::Click);
 }

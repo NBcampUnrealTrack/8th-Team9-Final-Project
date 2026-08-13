@@ -13,10 +13,21 @@
 
 #define LOCTEXT_NAMESPACE "PrototypeMainMenu"
 
+namespace FAMainMenuAudio
+{
+	static const FName Click(TEXT("UI_Click"));
+	static const FName Back(TEXT("UI_Back"));
+	static const FName Hover(TEXT("UI_Hover"));
+	static const FName Denied(TEXT("UI_Denied"));
+	static const FName PopupOpen(TEXT("UI_PopupOpen"));
+	static const FName Success(TEXT("UI_Success"));
+	static const FName Error(TEXT("UI_Error"));
+}
+
 void UFAMainMenuWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
-	
+
 	//각 버튼에 이벤트 바인딩.
 	if (HostButton)
 	{
@@ -42,6 +53,17 @@ void UFAMainMenuWidget::NativeOnInitialized()
 	{
 		QuitButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnQuitButtonClicked);
 	}
+
+	// 클릭 소리는 각 핸들러가 직접 낸다 — 버튼마다 성격(확정 · 뒤로 · 막힘)이 달라서다.
+	// 호버는 전부 같으므로 여기서 한 번에 묶는다. ConfirmJoinButton 은 핸들러가 없어도
+	// 화면에 떠 있으면 마우스가 지나가므로 호버 소리는 붙여둔다.
+	BindButtonAudio(HostButton);
+	BindButtonAudio(JoinButton);
+	BindButtonAudio(ConfirmHostButton);
+	BindButtonAudio(ConfirmJoinButton);
+	BindButtonAudio(ReturnToMainMenuButton);
+	BindButtonAudio(SettingButton);
+	BindButtonAudio(QuitButton);
 
 	if (SessionCreateWidget)
 	{
@@ -122,6 +144,19 @@ void UFAMainMenuWidget::MenuSetup()
 	}
 }
 
+void UFAMainMenuWidget::OnButtonHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Hover);
+}
+
+void UFAMainMenuWidget::BindButtonAudio(UButton* Button)
+{
+	if (Button)
+	{
+		Button->OnHovered.AddUniqueDynamic(this, &ThisClass::OnButtonHovered);
+	}
+}
+
 void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 {
 	if (!WidgetSwitcher_Page)
@@ -129,7 +164,15 @@ void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 		return;
 	}
 
-	WidgetSwitcher_Page->SetActiveWidgetIndex(static_cast<int32>(Page));
+	// 하위 페이지로 들어가는 것만 창 열리는 소리로 낸다. 메인으로 돌아가는 쪽은 뒤로 가기 버튼이
+	// 이미 UI_Back 을 내므로 여기서 또 내면 두 소리가 겹친다.
+	const int32 PageIndex = static_cast<int32>(Page);
+	if (Page != EPrototypeMenuPage::Main && WidgetSwitcher_Page->GetActiveWidgetIndex() != PageIndex)
+	{
+		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupOpen);
+	}
+
+	WidgetSwitcher_Page->SetActiveWidgetIndex(PageIndex);
 	if (Page == EPrototypeMenuPage::JoinSession && SessionJoinWidget)
 	{
 		SessionJoinWidget->ActivatePage();
@@ -175,7 +218,7 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 {
 	if (Result == EFASessionRequestResult::Success)
 	{
-		UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Success"));
+		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
 
 		// 성공했다면, 로비레벨을 리슨서버로 오픈
 		UWorld* World = GetWorld();
@@ -192,7 +235,7 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 	}
 
 	// 방 만들기 실패는 화면에 아직 표시가 없다 — 최소한 소리로는 알려야 한다.
-	UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Error"));
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
 
 	UE_LOG(LogFAOSS, Warning, TEXT("Create session failed: %s"), *UEnum::GetValueAsString(Result));
 }
@@ -241,13 +284,13 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 			SessionJoinWidget->ShowStatusMessage(ErrorMessage);
 		}
 		// 비밀번호 오류가 제일 흔하다 — 메시지를 안 보고 있어도 실패했다는 건 알아야 한다.
-		UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Error"));
+		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
 
 		UE_LOG(LogFAOSS, Error, TEXT("Join session failed: %s"), *UEnum::GetValueAsString(Result));
 		return;
 	}
 
-	UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Success"));
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
 
 	if (APlayerController* PlayerController = GetOwningPlayer())
 	{
@@ -256,8 +299,9 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 }
 
 
-void UFAMainMenuWidget::OnHostButtonClicked() 
+void UFAMainMenuWidget::OnHostButtonClicked()
 {
+	// 클릭 소리는 ShowPage() 의 열림 소리와 겹치므로 여기서 따로 내지 않는다.
 	ShowPage(EPrototypeMenuPage::CreateSession);
 }
 
@@ -268,11 +312,16 @@ void UFAMainMenuWidget::OnJoinButtonClicked()
 
 void UFAMainMenuWidget::OnSettingButtonClicked()
 {
+	// 눌러도 아무 일 없는 버튼이라 최소한 "안 된다"는 건 들려야 한다 (일시정지 메뉴와 같은 처리).
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Denied);
+
 	//TODO : 메뉴 UI추가 및 설정 창 이동
 }
 
 void UFAMainMenuWidget::OnQuitButtonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Click);
+
 	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 	UKismetSystemLibrary::QuitGame(
 		GetWorld(),
@@ -284,6 +333,8 @@ void UFAMainMenuWidget::OnQuitButtonClicked()
 
 void UFAMainMenuWidget::ConfirmHostButtonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Click);
+
 	if (SessionCreateWidget)
 	{
 		SessionCreateWidget->SubmitCreateRequest();
@@ -293,6 +344,8 @@ void UFAMainMenuWidget::ConfirmHostButtonClicked()
 
 void UFAMainMenuWidget::ReturnToMainMenuButtonClicked()
 {
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Back);
+
 	ShowPage(EPrototypeMenuPage::Main);
 }
 

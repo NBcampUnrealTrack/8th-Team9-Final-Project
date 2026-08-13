@@ -36,8 +36,12 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 
+	/** 최대 인원 스핀박스를 끌 때 나는 눈금 소리. 표의 쿨다운(0.05초)이 연사를 막는다. */
+	UFUNCTION()
+	void HandleMaxConnectionChanged(float NewValue);
+
 private:
-	
+
 	FString GetSessionName() const;
 	
 	int32 GetMaxConnections() const;

@@ -66,11 +66,19 @@ protected:
 	TSubclassOf<UFALobbyPlayerEntryWidget> LobbyPlayerEntryWidgetClass;
 	
 private:
-	
+
 	UFUNCTION()
 	void OnReadybuttonClicked();
-	
+
 	UFUNCTION()
 	void OnStartbuttonClicked();
-	
+
+	UFUNCTION()
+	void OnButtonHovered();
+
+	/** 접속 인원이 늘고 줄 때 소리를 낸다. 로비 화면을 안 보고 있어도 누가 왔다 갔는지 알아야 한다. */
+	void UpdateRosterAudio(int32 ConnectedCount);
+
+	/** 직전 접속 인원. -1 이면 아직 기준이 없어 첫 갱신에서는 소리를 내지 않는다. */
+	int32 LastConnectedCount = -1;
 };

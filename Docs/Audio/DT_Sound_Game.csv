@@ -1,7 +1,7 @@
 Name,Sound,Category,bIs2D,Attenuation,Concurrency,VolumeMultiplier,PitchMultiplier,PitchRandomRange,RetriggerCooldown,bLooping,bStopOnOwnerDestroy
 Round_Countdown,,Round,True,,,0.90,1.00,0.00,0.50,False,True
 Round_Start,,Round,True,,,1.00,1.00,0.00,0.00,False,True
-Round_Timer_Tick,,Round,True,,,0.60,1.00,0.00,0.50,False,True
+Round_Timer_Tick,,Round,True,,,0.60,1.00,0.00,0.00,False,True
 Round_LastMinute,,Round,True,,,0.90,1.00,0.00,0.00,False,True
 Round_End_HumanWin,,Round,True,,,1.00,1.00,0.00,0.00,False,True
 Round_End_ZombieWin,,Round,True,,,1.00,1.00,0.00,0.00,False,True
