@@ -93,6 +93,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Capture")
 	bool IsCaptureGaugeVisible() const { return bCaptureGaugeVisible; }
 
+	//~ ---------------- 구출 QTE 프롬프트 ----------------
+	//~ 참가자 3명(좀비 · 인질 · 구조자) 전원
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Contest")
+	bool IsContestPromptVisible() const { return bContestPromptVisible; }
+
+	/** 이 화면 주인의 QTE 역할. QTE 중이 아니면 None. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Contest")
+	EFAContestRole GetLocalContestRole() const;
+
+	/** QTE 남은 시간(초). QTE 중이 아니면 0. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Contest")
+	float GetContestTimeRemaining() const;
+
 	//~ UI 담당이 WBP 에서 구현할 것 — 여기부터가 실제 그리기.
 	/** 표시 초가 바뀔 때만 호출. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD")
@@ -118,6 +132,16 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD")
 	void OnLocalScoreChanged(int32 DisplayTotalScore);
 
+	/**
+	 * 점수가 오른 순간 — 점수 표시 위로 "+N" 을 띄우라는 신호.
+	 *
+	 * @param Delta             이번에 오른 점수. 항상 1 이상
+	 * @param bIsTeamScore      팀 점수(라운드 완주 · 전멸)면 true, 개인 점수(생존 틱 · 감염 · 구출)면 false
+	 * @param DisplayTotalScore 오른 뒤의 표시 총점
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD")
+	void OnScorePopup(int32 Delta, bool bIsTeamScore, int32 DisplayTotalScore);
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Capture")
 	void OnCaptureGaugeShown(bool bLocalPlayerIsVictim);
 
@@ -126,6 +150,19 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Capture")
 	void OnCaptureGaugeHidden();
+
+	/**
+	 * 줄다리기 시작 — "SPACE 연타" 프롬프트를 띄우라는 신호.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Contest")
+	void OnContestPromptShown(EFAContestRole Role);
+
+	/** 줄다리기 게이지 0~1. 1 이면 구출 성공 직전, 0 이면 감염 직전. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Contest")
+	void OnContestGaugeChanged(float Gauge);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Contest")
+	void OnContestPromptHidden();
 
 protected:
 	virtual void NativeConstruct() override;
@@ -199,14 +236,19 @@ private:
 	 */
 	void UpdateCaptureGauge();
 
+	/**
+	 * 내 캐릭터의 복제된 QTE 상태를 읽어 프롬프트를 띄우고 · 갱신하고 · 내린다.
+	 */
+	void UpdateContestPrompt();
+
 	/** 초침을 울릴 때가 됐는지 누산기로 판정한다. 표시 초와 분리돼 있어야 1초보다 촘촘해질 수 있다. */
 	void UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInProgress, float DeltaTime);
 
 	/** 남은 시간에 대응하는 초침 간격(초). */
 	float GetRoundTickInterval(float SecondsRemaining) const;
 
-	/** 점수 종류별로 다른 소리를 내기 위해 직전 라운드 점수와 비교한다. */
-	void UpdateScoreAudio();
+	/** 직전 라운드 점수와 비교해 종류별 소리와 "+N" 팝업을 낸다. */
+	void UpdateScoreFeedback();
 
 	TWeakObjectPtr<AFAGameState> CachedGameState;
 	TWeakObjectPtr<AFAPlayerState> CachedPlayerState;
@@ -244,4 +286,7 @@ private:
 	bool bCaptureGaugeVisible = false;
 	float LastInfectionRatio = -1.0f;
 	float LastResistRatio = -1.0f;
+
+	bool bContestPromptVisible = false;
+	float LastContestGauge = -1.0f;
 };
