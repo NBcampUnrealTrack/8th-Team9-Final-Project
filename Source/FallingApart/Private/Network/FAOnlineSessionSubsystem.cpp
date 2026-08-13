@@ -48,6 +48,8 @@ UFAOnlineSessionSubsystem::UFAOnlineSessionSubsystem():
 		this,&ThisClass::OnDestroySessionComplete)),
 	StartSessionCompleteDelegate(FOnStartSessionCompleteDelegate::CreateUObject(
 		this,&ThisClass::OnStartSessionComplete)),
+	EndSessionCompleteDelegate(FOnEndSessionCompleteDelegate::CreateUObject(
+		this, &ThisClass::HandleEndSessionForReopenSession)),
 	UpdateSessionCompleteDelegate(FOnUpdateSessionCompleteDelegate::CreateUObject(
 		this,&ThisClass::OnUpdateSessionComplete))
 {
@@ -88,9 +90,20 @@ void UFAOnlineSessionSubsystem::Deinitialize()
 		{
 			SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
 		}
+		if (UpdateSessionCompleteDelegateHandle.IsValid())
+		{
+			SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
+		}
+		if (EndSessionCompleteDelegateHandle.IsValid())
+		{
+			SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(EndSessionCompleteDelegateHandle);
+		}
 		SessionInterface.Reset();
 	}
 	OperationState = ESessionOperationState::Idle;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+	bReopenLobbyRequested = false;
+	ClearPendingMatchContext();
 	LastSessionSearch.Reset();
 	LastSessionSettings.Reset();
 	Super::Deinitialize();
@@ -119,10 +132,11 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	}
 	
 	FNamedOnlineSession* ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
-	// 세션이 이미 존재한다면
+	// 기존 세션 파괴와 새 세션 생성을 겹치지 않고 호출자가 먼저 이탈하도록 알린다.
 	if (ExistingSession != nullptr)
 	{
-		SessionInterface->DestroySession(NAME_GameSession);
+		MultiplayerOnCreateSessionComplete.Broadcast(EFASessionRequestResult::AlreadyInSession);
+		return;
 	}
 	// 대리자 등록하고 핸들을 저장함. 작업후 핸들을 이용해 등록을 해제함.
 	OnCreateSessionCompleteDelegateHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
@@ -141,8 +155,17 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	// STEAM AppID480에서 구분을 위한 고유 키값
 	LastSessionSettings->Set(ProjectSettingKey, ProjectSettingValue, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
-	// TODO : 맵 설정?
-	// LastSessionSettings->Set(SETTING_MAPNAME, FString(TEXT("")), EOnlineDataAdvertisementType::ViaOnlineService);
+	// 검색 결과가 처음부터 로비 맵을 나타내도록 기본 맵 패키지명을 광고한다.
+	LastSessionSettings->Set(
+		SETTING_MAPNAME,
+		DefaultLobbyMapPackageName.ToString(),
+		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	//로비인지 게임인지를 구분하는 값 - 게임 진행중인지? 대기중인지
+	LastSessionSettings->Set(
+		FName(TEXT("SESSION_STATE")),
+		FString(TEXT("Lobby")),
+		EOnlineDataAdvertisementType::ViaOnlineService);
 
 	LastSessionSettings->Set(ServerNameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
 	if (!Password.IsEmpty())
@@ -189,10 +212,13 @@ void UFAOnlineSessionSubsystem::FindSession(int32 MaxSearchResults)
 	}
 
 	FNamedOnlineSession* ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
-	// 세션이 이미 존재한다면
+	// 참가 중인 세션을 비동기로 파괴하면서 검색을 겹쳐 실행하지 않는다.
 	if (ExistingSession != nullptr)
 	{
-		SessionInterface->DestroySession(NAME_GameSession);
+		MultiplayerOnFindSessionsComplete.Broadcast(
+			TArray<FOnlineSessionSearchResult>(),
+			EFASessionRequestResult::AlreadyInSession);
+		return;
 	}
 	// 대리자 등록
 	FindSessionsCompleteDelegateHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
@@ -263,21 +289,42 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 
 void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount)
 {
-	OperationState = ESessionOperationState::Starting;
+	// 유효한 유휴 세션에서만 매치용 Update 요청을 시작한다.
+	if (OperationState != ESessionOperationState::Idle
+		|| !SessionInterface.IsValid()
+		|| !LastSessionSettings.IsValid()
+		|| !SessionInterface->GetNamedSession(NAME_GameSession)
+		|| MapId.IsNone()
+		|| ExpectedPlayerCount <= 0)
+	{
+		ClearPendingMatchContext();
+		OnSessionPreparedForMatch.Broadcast(false);
+		return;
+	}
+
+	SetPendingMatchContext(MapId, ExpectedPlayerCount);
+	bReopenLobbyRequested = false;
+	OperationState = ESessionOperationState::Updating;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::PrepareMatch;
 	
 	LastSessionSettings->bAllowJoinInProgress = false;
 	LastSessionSettings->bAllowJoinViaPresence = false;
 	
-	LastSessionSettings->Set(SETTING_MAPNAME,MapId.ToString(), EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(
+		SETTING_MAPNAME,MapId.ToString(), EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(
+		FName(TEXT("SESSION_STATE")), FString(TEXT("Playing")),	EOnlineDataAdvertisementType::ViaOnlineService);
+	
 	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
+	
 	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
 	{
-		OperationState = ESessionOperationState::Idle;
 		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
-		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed, FString());
-		
+		OperationState = ESessionOperationState::Idle;
+		UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+		ClearPendingMatchContext();
+		OnSessionPreparedForMatch.Broadcast(false);
 	}
-	
 }
 
 void UFAOnlineSessionSubsystem::DestroySession()
@@ -305,13 +352,23 @@ void UFAOnlineSessionSubsystem::DestroySession()
 
 void UFAOnlineSessionSubsystem::StartSession()
 {
-	//TODO : StartSession기능 확인
+	// Update 완료 뒤 세션을 InProgress로 전환하고 완료 시 매치 이동을 허용한다.
 	OperationState = ESessionOperationState::Starting;
 	StartSessionCompleteDelegateHandle = SessionInterface->AddOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegate);
 	if (!SessionInterface->StartSession(NAME_GameSession))
 	{
 		SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
 		OperationState = ESessionOperationState::Idle;
+
+		// Start 요청 직전에 들어온 롤백이 있다면 준비 실패 대신 로비 복구를 계속한다.
+		if (bReopenLobbyRequested)
+		{
+			ReopenSessionForLobby();
+			return;
+		}
+
+		ClearPendingMatchContext();
+		OnSessionPreparedForMatch.Broadcast(false);
 	}
 
 }
@@ -326,6 +383,131 @@ void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
 {
 	//TODO : 스팀 인터페이스 연동
 	//SessionInterface->SendSessionInviteToFriends()
+}
+
+void UFAOnlineSessionSubsystem::ReopenSessionForLobby()
+{
+	// 매치 컨텍스트는 롤백 요청 시점부터 더 이상 소비되지 않도록 즉시 폐기한다.
+	ClearPendingMatchContext();
+
+	if (!SessionInterface.IsValid())
+	{
+		CompleteReopenSessionForLobby(false);
+		return;
+	}
+
+	// Prepare Update 또는 Start가 끝날 때까지 복구 요청을 보류해 OSS 비동기 호출을 직렬화한다.
+	if ((OperationState == ESessionOperationState::Updating
+			&& UpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch)
+		|| OperationState == ESessionOperationState::Starting)
+	{
+		bReopenLobbyRequested = true;
+		return;
+	}
+
+	// 이미 End 또는 Restore Update가 진행 중이면 기존 요청의 완료 결과를 기다린다.
+	if (OperationState == ESessionOperationState::Ending
+		|| (OperationState == ESessionOperationState::Updating
+			&& UpdateSessionPurpose == EFAUpdateSessionPurpose::RestoreLobby))
+	{
+		bReopenLobbyRequested = true;
+		return;
+	}
+
+	// 로비 복구 이외의 OSS 작업과 충돌하는 요청은 실패로 종료한다.
+	if (OperationState != ESessionOperationState::Idle)
+	{
+		bReopenLobbyRequested = false;
+		OnSessionReopenedForLobby.Broadcast(false);
+		return;
+	}
+
+	bReopenLobbyRequested = true;
+	FNamedOnlineSession* CurrentNamedSession = SessionInterface->GetNamedSession(NAME_GameSession);
+	if (!CurrentNamedSession)
+	{
+		CompleteReopenSessionForLobby(false);
+		return;
+	}
+
+	// InProgress 세션은 먼저 End한 뒤 로비 설정으로 Update한다.
+	if (CurrentNamedSession->SessionState == EOnlineSessionState::InProgress)
+	{
+		OperationState = ESessionOperationState::Ending;
+		EndSessionCompleteDelegateHandle = SessionInterface->AddOnEndSessionCompleteDelegate_Handle(EndSessionCompleteDelegate);
+		if (!SessionInterface->EndSession(NAME_GameSession))
+		{
+			SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(EndSessionCompleteDelegateHandle);
+			CompleteReopenSessionForLobby(false);
+		}
+		return;
+	}
+
+	// Start 전 Pending 또는 Start 실패 후 Ended 상태는 End 없이 설정만 복구한다.
+	RestoreLobbySetting();
+}
+
+void UFAOnlineSessionSubsystem::HandleEndSessionForReopenSession(FName SessionName, bool bWasSuccessful)
+{
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface
+			->ClearOnEndSessionCompleteDelegate_Handle(
+				EndSessionCompleteDelegateHandle);
+	}
+
+	if (!bWasSuccessful)
+	{
+		CompleteReopenSessionForLobby(false);
+		return;
+	}
+
+	RestoreLobbySetting();
+}
+
+void UFAOnlineSessionSubsystem::RestoreLobbySetting()
+{
+	if (!SessionInterface.IsValid()
+		|| !LastSessionSettings.IsValid()
+		|| !SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		CompleteReopenSessionForLobby(false);
+		return;
+	}
+
+	// 참가 허용, 로비 맵, 공개 상태를 한 번의 UpdateSession 요청으로 원상복구한다.
+	OperationState = ESessionOperationState::Updating;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::RestoreLobby;
+	
+	LastSessionSettings->bAllowJoinInProgress = true;
+	LastSessionSettings->bAllowJoinViaPresence = true;
+
+	LastSessionSettings->Set(
+		SETTING_MAPNAME,
+		DefaultLobbyMapPackageName.ToString(),
+		EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	LastSessionSettings->Set(
+		FName(TEXT("SESSION_STATE")),
+		FString(TEXT("Lobby")),
+		EOnlineDataAdvertisementType::ViaOnlineService);
+	
+	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
+	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
+	{
+		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
+		CompleteReopenSessionForLobby(false);
+	}
+}
+
+void UFAOnlineSessionSubsystem::CompleteReopenSessionForLobby(bool bWasSuccessful)
+{
+	// 모든 복구 종료 경로에서 내부 상태를 동일하게 정리한 뒤 결과를 한 번만 알린다.
+	OperationState = ESessionOperationState::Idle;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+	bReopenLobbyRequested = false;
+	ClearPendingMatchContext();
+	OnSessionReopenedForLobby.Broadcast(bWasSuccessful);
 }
 
 ESessionOperationState UFAOnlineSessionSubsystem::GetCurrentOperationState() const
@@ -390,6 +572,14 @@ void UFAOnlineSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 			continue;
 		}
 
+		// 매치 진행 중인 세션은 검색 목록에서 제외해 로비에만 참가할 수 있게 한다.
+		FString AdvertisedSessionState;
+		if (!SearchResult.Session.SessionSettings.Get(FName(TEXT("SESSION_STATE")), AdvertisedSessionState)
+			|| AdvertisedSessionState != TEXT("Lobby"))
+		{
+			continue;
+		}
+
 		FOnlineSessionSearchResult JoinableResult = SearchResult;
 		JoinableResult.Session.SessionSettings.bUseLobbiesIfAvailable = true;
 		JoinableResult.Session.SessionSettings.bUsesPresence = true;
@@ -434,13 +624,97 @@ void UFAOnlineSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool
 
 void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
 {
+	if (SessionInterface)
+	{
+		SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
+	}
+	
 	OperationState = ESessionOperationState::Idle;
+
+	// Start 진행 중 들어온 롤백 요청은 매치 준비 이벤트를 내지 않고 로비 복구로 전환한다.
+	if (bReopenLobbyRequested)
+	{
+		ReopenSessionForLobby();
+		return;
+	}
+
+	// Start 실패 시 매치 진입 컨텍스트를 폐기한다.
+	if (!bWasSuccessful)
+	{
+		ClearPendingMatchContext();
+	}
 	
 	OnSessionPreparedForMatch.Broadcast(bWasSuccessful);
-	
 }
 
 void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
-	StartSession();
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface
+			->ClearOnUpdateSessionCompleteDelegate_Handle(
+				UpdateSessionCompleteDelegateHandle);
+	}
+	const EFAUpdateSessionPurpose LastUpdateSessionPurpose = UpdateSessionPurpose;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+
+	// Prepare Update 도중 롤백이 요청됐으면 성공 여부와 무관하게 Start를 건너뛰고 복구한다.
+	if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch
+		&& bReopenLobbyRequested)
+	{
+		OperationState = ESessionOperationState::Idle;
+		RestoreLobbySetting();
+		return;
+	}
+	
+	if (!bWasSuccessful)
+	{
+		OperationState = ESessionOperationState::Idle;
+		if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch)
+		{
+			ClearPendingMatchContext();
+			OnSessionPreparedForMatch.Broadcast(false);
+		}
+		if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::RestoreLobby)
+		{
+			CompleteReopenSessionForLobby(false);
+		}
+		return;
+	}
+	
+	if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch)
+	{
+		StartSession();
+	}
+	if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::RestoreLobby)
+	{
+		CompleteReopenSessionForLobby(true);
+	}
+}
+
+
+void UFAOnlineSessionSubsystem::SetPendingMatchContext(FName MapId, int32 ExpectedPlayerCount)
+{
+	//값이 잘못들어오는 경우에 대한 대비
+	PendingMatchContext.bValid = !MapId.IsNone() && ExpectedPlayerCount > 0;
+
+	PendingMatchContext.MapId = MapId;
+	PendingMatchContext.ExpectedPlayerCount =
+		FMath::Max(0, ExpectedPlayerCount);
+}
+
+bool UFAOnlineSessionSubsystem::GetPendingMatchContext(FFAPendingMatchContext& OutContext) const
+{
+	if (!PendingMatchContext.bValid)
+	{
+		return false;
+	}
+
+	OutContext = PendingMatchContext;
+	return true;
+}
+
+void UFAOnlineSessionSubsystem::ClearPendingMatchContext()
+{
+	PendingMatchContext.Reset();
 }

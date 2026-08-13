@@ -78,9 +78,6 @@ private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UButton> ConfirmHostButton;
 	
-	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UButton> ConfirmJoinButton;
-	
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UButton> SettingButton;
  
