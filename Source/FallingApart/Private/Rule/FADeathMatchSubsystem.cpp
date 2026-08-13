@@ -9,12 +9,11 @@
 #include "GameFramework/PlayerStart.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
+#include "Rule/FADeathMatchSettings.h"
 #include "TimerManager.h"
 
 namespace FADeathMatch
 {
-	static constexpr float TimeLimit = 60.0f;
-
 	// 맵 담당자와의 규약. 자세한 설명은 FADeathMatchSubsystem.h 클래스 주석 참고.
 	static const FName BlockerActorTag(TEXT("FADeathMatchBlocker"));
 	static const FName ArenaPlayerStartTag(TEXT("DeathMatch"));
@@ -88,8 +87,9 @@ void UFADeathMatchSubsystem::StartDeathMatch(const TArray<AFAPlayerState*>& Cont
 	// 맵 1층 제한 · 보유 룰 전부 제거 (GDD 5.4). 룰 드래프트는 매치가 이미 끝나 타이머가 없다.
 	EnterArena(Zombie, Remaining);
 
+	// 코드 재컴파일 없이 Project Settings → Falling Apart | DeathMatch 에서 바꿀 수 있게 설정값으로 조회한다.
 	GetWorld()->GetTimerManager().SetTimer(DeathMatchTimerHandle, this,
-		&UFADeathMatchSubsystem::HandleTimeExpired, FADeathMatch::TimeLimit, false);
+		&UFADeathMatchSubsystem::HandleTimeExpired, UFADeathMatchSettings::GetTimeLimit(), false);
 }
 
 void UFADeathMatchSubsystem::NotifyContenderCaught(AFAPlayerState* CaughtHuman)
