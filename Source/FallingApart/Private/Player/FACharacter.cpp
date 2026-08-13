@@ -17,6 +17,8 @@
 #include "Voice/FAVoiceComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
+#include "Player/FACharacterStatusComponent.h"
+
 
 namespace FACharacterAudio
 {
@@ -69,6 +71,8 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
+	
+	CharacterStatusComponent =CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
