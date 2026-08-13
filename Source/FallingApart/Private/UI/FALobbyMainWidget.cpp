@@ -96,6 +96,7 @@ void UFALobbyMainWidget::NativeDestruct()
 void UFALobbyMainWidget::HandleLobbyStateChanged()
 {
 	RefreshLobby();
+	bRosterAudioArmed = true;
 }
 
 void UFALobbyMainWidget::InitializeLobby()
@@ -227,7 +228,17 @@ void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 
 void UFALobbyMainWidget::UpdateRosterAudio(int32 ConnectedCount)
 {
-	// 첫 갱신은 기준만 잡는다. 로비에 들어서는 순간 이미 있던 사람 수만큼 소리가 나면 안 된다.
+	// 첫 복제 알림이 실어온 값이 진짜 기준선.
+	//
+	// InitializeLobby() 는 RefreshLobby() 를 직접 부르는데, 갓 접속한 클라이언트에서는 그 시점에
+	// AFALobbyGameState 의 인원수가 아직 복제되지 않아 기본값(1)이 읽힘. 그걸 기준으로 삼으면
+	// 곧이어 도착하는 진짜 값(예: 4)이 '3명 입장'으로 보여 입장음이 헛나김.
+	if (!bRosterAudioArmed)
+	{
+		LastConnectedCount = ConnectedCount;
+		return;
+	}
+
 	if (LastConnectedCount >= 0 && ConnectedCount != LastConnectedCount)
 	{
 		UFAAudioSubsystem::PlayFASound(this, ConnectedCount > LastConnectedCount

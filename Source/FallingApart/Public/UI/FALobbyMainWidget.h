@@ -99,4 +99,10 @@ private:
 
 	/** 직전 접속 인원. -1 이면 아직 기준이 없어 첫 갱신에서는 소리를 내지 않는다. */
 	int32 LastConnectedCount = -1;
+
+	/**
+	 * 복제된 실제 인원수를 한 번이라도 받았는가.
+	 * 이게 false 인 동안 읽히는 값은 아직 복제 전 기본값이라 기준선으로 쓸 수 없다.
+	 */
+	bool bRosterAudioArmed = false;
 };

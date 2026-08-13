@@ -29,7 +29,7 @@ Rescue_Success,,Combat,False,,,1.00,1.00,0.03,0.00,False,True
 Stun_Apply,,Combat,False,,,0.85,1.00,0.06,0.20,False,True
 Stun_Recover,,Combat,False,,,0.70,1.05,0.05,0.00,False,True
 Invuln_Loop,,Combat,True,,,0.45,1.00,0.00,0.00,True,True
-QTE_Start,,Combat,True,,,0.90,1.00,0.00,0.00,False,True
+QTE_Start,,Combat,False,,,0.90,1.00,0.00,0.00,False,True
 QTE_Press,,Combat,True,,/Game/FallingApart/Audio/Concurrency/CONC_QTE.CONC_QTE,0.70,1.00,0.10,0.08,False,True
 QTE_NeedleShift,,Combat,True,,,0.50,1.00,0.00,0.06,False,True
 QTE_Final,,Combat,True,,,0.90,1.00,0.00,0.50,False,True

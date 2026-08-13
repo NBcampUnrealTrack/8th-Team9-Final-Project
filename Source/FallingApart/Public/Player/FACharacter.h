@@ -51,12 +51,18 @@ public:
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
 
+	/**
+	 * 주인 화면에서는 재생하지 않는다.
+	 */
 	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_PlayFASoundAtLocation(FName SoundId);
+	void Multicast_PlayFASoundAtLocation(FName SoundId, bool bSkipLocalOwner = false);
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
+
+	virtual void OnRep_Controller() override;
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/**
@@ -177,6 +183,12 @@ private:
 	/** 이 속도 이상으로 떨어져 닿으면 Jump_Land 대신 Land_Heavy. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
 	float HeavyLandSpeed = 900.0f;
+
+	/**
+	 * 공중에 뜨는 순간 위로 이만큼 이상 솟고 있으면 '스스로 점프한 것'으로 본다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float JumpDetectSpeed = 100.0f;
 
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
