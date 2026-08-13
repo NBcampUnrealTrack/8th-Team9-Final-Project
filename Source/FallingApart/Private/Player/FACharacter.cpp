@@ -74,7 +74,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
-	
+
 	CharacterStatusComponent =CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
 }
 
@@ -683,18 +683,62 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 
 void AFACharacter::TriggerPrimary()
 {
+	//const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	//// 행동 불가 상태 검사 (QTE 중이거나 기절 상태면 무시)
+	//if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+	//	return;
+
+	//if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))
+	//{
+	//	AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Grab));
+	//}
+	//else if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human))
+	//{
+	//	AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
+	//}
+	// 1단계: 입력 신호가 여기까지 정상적으로 도달했는지 확인 (하늘색 텍스트)
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("1. TriggerPrimary Input Received!"));
+	}
+
+	if (!AbilitySystemComponent)
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Error: ASC is NULL!"));
+		return;
+	}
+
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
-	// 행동 불가 상태 검사 (QTE 중이거나 기절 상태면 무시)
-	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+	// 2단계: 행동 불가 상태에 걸려서 막혔는지 확인 (노란색 텍스트)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) ||
+		AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+	{
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT("2. Blocked by Contesting or Stunned tag!"));
 		return;
+	}
 
+	// 3단계: 진영 태그 확인 및 어빌리티 발동 성공 여부 확인
 	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))
 	{
-		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Grab));
+		bool bSuccess = AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Grab));
+
+		// 어빌리티 발동 성공 시 초록색, 실패 시 빨간색 텍스트
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, bSuccess ? FColor::Green : FColor::Red,
+			FString::Printf(TEXT("3. Zombie Grab Activation: %s"), bSuccess ? TEXT("SUCCESS") : TEXT("FAILED")));
 	}
 	else if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human))
 	{
-		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
+		bool bSuccess = AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
+
+		// 어빌리티 발동 성공 시 초록색, 실패 시 빨간색 텍스트
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, bSuccess ? FColor::Green : FColor::Red,
+			FString::Printf(TEXT("3. Human Rescue Activation: %s"), bSuccess ? TEXT("SUCCESS") : TEXT("FAILED")));
+	}
+	else
+	{
+		// 4단계: 캐릭터에게 좀비나 인간 태그가 아예 없는 경우 (빨간색 텍스트)
+		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("3. Error: No Faction Tag (Zombie or Human) on this Character!"));
 	}
 }
