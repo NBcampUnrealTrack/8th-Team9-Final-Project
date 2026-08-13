@@ -18,9 +18,6 @@ namespace FARescueAudio
 
 UFAGA_Rescue::UFAGA_Rescue()
 {
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
-	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
 	// 어빌리티 태그 등록
@@ -53,6 +50,11 @@ void UFAGA_Rescue::ActivateAbility(
 	if (!Rescuer || !RescuerASC)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	if (!HasAuthority(&ActivationInfo))
+	{
 		return;
 	}
 

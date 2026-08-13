@@ -23,9 +23,6 @@ namespace FAGrabAudio
 
 UFAGA_Grab::UFAGA_Grab()
 {
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
-	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
 	// 어빌리티 태그 등록
@@ -60,6 +57,11 @@ void UFAGA_Grab::ActivateAbility(
 	if (!ZombieChar || !SourceASC)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	if (!HasAuthority(&ActivationInfo))
+	{
 		return;
 	}
 

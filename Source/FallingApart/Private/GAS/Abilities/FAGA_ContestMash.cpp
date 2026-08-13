@@ -15,13 +15,6 @@ namespace FAContestAudio
 	static constexpr float StruggleSendInterval = 0.20f;
 }
 
-UFAGA_ContestMash::UFAGA_ContestMash()
-{
-	// 연타 처리는 서버에서 직접 게이지를 조작
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
-	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-}
-
 void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
@@ -34,6 +27,12 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
 
 	if (!AvatarChar || !SourceASC || !MashEffectClass)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	if (!HasAuthority(&ActivationInfo))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;

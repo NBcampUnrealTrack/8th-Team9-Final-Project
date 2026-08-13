@@ -87,9 +87,18 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	// 라운드 리스폰(Destroyed)에서는 전송 계층을 유지해야 다음 Pawn 이 바로 이어받는다.
 	// 월드 자체가 내려갈 때만 세션·원격 토커를 정리한다.
-	if (EndPlayReason != EEndPlayReason::Destroyed && Transport != nullptr)
+	if (EndPlayReason != EEndPlayReason::Destroyed)
 	{
-		Transport->ShutdownTransport(GetOwningPlayerController());
+		if (Transport != nullptr)
+		{
+			Transport->ShutdownTransport(GetOwningPlayerController());
+		}
+
+		if (Talker)
+		{
+			Talker->DestroyComponent();
+			Talker = nullptr;
+		}
 	}
 
 	Super::EndPlay(EndPlayReason);
