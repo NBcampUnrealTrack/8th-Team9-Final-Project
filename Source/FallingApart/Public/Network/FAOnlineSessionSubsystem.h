@@ -45,6 +45,7 @@ enum class EFASessionRequestResult : uint8
 	UnknownError			UMETA(DisplayName="Unknown Error")
 };
 
+//업데이트 원인 분기
 enum class EFAUpdateSessionPurpose : uint8
 {
 	None,
@@ -201,13 +202,15 @@ private:
 	
 #pragma region MatchContext
 public:
+	// 이동할 맵과 플레이어 수 저장
 	void SetPendingMatchContext(
 		FName MapId,
 		int32 ExpectedPlayerCount);
-
+	// 매치에서 플레이어수와 맵 확인
 	bool GetPendingMatchContext(
 		FFAPendingMatchContext& OutContext) const;
-
+	
+	// 매치에서 적용한 후 정리
 	void ClearPendingMatchContext();
 	
 private:
