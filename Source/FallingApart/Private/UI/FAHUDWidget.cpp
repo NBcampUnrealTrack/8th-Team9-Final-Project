@@ -4,8 +4,10 @@
 #include "UI/FAHUDWidget.h"
 
 #include "Audio/FAAudioSubsystem.h"
+#include "Engine/World.h"
 #include "Game/FAGameState.h"
 #include "Player/FAPlayerState.h"
+#include "TimerManager.h"
 
 namespace FAHUDAudio
 {
@@ -41,6 +43,11 @@ void UFAHUDWidget::NativeConstruct()
 
 void UFAHUDWidget::NativeDestruct()
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ScoreVoidedTimerHandle);
+	}
+
 	UnbindPlayerState();
 	UnbindGameState();
 
@@ -254,6 +261,7 @@ void UFAHUDWidget::UnbindGameState()
 
 	TickAccumulator = 0.0f;
 	bLastMinuteAnnounced = false;
+	bSawAboveTickWindow = false;
 }
 
 void UFAHUDWidget::BindPlayerState(AFAPlayerState* NewPlayerState)
@@ -330,6 +338,9 @@ void UFAHUDWidget::UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInPr
 	{
 		TickAccumulator = 0.0f;
 		bLastMinuteAnnounced = false;
+
+		// 구간 위에 있는 동안만 기록을 세운다.
+		bSawAboveTickWindow = bRoundInProgress && SecondsRemaining > TickStartSeconds;
 		return;
 	}
 
@@ -337,10 +348,17 @@ void UFAHUDWidget::UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInPr
 	if (!bLastMinuteAnnounced)
 	{
 		bLastMinuteAnnounced = true;
-		UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::RoundLastMinute);
 
 		// 스팅어와 첫 초침이 같은 프레임에 겹치지 않도록 여기서부터 새로 센다.
 		TickAccumulator = 0.0f;
+
+		if (!bSawAboveTickWindow)
+		{
+			bSawAboveTickWindow = true;
+			return;
+		}
+
+		UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::RoundLastMinute);
 		return;
 	}
 
@@ -441,7 +459,15 @@ void UFAHUDWidget::UpdateScoreAudio()
 		// (라운드 정산에서 true -> false 로 되돌아가는 건 초기화지 무효화가 아니다).
 		if (bVoided && !bLastWasInfectedThisRound)
 		{
-			UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScoreVoided);
+			if (UWorld* World = GetWorld())
+			{
+				World->GetTimerManager().SetTimer(ScoreVoidedTimerHandle,
+					FTimerDelegate::CreateWeakLambda(this, [this]()
+					{
+						UFAAudioSubsystem::PlayFASound(this, FAHUDAudio::ScoreVoided);
+					}),
+					ScoreVoidedDelay, /*bLoop=*/false);
+			}
 		}
 
 		// 늘어날 때만. CommitRoundScore() 가 라운드 점수를 0 으로 비우는 건 소리를 낼 일이 아니다.

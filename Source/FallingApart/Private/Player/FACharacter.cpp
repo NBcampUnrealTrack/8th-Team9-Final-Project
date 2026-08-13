@@ -27,6 +27,9 @@ namespace FACharacterAudio
 	static const FName JumpLand(TEXT("Jump_Land"));
 	static const FName LandHeavy(TEXT("Land_Heavy"));
 	static const FName GrowlZombieLoop(TEXT("Growl_Zombie_Loop"));
+
+	/** QTE 연타 피드백. 누른 본인에게만 나는 2D 소리라 멀티캐스트를 타지 않는다. */
+	static const FName QTEPress(TEXT("QTE_Press"));
 }
 
 AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
@@ -94,6 +97,16 @@ void AFACharacter::OnRep_PlayerState()
 	BindTeamNotify();
 }
 
+void AFACharacter::OnRep_Controller()
+{
+	Super::OnRep_Controller();
+
+	if (const AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>())
+	{
+		HandleTeamChanged(FAPlayerState->GetTeam());
+	}
+}
+
 void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (AFAPlayerState* FAPlayerState = TeamNotifySource.Get())
@@ -134,7 +147,9 @@ void AFACharacter::BindTeamNotify()
 
 void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 {
-	const bool bWantsGrowl = (NewTeam == EFATeam::Zombie);
+	// 그르렁은 '인간이 좀비의 위치를 눈치채는' 단서다. 오디오 리스너가 캐릭터 머리에 붙어 있어
+	// (생성자 주석 참고) 본인 폰에 걸면 거리 0 · 감쇠 0 으로 라운드 내내 자기 소리만 듣게 된다.
+	const bool bWantsGrowl = (NewTeam == EFATeam::Zombie) && !IsLocallyControlled();
 
 	if (!bWantsGrowl)
 	{
@@ -158,8 +173,13 @@ void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 	}
 }
 
-void AFACharacter::Multicast_PlayFASoundAtLocation_Implementation(FName SoundId)
+void AFACharacter::Multicast_PlayFASoundAtLocation_Implementation(FName SoundId, bool bSkipLocalOwner)
 {
+	if (bSkipLocalOwner && IsLocallyControlled())
+	{
+		return;
+	}
+
 	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
 	{
 		Audio->PlaySoundAtLocation(SoundId, GetActorLocation());
@@ -179,11 +199,18 @@ void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 P
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	const EMovementMode NewMode = Movement ? Movement->MovementMode.GetValue() : MOVE_None;
 
-	// 땅 -> 공중. 룰로 점프가 막혀 있으면 애초에 여기까지 오지 않는다.
+	// 땅 -> 공중.
 	if (NewMode == MOVE_Falling && PrevMovementMode != MOVE_Falling)
 	{
 		PeakFallSpeed = 0.0f;
-		Audio->PlaySoundAtLocation(FACharacterAudio::JumpStart, GetActorLocation());
+
+		// MOVE_Falling 은 점프 말고도 턱에서 걸어 내려오거나 경사 마루를 넘을 때도 걸린다.
+		//
+		// 위로 솟는 속도가 있으면 스스로 뛴 것.
+		if (Movement && Movement->Velocity.Z > JumpDetectSpeed)
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::JumpStart, GetActorLocation());
+		}
 		return;
 	}
 
@@ -384,6 +411,12 @@ void AFACharacter::Input_Jump()
 	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
 	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
 	{
+		// 연타 감각은 누른 본인에게만 필요.
+		if (IsLocallyControlled())
+		{
+			UFAAudioSubsystem::PlayFASound(this, FACharacterAudio::QTEPress);
+		}
+
 		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_ContestMash));
 		return;
 	}
