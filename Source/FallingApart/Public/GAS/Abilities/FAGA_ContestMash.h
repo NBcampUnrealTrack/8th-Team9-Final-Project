@@ -16,7 +16,6 @@ class FALLINGAPART_API UFAGA_ContestMash : public UFAGameplayAbility
 	GENERATED_BODY()
 
 public:
-	UFAGA_ContestMash();
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 
 protected:
