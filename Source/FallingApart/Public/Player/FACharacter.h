@@ -17,6 +17,7 @@ class UGameplayEffect;
 class UInputAction;
 class UFAVoiceComponent;
 class UAudioComponent;
+class UMaterialInterface;
 class AFAPlayerState;
 class UFACharacterStatusComponent;
 
@@ -59,6 +60,8 @@ public:
 	void Multicast_PlayFASoundAtLocation(FName SoundId, bool bSkipLocalOwner = false);
 
 protected:
+	virtual void BeginPlay() override;
+
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 
@@ -74,9 +77,17 @@ protected:
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
 
-	/** 진영에 딸린 연출(좀비 그르렁 루프)을 현재 진영에 맞춘다. */
+	/** 진영에 딸린 연출(외형 · 그르렁 루프)을 현재 진영에 맞춘다. */
 	UFUNCTION()
 	void HandleTeamChanged(EFATeam NewTeam);
+
+	/**
+	 * 진영에 맞는 머티리얼을 메시 전 슬롯에 적용한다.
+	 */
+	void ApplyTeamMaterial(EFATeam NewTeam);
+
+	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
+	void UpdateGrowlLoop(EFATeam NewTeam);
 
 	/**
 	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
@@ -150,6 +161,20 @@ public:
 	
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
+
+	//~ ---------------- 진영 외형 ----------------
+	//~ 둘 다 비워두면 메시에 원래 물려 있는 머티리얼이 그대로 쓰인다
+
+	/**
+	 * 인간(비감염) 외형. MI_CharacterSurvived.
+	 * 진영 미배정 상태에도 이걸 쓴다
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
+	TObjectPtr<UMaterialInterface> HumanMaterial;
+
+	/** 좀비(감염) 외형. MI_CharacterInfected. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
+	TObjectPtr<UMaterialInterface> ZombieMaterial;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
