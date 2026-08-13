@@ -13,7 +13,8 @@ void AFALobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME(AFALobbyGameState, ReadyPlayerCount);
 	DOREPLIFETIME(AFALobbyGameState, MinPlayersToStart);
 	DOREPLIFETIME(AFALobbyGameState, SelectedMapId);
-	
+	DOREPLIFETIME(AFALobbyGameState, CountdownEndServerTime);
+	DOREPLIFETIME(AFALobbyGameState, bCanHostStartMatch);
 }
 
 int32 AFALobbyGameState::GetConnectedPlayerCount() const
@@ -58,7 +59,7 @@ bool AFALobbyGameState::IsInteractionLocked() const
 }
 
 void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCount, int32 InMinPlayers,
-	EFALobbyPhase InPhase)
+	EFALobbyPhase InPhase, bool InCanStartMatch, float InCountdownEndServerTime)
 {
 	if (!HasAuthority())
 		return;
@@ -66,15 +67,53 @@ void AFALobbyGameState::SetLobbySnapshot(int32 InConnectedCount, int32 InReadyCo
 	ReadyPlayerCount = InReadyCount;
 	MinPlayersToStart = InMinPlayers;
 	LobbyPhase = InPhase;
+	bCanHostStartMatch = InCanStartMatch;
+	
+	
+	CountdownEndServerTime = 
+		InPhase == EFALobbyPhase::Countdown
+		? InCountdownEndServerTime
+		: 0.f;
 	
 	OnRep_LobbyState();
 	// 강제로 복제 실행하여 모든 클라이언트에 전파함.
 	ForceNetUpdate();
 }
 
+float AFALobbyGameState::GetCountdownEndServerTime() const
+{
+	return CountdownEndServerTime;
+}
+
+float AFALobbyGameState::GetRemainingCountdownSeconds() const
+{
+	if (LobbyPhase != EFALobbyPhase::Countdown)
+	{
+		return 0;
+	}
+
+	const float RemainingSeconds = CountdownEndServerTime - GetServerWorldTimeSeconds();
+
+	return FMath::Max(0, FMath::CeilToInt(RemainingSeconds));
+}
+
 void AFALobbyGameState::SetSelectedMapId(FName InMapId)
 {
 	SelectedMapId = InMapId;
+}
+
+bool AFALobbyGameState::CanHostStartMatch() const
+{
+	return bCanHostStartMatch;
+}
+
+void AFALobbyGameState::SetCanHostStartMatch(bool InCanStart)
+{
+	// 호스트만 받도록 분기
+	if (!HasAuthority())
+		return;
+	
+	bCanHostStartMatch = InCanStart;
 }
 
 
@@ -85,5 +124,6 @@ void AFALobbyGameState::OnRep_LobbyState()
 
 void AFALobbyGameState::OnRep_SelectedMapId()
 {
+	//TODO : 맵 선택시 UI갱신
 	
 }

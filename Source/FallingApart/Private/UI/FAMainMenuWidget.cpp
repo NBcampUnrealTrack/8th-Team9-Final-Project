@@ -55,12 +55,10 @@ void UFAMainMenuWidget::NativeOnInitialized()
 	}
 
 	// 클릭 소리는 각 핸들러가 직접 낸다 — 버튼마다 성격(확정 · 뒤로 · 막힘)이 달라서다.
-	// 호버는 전부 같으므로 여기서 한 번에 묶는다. ConfirmJoinButton 은 핸들러가 없어도
-	// 화면에 떠 있으면 마우스가 지나가므로 호버 소리는 붙여둔다.
+	// 호버는 전부 같으므로 여기서 한 번에 묶는다.
 	BindButtonAudio(HostButton);
 	BindButtonAudio(JoinButton);
 	BindButtonAudio(ConfirmHostButton);
-	BindButtonAudio(ConfirmJoinButton);
 	BindButtonAudio(ReturnToMainMenuButton);
 	BindButtonAudio(SettingButton);
 	BindButtonAudio(QuitButton);
