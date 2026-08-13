@@ -17,7 +17,9 @@ class UGameplayEffect;
 class UInputAction;
 class UFAVoiceComponent;
 class UAudioComponent;
+class UMaterialInterface;
 class AFAPlayerState;
+class UFACharacterStatusComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -58,6 +60,8 @@ public:
 	void Multicast_PlayFASoundAtLocation(FName SoundId, bool bSkipLocalOwner = false);
 
 protected:
+	virtual void BeginPlay() override;
+
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 
@@ -73,9 +77,17 @@ protected:
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
 
-	/** 진영에 딸린 연출(좀비 그르렁 루프)을 현재 진영에 맞춘다. */
+	/** 진영에 딸린 연출(외형 · 그르렁 루프)을 현재 진영에 맞춘다. */
 	UFUNCTION()
 	void HandleTeamChanged(EFATeam NewTeam);
+
+	/**
+	 * 진영에 맞는 머티리얼을 메시 전 슬롯에 적용한다.
+	 */
+	void ApplyTeamMaterial(EFATeam NewTeam);
+
+	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
+	void UpdateGrowlLoop(EFATeam NewTeam);
 
 	/**
 	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
@@ -136,6 +148,7 @@ public:
 	 * 기본 지급 어빌리티. 서버가 빙의 시점에 1회 지급한다.
 	 * 점프처럼 '룰로 봉인될 수 있는 행동'은 전부 어빌리티여야 한다 — 그래야 태그 하나로 막힌다.
 	 */
+	// 기본룰 ?..
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TArray<TSubclassOf<UFAGameplayAbility>> DefaultAbilities;
 
@@ -145,6 +158,23 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TSubclassOf<UGameplayEffect> InvulnerabilityEffect;
+	
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
+
+	//~ ---------------- 진영 외형 ----------------
+	//~ 둘 다 비워두면 메시에 원래 물려 있는 머티리얼이 그대로 쓰인다
+
+	/**
+	 * 인간(비감염) 외형. MI_CharacterSurvived.
+	 * 진영 미배정 상태에도 이걸 쓴다
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
+	TObjectPtr<UMaterialInterface> HumanMaterial;
+
+	/** 좀비(감염) 외형. MI_CharacterInfected. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
+	TObjectPtr<UMaterialInterface> ZombieMaterial;
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
@@ -155,6 +185,7 @@ private:
 	 * 이 게임은 라운드 중 리스폰이 없고(감염되면 같은 폰이 좀비가 된다),
 	 * 룰 효과의 소비자가 전부 캐릭터(CMC·카메라·PostProcess)라 아바타 옆에 두는 편이 참조가 짧다.
 	 */
+	//UFAAbilitySystemComponent 언리얼 형태의 포인터 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAAbilitySystemComponent> AbilitySystemComponent;
 

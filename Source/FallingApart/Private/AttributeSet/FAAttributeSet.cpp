@@ -22,6 +22,7 @@ UFAAttributeSet::UFAAttributeSet()
 
 	// 시야
 	InitVisionRange(6000.0f);
+	InitFieldOfView(90.0f);
 
 	// 포획 및 구출
 	InitGrabRange(200.0f);
@@ -71,6 +72,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	else if (Attribute == GetVisionRangeAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,6000.0f);
+	}
+	else if (Attribute == GetFieldOfViewAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue,0.0f,90.0f);
 	}
 	else if (Attribute == GetGrabRangeAttribute())
 	{
@@ -138,6 +143,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	else if (ChangedAttribute ==GetVisionRangeAttribute())
 	{
 		SetVisionRange(FMath::Clamp(GetVisionRange(),0.0f,6000.0f));
+	}
+	else if (ChangedAttribute ==GetFieldOfViewAttribute())
+	{
+		SetVisionRange(FMath::Clamp(GetFieldOfView(),0.0f,6000.0f));
 	}
 	else if (ChangedAttribute == GetGrabRangeAttribute())
 	{
@@ -214,6 +223,11 @@ void UFAAttributeSet::OnRep_MaxStamina(const FGameplayAttributeData& OldValue)
 	void UFAAttributeSet::OnRep_VisionRange(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,VisionRange,OldValue);
+}
+
+void UFAAttributeSet::OnRep_FieldOfView(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,FieldOfView,OldValue);
 }
 
 void UFAAttributeSet::OnRep_GrabRange(const FGameplayAttributeData& OldValue)

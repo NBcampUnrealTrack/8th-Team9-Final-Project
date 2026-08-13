@@ -147,8 +147,10 @@ FVector UFACharacterMovementComponent::GetAirControl(float DeltaTime, float Tick
 	{
 		// Z09/H08 공중 마비는 이 값을 0 으로 만든다.
 		TickAirControl = FMath::Clamp(Attributes->GetAirControl(), 0.0f, 1.0f);
+		
+		const float AttributeAirControl = Attributes->GetAirControl();
+		
 	}
-
 	return Super::GetAirControl(DeltaTime, TickAirControl, FallAcceleration);
 }
 
@@ -158,14 +160,44 @@ FVector UFACharacterMovementComponent::ConstrainInputAcceleration(const FVector&
 
 	if (IsMovementFrozen())
 	{
-		Result = FVector::ZeroVector;
+		return FVector::ZeroVector;
 	}
-	else if (HasOwnerTag(FAGameplayTags::Get().Rule_Move_ForceForward) && (IsMovingOnGround() || IsFalling()))
+	
+
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	if (HasOwnerTag(Tags.State_Input_Flipped))
 	{
-		Result = ComputeForceForwardAcceleration(InputAcceleration);
+		Result = ComputeFlippedLRAcceleration(Result);
+	}
+
+	if (HasOwnerTag(Tags.Rule_Move_ForceForward) && (IsMovingOnGround() || IsFalling()))
+	{
+		// 좌우 반전과 자동 전진이 함께 적용되면 반전된 조향값을 사용한다.
+		Result = ComputeForceForwardAcceleration(Result);
 	}
 
 	return Super::ConstrainInputAcceleration(Result);
+}
+
+FVector UFACharacterMovementComponent::ComputeFlippedLRAcceleration(const FVector& InputAcceleration) const
+{
+	const AController* OwnerController = CharacterOwner ? CharacterOwner->GetController() : nullptr;
+
+	const float Yaw = OwnerController
+		? OwnerController->GetControlRotation().Yaw
+		: (UpdatedComponent ? UpdatedComponent->GetComponentRotation().Yaw : 0.0f);
+
+	const FRotationMatrix YawMatrix(FRotator(0.0f, Yaw, 0.0f));
+	const FVector Forward = YawMatrix.GetUnitAxis(EAxis::X);
+	const FVector Right = YawMatrix.GetUnitAxis(EAxis::Y);
+
+	const float ForwardAmount = FVector::DotProduct(InputAcceleration, Forward);
+	const float RightAmount = FVector::DotProduct(InputAcceleration, Right);
+	const float VerticalAmount = FVector::DotProduct(InputAcceleration, FVector::UpVector);
+
+	// 지면 이동 성분을 모두 반전한다. 수직 성분은 점프/중력에 영향을 주지 않도록 유지한다.
+	return -Forward * ForwardAmount - Right * RightAmount + FVector::UpVector * VerticalAmount;
 }
 
 FVector UFACharacterMovementComponent::ComputeForceForwardAcceleration(const FVector& InputAcceleration) const
