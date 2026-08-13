@@ -74,6 +74,7 @@ public:
 protected:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual bool ReadyToStartMatch_Implementation() override;
 	virtual void HandleMatchHasStarted() override;
 	virtual void HandleMatchHasEnded() override;
@@ -207,5 +208,22 @@ private:
 	int32 ExpectedPlayersToStart = 0;
 
 	bool bHasLobbyMatchContext = false;
+	
+	// [박지석] - 최종 결과창 출력 10초후 로비로 다같이 돌아가는 시스템 관련
+private:
+	void BeginReturnToLobby();
+	void HandleSessionReopenForLobby(bool bSuccess);
+	void TravelToLobby();
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Lobby")
+	float ReturnToLobbyDelaySeconds = 10.f;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Lobby")
+	TSoftObjectPtr<UWorld> LobbyLevel;
+	
+	FTimerHandle ReturnToLobbyTimerHandle;
+	FDelegateHandle SessionReopenForlobbyDelegateHandle;
+	
+	bool bReturningToLobby = false;
 	
 };

@@ -46,6 +46,32 @@ void AFAGameMode::BeginPlay()
 		FAGameState->SetMaxRound(MaxRound);
 		FAGameState->SetRoundPhase(EFARoundPhase::WaitingToStart);
 	}
+	
+	// 매치 종료 및 세션 로비상태로 복구 후 돌아가는 이벤트 미리 등록.
+	if (UGameInstance* GameInstance = GetGameInstance())
+    {
+     	if (UFAOnlineSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+     	{
+     		SessionReopenForlobbyDelegateHandle = SessionSubsystem->OnSessionReopenedForLobby.AddUObject(
+     			this, 
+     			&AFAGameMode::HandleSessionReopenForLobby);
+     	}
+    }
+}
+
+void AFAGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	GetWorldTimerManager().ClearTimer(ReturnToLobbyTimerHandle);
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			SessionSubsystem->OnSessionReopenedForLobby.Remove(SessionReopenForlobbyDelegateHandle);
+		}
+	}
+	
+	
+	Super::EndPlay(EndPlayReason);
 }
 
 bool AFAGameMode::ReadyToStartMatch_Implementation()
@@ -394,6 +420,17 @@ void AFAGameMode::ShowFinalRanking()
 		{
 			FAPlayerController->Client_ShowMatchResult();
 		}
+	}
+	
+	if (!bReturningToLobby && !GetWorldTimerManager().IsTimerActive(ReturnToLobbyTimerHandle))
+	{
+		GetWorldTimerManager().SetTimer(
+			ReturnToLobbyTimerHandle,
+			this, 
+			&ThisClass::BeginReturnToLobby,
+			ReturnToLobbyDelaySeconds,
+			false
+		);
 	}
 }
 
@@ -823,4 +860,68 @@ float AFAGameMode::GetServerTime() const
 AFAGameState* AFAGameMode::GetFAGameState() const
 {
 	return GetGameState<AFAGameState>();
+}
+
+void AFAGameMode::BeginReturnToLobby()
+{
+	//한번만 발동 명시
+	if (bReturningToLobby)
+		return;
+	bReturningToLobby = true;
+	
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			//handle은 BeginPlayer에서 단 한번 등록을 유지함.
+			SessionSubsystem->ReopenSessionForLobby();
+			return;
+		}
+	}
+	//OSS가 안잡히는 상황일때 대비
+	TravelToLobby();
+	
+}
+
+void AFAGameMode::HandleSessionReopenForLobby(bool bSuccess)
+{
+	if (!bReturningToLobby)
+		return;
+	
+	if (!bSuccess)
+	{
+		//세션 복구 실패?? 이 경우 저장된 Saved\Logs경로의 로그에서 OnlineSubsystem의 오류 메세지 확인할 필요가 있음.
+		UE_LOG(LogFAOSS, Error, TEXT("세션 복구 실패, Log확인필요"));
+		bReturningToLobby = false;
+		return;
+	}
+	TravelToLobby();
+}
+
+void AFAGameMode::TravelToLobby()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		bReturningToLobby = false;
+		return;
+	}
+	
+	const FString LobbyLevelPath = LobbyLevel.ToSoftObjectPath().GetLongPackageName();
+	
+	if (LobbyLevelPath.IsEmpty())
+	{
+		UE_LOG(LogFAOSS, Error, TEXT("FAGameMode에 돌아갈 로비 레벨이 지정되지 않았습니다."));
+		return;
+	}
+	
+	if (!World->ServerTravel(LobbyLevelPath))
+	{
+		UE_LOG(
+			LogFAOSS,
+			Error,
+			TEXT("로비 ServerTravel 요청에 실패했습니다."));
+
+		bReturningToLobby = false;
+	}
 }
