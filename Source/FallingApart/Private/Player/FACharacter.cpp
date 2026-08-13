@@ -264,16 +264,43 @@ void AFACharacter::SetupCaptureMarker()
 	CaptureMarker->RegisterComponent();
 	CaptureMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	CaptureMarker->SetRelativeLocation(CaptureMarkerOffset);
+	CaptureMarker->SetVisibility(false);
+}
 
-	if (CaptureMarkerCullDistance > 0.0f)
+bool AFACharacter::ShouldShowCaptureMarker() const
+{
+	// 잡힌 쪽만 머리 위에 띄운다. 잡고 있는 좀비 머리 위에도 뜨면 누가 인질인지 헷갈린다.
+	if (!CaptureState.IsActive() || !CaptureState.bIsVictim)
 	{
-		CaptureMarker->SetCullDistance(CaptureMarkerCullDistance);
+		return false;
 	}
 
 	// 잡힌 본인은 HUD 게이지를 이미 보고 있다 — 3인칭에서 자기 머리 위에 같은 게 하나 더 뜨면 겹친다.
-	CaptureMarker->SetOwnerNoSee(true);
+	if (IsLocallyControlled())
+	{
+		return false;
+	}
 
-	CaptureMarker->SetVisibility(false);
+	if (CaptureMarkerCullDistance > 0.0f)
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+		if (!LocalController)
+		{
+			return false;
+		}
+
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		if (FVector::DistSquared(ViewLocation, GetActorLocation()) > FMath::Square(CaptureMarkerCullDistance))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void AFACharacter::UpdateCaptureMarker()
@@ -283,8 +310,7 @@ void AFACharacter::UpdateCaptureMarker()
 		return;
 	}
 
-	// 잡힌 쪽만 머리 위에 띄운다. 잡고 있는 좀비 머리 위에도 뜨면 누가 인질인지 헷갈린다.
-	const bool bShouldShow = CaptureState.IsActive() && CaptureState.bIsVictim;
+	const bool bShouldShow = ShouldShowCaptureMarker();
 
 	if (bShouldShow != CaptureMarker->IsVisible())
 	{
