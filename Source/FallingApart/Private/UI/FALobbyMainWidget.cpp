@@ -52,12 +52,17 @@ void UFALobbyMainWidget::NativeOnInitialized()
 void UFALobbyMainWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
 }
 
 void UFALobbyMainWidget::NativeDestruct()
 {
 	Super::NativeDestruct();
+	if (BoundedLobbyGameState)
+	{
+		BoundedLobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleLobbyStateChanged);
+	}
 	if (Button_Ready)
 	{
 		Button_Ready->OnClicked.RemoveAll(this);
@@ -82,8 +87,16 @@ void UFALobbyMainWidget::InitializeLobby()
 	{
 		return;
 	}
-
-	LobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
+	if (BoundedLobbyGameState && LobbyGameState != BoundedLobbyGameState)
+	{
+		
+		LobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleLobbyStateChanged);
+	}
+	//
+	BoundedLobbyGameState = LobbyGameState;
+	BoundedLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
 		this,
 		&ThisClass::HandleLobbyStateChanged);
 
@@ -105,6 +118,16 @@ void UFALobbyMainWidget::RefreshLobby()
 	
 	RefreshPlayerList(LobbyGameState->PlayerArray);
 	RefreshInteractionState(LobbyGameState->GetLobbyPhase());
+	
+	const EFALobbyPhase LobbyPhase = LobbyGameState->GetLobbyPhase();
+	if (LobbyPhase == EFALobbyPhase::Countdown)
+	{
+		StartCountdownUiTimer();
+	}
+	else
+	{
+		StopCountdownUiTimer();
+	}
 }
 
 void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> PlayerArray)
@@ -140,18 +163,44 @@ void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> Play
 
 void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 {
-	switch (LobbyPhase)
+	AFALobbyPlayerController* LobbyController =	Cast<AFALobbyPlayerController>(GetOwningPlayer());
+
+	AFALobbyGameState* LobbyState =	BoundedLobbyGameState.Get();
+	
+	const bool bIsHost = LobbyController && LobbyController->IsLobbyHost();
+	
+	if (Button_Start)
 	{
-	case EFALobbyPhase::Countdown:
-	case EFALobbyPhase::Traveling:
-	case EFALobbyPhase::LockingSession:
-		Button_Ready->SetIsEnabled(false);
-		break;
-	case EFALobbyPhase::WaitingForPlayers:
-	case EFALobbyPhase::WaitingForReady:
-		Button_Ready->SetIsEnabled(true);
-		break;
+		const bool bCanClickStart =
+			bIsHost
+			&& LobbyState
+			&& LobbyState->CanHostStartMatch()
+			&& LobbyPhase == EFALobbyPhase::WaitingForReady;
+
+		Button_Start->SetIsEnabled(bCanClickStart);
 	}
+	if (Button_Ready)
+	{
+		const bool bCanChangeReady = LobbyPhase == EFALobbyPhase::WaitingForPlayers
+								|| LobbyPhase == EFALobbyPhase::WaitingForReady
+								|| LobbyPhase == EFALobbyPhase::Countdown;
+		
+		Button_Ready->SetIsEnabled(bCanChangeReady);
+		
+		// switch (LobbyPhase)
+		// {
+		// case EFALobbyPhase::Traveling:
+		// case EFALobbyPhase::LockingSession:
+		// 	Button_Ready->SetIsEnabled(false);
+		// 	break;
+		// case EFALobbyPhase::WaitingForPlayers:
+		// case EFALobbyPhase::WaitingForReady:
+		// case EFALobbyPhase::Countdown:
+		// 	Button_Ready->SetIsEnabled(true);
+		// 	break;
+		// }
+	}
+	
 }
 
 void UFALobbyMainWidget::OnReadybuttonClicked()
@@ -171,5 +220,61 @@ void UFALobbyMainWidget::OnReadybuttonClicked()
 
 void UFALobbyMainWidget::OnStartbuttonClicked()
 {
+	AFALobbyPlayerController* PlayerController = Cast<AFALobbyPlayerController>(GetOwningPlayer());
+	if (!PlayerController)
+		return;
 	
+	PlayerController->RequestStartCountdown();
+}
+
+void UFALobbyMainWidget::UpdateCountdownText()
+{
+	if (!BoundedLobbyGameState || !Text_Countdown)
+	{
+		return;
+	}
+	
+	const int32 RemainingSeconds =
+		BoundedLobbyGameState->GetRemainingCountdownSeconds();
+	
+	Text_Countdown->SetText(
+		FText::Format(
+			NSLOCTEXT(
+				"FALobby",
+				"MatchStartCountdown",
+				"{0}초 후 게임 시작"),
+			FText::AsNumber(RemainingSeconds)));
+	
+	Text_Countdown->SetVisibility(
+		ESlateVisibility::HitTestInvisible);
+}
+
+void UFALobbyMainWidget::StartCountdownUiTimer()
+{
+	if (GetWorld()->GetTimerManager().IsTimerActive(CountdownUiTimerHandle))
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(
+		CountdownUiTimerHandle,
+		this,
+		&ThisClass::UpdateCountdownText,
+		0.1f,
+		true);
+
+	UpdateCountdownText();
+
+}
+
+void UFALobbyMainWidget::StopCountdownUiTimer()
+{
+	GetWorld()->GetTimerManager().ClearTimer(
+	CountdownUiTimerHandle);
+
+	if (Text_Countdown)
+	{
+		Text_Countdown->SetVisibility(
+			ESlateVisibility::Collapsed);
+	}
 }

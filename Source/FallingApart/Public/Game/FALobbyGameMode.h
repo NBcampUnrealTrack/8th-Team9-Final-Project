@@ -46,11 +46,16 @@ private:
 	
 	void HandleSessionPrepared(bool bSuccess);
 	
+	void HandleSessionReopened(bool bSuccess);
+	
 	void TravelToSelectedMap();
 	
 	void RollbackGameStart();
 	
 	AFALobbyGameState* GetLobbyGameState() const;
+	
+
+
 	
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	int32 MinPlayersToStart = 2;
@@ -71,6 +76,31 @@ private:
 	
 	FDelegateHandle PreparedForMatchDelegateHandle;
 	
+	FDelegateHandle ReopenedForLobbyDelegateHandle;
+	
 	bool bGameStartCommitted = false;
+	bool bRollbackInProgress = false;
+	
+	
+#pragma region StartTimer
+public:
+	void RequestStartCountDown(APlayerController* RequestingController);
+private:
+	bool IsHostController(APlayerController* Controller);
+	
+	
+	void StartGameCountdown();
+	void CancelGameCountdown();
+	void HandleGameCountdownFinished();
+	bool IsCountdownActive() const;
+	
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
+	float GameStartCountdownDelayInSeconds = 5.f;
+	
+	FTimerHandle GameStartCountdownTimerHandle;
+	
+	float CountdownEndServerTime = 0.f;
+	
+#pragma endregion StartTimer
 };
 
