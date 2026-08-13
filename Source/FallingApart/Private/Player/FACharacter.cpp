@@ -8,7 +8,9 @@
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Player/FACharacterMovementComponent.h"
 #include "Player/FAPlayerState.h"
 #include "Components/InputComponent.h"
@@ -85,6 +87,17 @@ UFACharacterMovementComponent* AFACharacter::GetFAMovementComponent() const
 	return Cast<UFACharacterMovementComponent>(GetCharacterMovement());
 }
 
+void AFACharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// 로비는 AFAPlayerState 가 아니라 AFALobbyPlayerState 를 쓴다 — 진영 알림이 아예 없다.
+	// 진영을 모르는 맥락에서는 인간 외형이 기본이므로, 여기서 한 번 기준선을 깔아둔다.
+	// 인게임에서는 진영이 정해지는 순간 HandleTeamChanged 가 다시 덮는다.
+	const AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
+	ApplyTeamMaterial(FAPlayerState ? FAPlayerState->GetTeam() : EFATeam::None);
+}
+
 void AFACharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
@@ -150,6 +163,38 @@ void AFACharacter::BindTeamNotify()
 }
 
 void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
+{
+	ApplyTeamMaterial(NewTeam);
+	UpdateGrowlLoop(NewTeam);
+}
+
+void AFACharacter::ApplyTeamMaterial(EFATeam NewTeam)
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return;
+	}
+
+	// 진영 미배정(라운드 시작 전 · 관전)은 인간 외형으로 둔다.
+	UMaterialInterface* TargetMaterial = (NewTeam == EFATeam::Zombie) ? ZombieMaterial : HumanMaterial;
+	if (!TargetMaterial)
+	{
+		// 아직 BP 에 안 물린 단계
+		return;
+	}
+
+	const int32 SlotCount = MeshComponent->GetNumMaterials();
+	for (int32 SlotIndex = 0; SlotIndex < SlotCount; ++SlotIndex)
+	{
+		if (MeshComponent->GetMaterial(SlotIndex) != TargetMaterial)
+		{
+			MeshComponent->SetMaterial(SlotIndex, TargetMaterial);
+		}
+	}
+}
+
+void AFACharacter::UpdateGrowlLoop(EFATeam NewTeam)
 {
 	// 그르렁은 '인간이 좀비의 위치를 눈치채는' 단서다. 오디오 리스너가 캐릭터 머리에 붙어 있어
 	// (생성자 주석 참고) 본인 폰에 걸면 거리 0 · 감쇠 0 으로 라운드 내내 자기 소리만 듣게 된다.
