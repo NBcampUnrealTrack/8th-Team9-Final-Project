@@ -23,7 +23,7 @@ namespace FAGrabAudio
 
 UFAGA_Grab::UFAGA_Grab()
 {
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
