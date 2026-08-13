@@ -43,6 +43,41 @@ enum class EFARoundResult : uint8
 };
 
 /**
+ * 포획(감염) 진행 상태. 서버가 채우고 잡은 좀비 · 잡힌 인간 양쪽 캐릭터에 복제된다.
+ * 각 클라이언트의 UFAHUDWidget 이 이 상태를 폴링해서 한다.
+ */
+USTRUCT(BlueprintType)
+struct FFACaptureState
+{
+	GENERATED_BODY()
+
+	/** 감염이 완료되는 서버 월드 시각(초). TotalDuration 이 0 이면 의미 없음. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float EndServerTime = 0.0f;
+
+	/** 감염까지 걸리는 총 시간(초). 0 이면 포획 중이 아니다 — 이 값 하나가 활성 여부를 겸한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float TotalDuration = 0.0f;
+
+	/**
+	 * 구출 QTE 로 감염 타이머가 멈춰 있는 동안의 남은 시간(초).
+	 * 0 보다 크면 게이지는 이 값에서 멈춘다 — 서버 시각으로 계산하면 QTE 중에도 혼자 채워진다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float PausedRemaining = 0.0f;
+
+	/** 이 캐릭터가 잡힌 쪽인가. false 면 잡고 있는 좀비. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	bool bIsVictim = false;
+
+	/** 구출 QTE 줄다리기 진행도 0~1 (1 = 인간 승리 직전). QTE 중이 아니면 0. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float ResistRatio = 0.0f;
+
+	bool IsActive() const { return TotalDuration > 0.0f; }
+};
+
+/**
  * 플레이어 점수 집계 단위 (GDD 5부 · 기술문서 4.1).
  */
 USTRUCT(BlueprintType)

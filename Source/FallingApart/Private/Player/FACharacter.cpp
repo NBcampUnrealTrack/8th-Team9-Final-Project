@@ -9,6 +9,7 @@
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Player/FACharacterMovementComponent.h"
@@ -85,6 +86,99 @@ UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
 UFACharacterMovementComponent* AFACharacter::GetFAMovementComponent() const
 {
 	return Cast<UFACharacterMovementComponent>(GetCharacterMovement());
+}
+
+void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// 자기 화면의 게이지 전용이라 남에게 보낼 이유가 없다.
+	DOREPLIFETIME_CONDITION(AFACharacter, CaptureState, COND_OwnerOnly);
+}
+
+//~ ---------------- 포획 감염 게이지 ----------------
+
+float AFACharacter::GetServerWorldTime() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+
+	const AGameStateBase* CurrentGameState = World->GetGameState();
+	return CurrentGameState ? CurrentGameState->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+}
+
+float AFACharacter::GetCaptureInfectionRatio() const
+{
+	if (!CaptureState.IsActive())
+	{
+		return 0.0f;
+	}
+
+	// QTE 로 멈춰 있는 동안은 서버 시각이 계속 흐르므로 저장해 둔 남은 시간을 그대로 쓴다.
+	const float Remaining = CaptureState.PausedRemaining > 0.0f
+		? CaptureState.PausedRemaining
+		: CaptureState.EndServerTime - GetServerWorldTime();
+
+	return FMath::Clamp(1.0f - Remaining / CaptureState.TotalDuration, 0.0f, 1.0f);
+}
+
+void AFACharacter::BeginCaptureState(bool bInIsVictim, float Duration)
+{
+	if (!HasAuthority() || Duration <= 0.0f)
+	{
+		return;
+	}
+
+	CaptureState.bIsVictim = bInIsVictim;
+	CaptureState.TotalDuration = Duration;
+	CaptureState.EndServerTime = GetServerWorldTime() + Duration;
+	CaptureState.PausedRemaining = 0.0f;
+	CaptureState.ResistRatio = 0.0f;
+}
+
+void AFACharacter::PauseCaptureState(float RemainingSeconds)
+{
+	// 남은 시간이 0 이하로 들어오면 '멈춤'과 '진행 중'을 구분할 수 없다 — 그냥 무시한다.
+	if (!HasAuthority() || !CaptureState.IsActive() || RemainingSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	CaptureState.PausedRemaining = RemainingSeconds;
+}
+
+void AFACharacter::ResumeCaptureState(float RemainingSeconds)
+{
+	if (!HasAuthority() || !CaptureState.IsActive())
+	{
+		return;
+	}
+
+	CaptureState.PausedRemaining = 0.0f;
+	CaptureState.EndServerTime = GetServerWorldTime() + FMath::Max(0.0f, RemainingSeconds);
+}
+
+void AFACharacter::SetCaptureResistRatio(float Ratio)
+{
+	if (!HasAuthority() || !CaptureState.IsActive())
+	{
+		return;
+	}
+
+	CaptureState.ResistRatio = FMath::Clamp(Ratio, 0.0f, 1.0f);
+}
+
+void AFACharacter::EndCaptureState()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	CaptureState = FFACaptureState();
 }
 
 void AFACharacter::BeginPlay()
