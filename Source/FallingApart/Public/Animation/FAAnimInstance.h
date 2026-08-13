@@ -7,24 +7,52 @@
 #include "FAAnimInstance.generated.h"
 
 class AFACharacter;
+class UAbilitySystemComponent;
 class UCharacterMovementComponent;
-/**
- * 
+
+/*
+  GAS 상태가 동시에 복제되는 짧은 구간에도 애니메이션 우선순위를 한 곳에서 결정하기 위한 상태.
  */
+UENUM(BlueprintType)
+enum class EFAAnimStatusOverride : uint8
+{
+	None,
+	Seizure,
+	Stunned,
+	Grabbed,
+	Grabbing,
+	HumanContesting,
+	ZombieContesting,
+	Contesting
+};
+
+
 UCLASS()
 class FALLINGAPART_API UFAAnimInstance : public UAnimInstance
 {
 	GENERATED_BODY()
 public:
 	virtual void NativeInitializeAnimation() override;
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
 protected:
+	void CacheOwnerReferences();
+
+	/* 현재 보유 태그를 애니메이션 전용 단일 상태로 변환한다. */
+	void UpdateGASStatusOverride();
+
+
+	[[nodiscard]] EFAAnimStatusOverride ResolveGASStatusOverride() const;
+
 	UPROPERTY()
 	AFACharacter* OwningCharacter;
 
 	UPROPERTY()
 	UCharacterMovementComponent* OwningMovementComponent;
+
+	UPROPERTY()
+	UAbilitySystemComponent* OwningAbilitySystemComponent;
 
 	UPROPERTY(VisibleDefaultsOnly,BlueprintReadOnly, Category = "AnimData|LocomotionData")
 	float GroundSpeed;
@@ -38,5 +66,10 @@ protected:
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
 	bool bIsFalling;
 
-
+	/*
+	  AnimGraph 의 StatusOverride 상태머신이 직접 읽는 값.
+	  우선순위: Grabbed > Contesting > Grabbing > Seizure > Stunned > None.
+	 */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|GAS")
+	EFAAnimStatusOverride StatusOverride = EFAAnimStatusOverride::None;
 };
