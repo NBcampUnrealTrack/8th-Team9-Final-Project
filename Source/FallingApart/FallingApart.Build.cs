@@ -21,9 +21,11 @@ public class FallingApart : ModuleRules
 
 		// 로컬 토커 등록(IOnlineVoice::RegisterLocalTalker)은 UOnlineEngineInterface 에 노출돼 있지 않아
 		// VoiceInterface 를 직접 잡아야 한다. 엔진은 이걸 자동으로 해주지 않는다.
+		// AudioMixer — UFAVoiceStatics 가 월드 정리 때 UVoipListenerSynthComponent(USynthComponent 파생)의
+		// Stop()/GetAudioComponent() 를 직접 불러 등록을 푼다.
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"OnlineSubsystem", "OnlineSubsystemUtils",
+			"OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer",
 			//스팀 연동을 위한 모듈 포함
 			"OnlineSubsystemSteam"
 		});

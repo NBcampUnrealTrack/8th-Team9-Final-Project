@@ -18,7 +18,7 @@ namespace FAContestAudio
 UFAGA_ContestMash::UFAGA_ContestMash()
 {
 	// 연타 처리는 서버에서 직접 게이지를 조작
-	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerOnly;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 }
 

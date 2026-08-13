@@ -6,6 +6,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "FAVoiceStatics.generated.h"
 
+class UWorld;
+
 /**
  * 보이스 설정 UI 에서 쓰는 헬퍼 모음.
  * 엔진의 UVOIPStatics / config 를 직접 만지지 않고 여기를 통하게 해서
@@ -40,4 +42,9 @@ public:
 	/** config 상 푸시투토크가 요구되는가([/Script/Engine.GameSession] bRequiresPushToTalk, DefaultGame.ini). */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	static bool DoesConfigRequirePushToTalk();
+
+	/**
+	 * 월드가 내려가기 전에 그 월드에 등록된 VOIP 재생 컴포넌트를 전부 떼어낸다.
+	 */
+	static void ShutdownVoicePlaybackForWorld(UWorld* World);
 };
