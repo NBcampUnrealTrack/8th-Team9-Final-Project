@@ -30,6 +30,7 @@ public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -59,7 +60,40 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayFASoundAtLocation(FName SoundId, bool bSkipLocalOwner = false);
 
+	//~ ---------------- 포획 감염 게이지 ----------------
+	//~ 상태만 복제하고 그리기는 UFAHUDWidget 이 폴링으로 한다.
+
+	/** 포획 진행 상태. HUD 게이지가 읽는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Capture")
+	const FFACaptureState& GetCaptureState() const { return CaptureState; }
+
+	/**
+	 * 감염 진행도 0~1. 1 이면 감염이 확정되는 시점.
+	 * 서버 시각을 기준으로 계산하므로 서버와 클라이언트가 같은 값을 본다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Capture")
+	float GetCaptureInfectionRatio() const;
+
+	//~ 서버 전용 — UFAGA_Grab · UFAGA_RescueContest 만 호출한다.
+	/** 포획 시작. Duration 초 뒤에 감염이 확정된다. */
+	void BeginCaptureState(bool bInIsVictim, float Duration);
+
+	/** QTE 진입으로 감염 타이머가 멈췄다. RemainingSeconds 는 남은 감염 시간. */
+	void PauseCaptureState(float RemainingSeconds);
+
+	/** QTE 가 끝나 감염 타이머가 다시 흐른다. */
+	void ResumeCaptureState(float RemainingSeconds);
+
+	/** 구출 QTE 줄다리기 진행도(0~1). 포획 중이 아니면 무시된다. */
+	void SetCaptureResistRatio(float Ratio);
+
+	/** 포획 종료 — 감염 성공·취소 어느 쪽이든 반드시 불러야 게이지가 내려간다. */
+	void EndCaptureState();
+
 protected:
+	/** GameState 기준 서버 월드 시각. GameState 가 아직 없으면 로컬 시각으로 폴백. */
+	float GetServerWorldTime() const;
+
 	virtual void BeginPlay() override;
 
 	virtual void PossessedBy(AController* NewController) override;
@@ -177,6 +211,12 @@ public:
 	TObjectPtr<UMaterialInterface> ZombieMaterial;
 
 private:
+	/**
+	 * 포획 진행 상태. 자기 화면의 게이지에만 쓰이므로 소유 클라이언트에게만 보낸다.
+	 */
+	UPROPERTY(Replicated)
+	FFACaptureState CaptureState;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
 

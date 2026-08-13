@@ -3,7 +3,9 @@
 #include "GAS/Abilities/FAGA_Grab.h"
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
+#include "Game/FAGameMode.h"
 #include "Player/FACharacter.h"
+#include "Player/FAPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -60,6 +62,9 @@ void UFAGA_Grab::ActivateAbility(
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
+
+	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 QTE 의 남은 시간이 남아 있으면 안 된다.
+	RemainingInfectTime = 0.0f;
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
@@ -123,6 +128,10 @@ void UFAGA_Grab::ActivateAbility(
 			0.1f,
 			true
 		);
+
+		// HUD 감염 게이지 — 이 어빌리티는 ServerOnly 라 화면을 직접 못 그린다.
+		TargetHuman->BeginCaptureState(/*bInIsVictim=*/true, InfectDuration);
+		ZombieChar->BeginCaptureState(/*bInIsVictim=*/false, InfectDuration);
 	}
 }
 
@@ -130,8 +139,19 @@ void UFAGA_Grab::PauseInfectTimer()
 {
 	if (UWorld* World = GetWorld())
 	{
+		// 타이머가 안 돌고 있으면 -1 이 온다.
 		RemainingInfectTime = World->GetTimerManager().GetTimerRemaining(InfectTimerHandle);
 		World->GetTimerManager().ClearTimer(InfectTimerHandle);
+
+		// 게이지도 같이 멈춘다 — 안 멈추면 QTE 로 겨루는 동안 감염이 혼자 채워지는 것처럼 보인다.
+		if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
+		{
+			ZombieChar->PauseCaptureState(RemainingInfectTime);
+		}
+		if (GrabbedVictim.IsValid())
+		{
+			GrabbedVictim->PauseCaptureState(RemainingInfectTime);
+		}
 	}
 }
 
@@ -148,6 +168,16 @@ void UFAGA_Grab::ResumeInfectTimer()
 				RemainingInfectTime,
 				false
 			);
+
+			// 처음부터 다시 도는 게 아니라 남은 시간부터 이어진다 — 게이지 기준 시각도 같이 옮긴다.
+			if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
+			{
+				ZombieChar->ResumeCaptureState(RemainingInfectTime);
+			}
+			if (GrabbedVictim.IsValid())
+			{
+				GrabbedVictim->ResumeCaptureState(RemainingInfectTime);
+			}
 		}
 	}
 }
@@ -177,7 +207,19 @@ void UFAGA_Grab::OnInfectTimerExpired()
 		// 전용 2D 소리를 내주므로, 본인 화면에서는 이걸 빼야 같은 순간에 세 겹으로 겹치지 않는다.
 		GrabbedVictim->Multicast_PlayFASoundAtLocation(FAGrabAudio::InfectComplete, /*bSkipLocalOwner=*/true);
 
-		// TODO: 진영 전환(Rule.Team.Zombie) 및 개인 점수 +2 지급
+		// 진영 전환 · 감염 점수 +2 · 인간 룰 제거 · 연속 드래프트 · 생존자 수 갱신 ·
+		AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo());
+
+		AFAPlayerState* VictimState = GrabbedVictim->GetPlayerState<AFAPlayerState>();
+		AFAPlayerState* InfectorState = ZombieChar ? ZombieChar->GetPlayerState<AFAPlayerState>() : nullptr;
+
+		if (const UWorld* World = GetWorld())
+		{
+			if (AFAGameMode* GameMode = World->GetAuthGameMode<AFAGameMode>())
+			{
+				GameMode->HandleInfection(VictimState, InfectorState);
+			}
+		}
 	}
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
@@ -210,6 +252,16 @@ void UFAGA_Grab::EndAbility(
 				TargetASC->RemoveActiveGameplayEffect(VictimEffectHandle);
 			}
 		}
+	}
+
+	// 게이지는 감염 성공·거리 이탈·QTE 패배 어느 쪽으로 끝나도 반드시 내려가야 한다.
+	if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
+	{
+		ZombieChar->EndCaptureState();
+	}
+	if (GrabbedVictim.IsValid())
+	{
+		GrabbedVictim->EndCaptureState();
 	}
 
 	GrabbedVictim.Reset();

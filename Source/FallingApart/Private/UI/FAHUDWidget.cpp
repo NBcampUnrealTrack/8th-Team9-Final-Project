@@ -6,6 +6,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "Engine/World.h"
 #include "Game/FAGameState.h"
+#include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
 #include "TimerManager.h"
 
@@ -39,6 +40,9 @@ void UFAHUDWidget::NativeConstruct()
 
 	RefreshBindings();
 	UpdatePolledValues(0.0f);
+
+	// 게이지의 시작 상태를 여기서 한 번 못박는다.
+	OnCaptureGaugeHidden();
 }
 
 void UFAHUDWidget::NativeDestruct()
@@ -61,6 +65,9 @@ void UFAHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	// 포인터 비교뿐이라 매 프레임 불러도 부담이 없움.
 	RefreshBindings();
 	UpdatePolledValues(InDeltaTime);
+
+	// UpdatePolledValues 는 GameState 가 없으면 그냥 빠져나가므로 게이지는 따로 부른다.
+	UpdateCaptureGauge();
 }
 
 float UFAHUDWidget::GetRoundTimeRemaining() const
@@ -207,6 +214,29 @@ void UFAHUDWidget::HideCaptureGauge()
 	LastResistRatio = -1.0f;
 
 	OnCaptureGaugeHidden();
+}
+
+void UFAHUDWidget::UpdateCaptureGauge()
+{
+	const APlayerController* OwningController = GetOwningPlayer();
+	const AFACharacter* OwningCharacter = OwningController ? Cast<AFACharacter>(OwningController->GetPawn()) : nullptr;
+
+	// 포획이 끝났거나, 감염돼서 Pawn 이 갈렸거나, 아직 빙의 전이거나 — 전부 게이지를 내린다.
+	if (!OwningCharacter || !OwningCharacter->GetCaptureState().IsActive())
+	{
+		HideCaptureGauge();
+		return;
+	}
+
+	const FFACaptureState& State = OwningCharacter->GetCaptureState();
+
+	// 잡은 쪽과 잡힌 쪽이 다른 화면을 봐야 하므로 역할은 띄우는 순간에 한 번만 넘긴다.
+	if (!bCaptureGaugeVisible)
+	{
+		ShowCaptureGauge(State.bIsVictim);
+	}
+
+	SetCaptureProgress(OwningCharacter->GetCaptureInfectionRatio(), State.ResistRatio);
 }
 
 void UFAHUDWidget::RefreshBindings()

@@ -193,6 +193,12 @@ private:
 	 */
 	void UpdatePolledValues(float DeltaTime);
 
+	/**
+	 * 내 캐릭터의 복제된 포획 상태를 읽어 게이지를 띄우고 · 갱신하고 · 내린다.
+	 * 포획 어빌리티는 ServerOnly 라 화면을 직접 못 건드리므로 이쪽에서 폴링한다.
+	 */
+	void UpdateCaptureGauge();
+
 	/** 초침을 울릴 때가 됐는지 누산기로 판정한다. 표시 초와 분리돼 있어야 1초보다 촘촘해질 수 있다. */
 	void UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInProgress, float DeltaTime);
 
