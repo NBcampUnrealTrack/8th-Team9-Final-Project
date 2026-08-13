@@ -1,4 +1,4 @@
-﻿#include "Rule/FADeathMatchSubsystem.h"
+#include "Rule/FADeathMatchSubsystem.h"
 
 #include "Components/PrimitiveComponent.h"
 #include "EngineUtils.h"
@@ -44,37 +44,49 @@ void UFADeathMatchSubsystem::StartDeathMatch(const TArray<AFAPlayerState*>& Cont
 		}
 	}
 
-	if (Contenders.Num() != 2)
+	if (Contenders.Num() != 2 && Contenders.Num() != 3)
 	{
-		// 3인 동점(좀비1 vs 인간2)은 기획 확정 전이라 아직 처리하지 않는다 (GDD "확정 필요" 항목).
-		AbortDeathMatch(FString::Printf(TEXT("참가자가 2명이 아니다(%d명) — 3인 데스매치 규칙 미확정"), Contenders.Num()));
+		AbortDeathMatch(FString::Printf(TEXT("참가자가 2~3명이 아니다(%d명)"), Contenders.Num()));
 		return;
 	}
 
-	AFAPlayerState* First = Contenders[0];
-	AFAPlayerState* Second = Contenders[1];
-	if (!First || !Second)
+	TArray<AFAPlayerState*> ValidContenders;
+	for (AFAPlayerState* Contender : Contenders)
 	{
+		if (Contender)
+		{
+			ValidContenders.Add(Contender);
+		}
+	}
+
+	if (ValidContenders.Num() != Contenders.Num())
+	{
+		// 빈 포인터가 섞여 있으면 인원수 전제(2~3명)가 깨진다 — 안전하게 중단.
 		AbortDeathMatch(TEXT("참가자 PlayerState 가 유효하지 않다"));
 		return;
 	}
 
-	// 진영 랜덤 배정 — 1명 인간, 1명 좀비.
-	const bool bFirstIsZombie = FMath::RandBool();
-	AFAPlayerState* Zombie = bFirstIsZombie ? First : Second;
-	AFAPlayerState* Human = bFirstIsZombie ? Second : First;
+	// 진영 랜덤 배정 — 좀비 1명, 나머지 전원 인간 (GDD "좀비1 vs 인간2", 3인은 권장안 · 확정 필요).
+	TArray<AFAPlayerState*> Remaining = ValidContenders;
+	const int32 ZombieIndex = FMath::RandRange(0, Remaining.Num() - 1);
+	AFAPlayerState* Zombie = Remaining[ZombieIndex];
+	Remaining.RemoveAtSwap(ZombieIndex);
 
 	Zombie->SetTeam(EFATeam::Zombie);
-	Human->SetTeam(EFATeam::Human);
-
 	ActiveZombie = Zombie;
-	ActiveHuman = Human;
 
-	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 진영 배정 — 좀비: %s / 인간: %s"),
-		*Zombie->GetPlayerName(), *Human->GetPlayerName());
+	ActiveHumans.Reset();
+	for (AFAPlayerState* Human : Remaining)
+	{
+		Human->SetTeam(EFATeam::Human);
+		ActiveHumans.Add(Human);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 진영 배정 — 좀비: %s / 인간 %d명"),
+		*Zombie->GetPlayerName(), ActiveHumans.Num());
 
 	// 맵 1층 제한 · 보유 룰 전부 제거 (GDD 5.4). 룰 드래프트는 매치가 이미 끝나 타이머가 없다.
-	EnterArena(Zombie, Human);
+	EnterArena(Zombie, Remaining);
 
 	GetWorld()->GetTimerManager().SetTimer(DeathMatchTimerHandle, this,
 		&UFADeathMatchSubsystem::HandleTimeExpired, FADeathMatch::TimeLimit, false);
@@ -82,7 +94,13 @@ void UFADeathMatchSubsystem::StartDeathMatch(const TArray<AFAPlayerState*>& Cont
 
 void UFADeathMatchSubsystem::NotifyContenderCaught(AFAPlayerState* CaughtHuman)
 {
-	if (!ActiveHuman.IsValid() || !ActiveZombie.IsValid() || ActiveHuman.Get() != CaughtHuman)
+	if (!ActiveZombie.IsValid() || !CaughtHuman)
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AFAPlayerState> WeakCaught(CaughtHuman);
+	if (!ActiveHumans.Contains(WeakCaught))
 	{
 		// 데스매치 중이 아니거나, 지금 추적 중인 인간이 아니면 무시.
 		return;
@@ -90,33 +108,71 @@ void UFADeathMatchSubsystem::NotifyContenderCaught(AFAPlayerState* CaughtHuman)
 
 	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] %s 포획 성공 — 좀비 승"), *ActiveZombie->GetPlayerName());
 
-	EndDeathMatch(ActiveZombie.Get(), ActiveHuman.Get());
+	// 포획 안 당한 나머지 인간(들)은 좀비보단 위, 포획당한 인간보단 아래 — 중간 순위.
+	AFAPlayerState* MidPlacementPlayer = nullptr;
+	for (const TWeakObjectPtr<AFAPlayerState>& Human : ActiveHumans)
+	{
+		if (Human.IsValid() && Human.Get() != CaughtHuman)
+		{
+			// 3인 케이스는 최대 1명만 남으므로 이걸로 충분 (2명 이상 남는 경우는 없음 — 좀비 1 vs 인간 N-1).
+			MidPlacementPlayer = Human.Get();
+			break;
+		}
+	}
+
+	EndDeathMatch({ ActiveZombie.Get() }, MidPlacementPlayer, { CaughtHuman });
 }
 
 void UFADeathMatchSubsystem::HandleTimeExpired()
 {
-	if (!ActiveHuman.IsValid() || !ActiveZombie.IsValid())
+	if (!ActiveZombie.IsValid() || ActiveHumans.Num() == 0)
 	{
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 1분 생존 — %s 승"), *ActiveHuman->GetPlayerName());
+	TArray<AFAPlayerState*> Survivors;
+	for (const TWeakObjectPtr<AFAPlayerState>& Human : ActiveHumans)
+	{
+		if (Human.IsValid())
+		{
+			Survivors.Add(Human.Get());
+		}
+	}
 
-	EndDeathMatch(ActiveHuman.Get(), ActiveZombie.Get());
+	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 1분 생존 — 인간 %d명 승"), Survivors.Num());
+
+	// 끝까지 버틴 인간들은 전원 동일 순위(최상위) — 그들 사이 순서는 원래 점수 타이브레이크에 맡긴다.
+	EndDeathMatch(Survivors, nullptr, { ActiveZombie.Get() });
 }
 
-void UFADeathMatchSubsystem::EndDeathMatch(AFAPlayerState* Winner, AFAPlayerState* Loser)
+void UFADeathMatchSubsystem::EndDeathMatch(const TArray<AFAPlayerState*>& TopPlacement, AFAPlayerState* MidPlacement,
+	const TArray<AFAPlayerState*>& BottomPlacement)
 {
-	// 순위표는 CompareRank() 4차 기준으로 이 값을 읽는다 — 여기서 붙이지 않으면 완전 동점 그대로 남는다.
-	if (Winner)
+	// 순위표는 AFAGameState::CompareRank() 4차(완전 동점 단계)에서 이 값을 읽는다 — 낮을수록 상위(1등=1).
+	// 여기서 붙이지 않으면 완전 동점 그대로 남는다. 점수(MatchScore)는 전혀 건드리지 않는다.
+	for (AFAPlayerState* PlayerState : TopPlacement)
 	{
-		Winner->SetDeathMatchPlacement(1);
-		UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 최종 순위 — 1등: %s"), *Winner->GetPlayerName());
+		if (PlayerState)
+		{
+			PlayerState->SetDeathMatchPlacement(1);
+			UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 최종 순위 — 1등: %s"), *PlayerState->GetPlayerName());
+		}
 	}
-	if (Loser)
+
+	if (MidPlacement)
 	{
-		Loser->SetDeathMatchPlacement(2);
-		UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 최종 순위 — 2등: %s"), *Loser->GetPlayerName());
+		MidPlacement->SetDeathMatchPlacement(2);
+		UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 최종 순위 — 2등: %s"), *MidPlacement->GetPlayerName());
+	}
+
+	const int32 BottomRank = MidPlacement ? 3 : 2;
+	for (AFAPlayerState* PlayerState : BottomPlacement)
+	{
+		if (PlayerState)
+		{
+			PlayerState->SetDeathMatchPlacement(BottomRank);
+			UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 최종 순위 — %d등: %s"), BottomRank, *PlayerState->GetPlayerName());
+		}
 	}
 
 	LeaveArena();
@@ -142,9 +198,11 @@ void UFADeathMatchSubsystem::AbortDeathMatch(const FString& Reason)
 	}
 }
 
-void UFADeathMatchSubsystem::EnterArena(AFAPlayerState* Zombie, AFAPlayerState* Human)
+void UFADeathMatchSubsystem::EnterArena(AFAPlayerState* Zombie, const TArray<AFAPlayerState*>& Humans)
 {
-	AFAPlayerState* Contenders[] = { Zombie, Human };
+	TArray<AFAPlayerState*> Contenders;
+	Contenders.Add(Zombie);
+	Contenders.Append(Humans);
 
 	// 보유 룰 전부 제거 — 5라운드 동안 쌓은 룰을 그대로 들고 붙으면 데스매치가 성립하지 않는다 (GDD 5.4).
 	for (AFAPlayerState* Contender : Contenders)
@@ -163,48 +221,70 @@ void UFADeathMatchSubsystem::EnterArena(AFAPlayerState* Zombie, AFAPlayerState* 
 	TArray<AActor*> AnyStarts;
 	GatherArenaStarts(ZombieStarts, HumanStarts, AnyStarts);
 
-	// 진영 태그가 붙은 스폰을 우선 쓰고, 없으면 진영 지정이 없는 자리에서 가져온다.
+	// 진영 태그가 붙은 스폰을 우선 쓰고, 없으면 진영 지정이 없는 자리에서 가져온다. 뽑은 자리는 바로 제거해
+	// 다음 참가자와 겹치지 않게 한다.
 	auto TakeRandom = [](TArray<AActor*>& Starts) -> AActor*
 	{
-		return Starts.Num() > 0 ? Starts[FMath::RandRange(0, Starts.Num() - 1)] : nullptr;
+		if (Starts.Num() == 0)
+		{
+			return nullptr;
+		}
+		const int32 Index = FMath::RandRange(0, Starts.Num() - 1);
+		AActor* Picked = Starts[Index];
+		Starts.RemoveAtSwap(Index);
+		return Picked;
 	};
 
 	AActor* ZombieStart = TakeRandom(ZombieStarts);
 	if (!ZombieStart)
 	{
 		ZombieStart = TakeRandom(AnyStarts);
-		AnyStarts.Remove(ZombieStart);   // 인간이 같은 자리에 겹치지 않게 뺀다.
 	}
 
-	AActor* HumanStart = TakeRandom(HumanStarts);
-	if (!HumanStart)
+	TArray<AActor*> AssignedHumanStarts;
+	for (int32 Index = 0; Index < Humans.Num(); ++Index)
 	{
-		HumanStart = TakeRandom(AnyStarts);
-	}
-
-	if (ZombieStart && HumanStart && ZombieStart != HumanStart)
-	{
-		AActor* Starts[] = { ZombieStart, HumanStart };
-
-		for (int32 Index = 0; Index < 2; ++Index)
+		AActor* Start = TakeRandom(HumanStarts);
+		if (!Start)
 		{
-			APawn* Pawn = Contenders[Index] ? Contenders[Index]->GetPawn() : nullptr;
-			if (Pawn)
+			Start = TakeRandom(AnyStarts);
+		}
+		AssignedHumanStarts.Add(Start);
+	}
+
+	bool bAllAssigned = (ZombieStart != nullptr);
+	for (AActor* Start : AssignedHumanStarts)
+	{
+		bAllAssigned &= (Start != nullptr);
+	}
+
+	if (bAllAssigned)
+	{
+		auto MoveTo = [](APawn* Pawn, AActor* Start)
+		{
+			if (Pawn && Start)
 			{
-				Pawn->TeleportTo(Starts[Index]->GetActorLocation(), Starts[Index]->GetActorRotation());
+				Pawn->TeleportTo(Start->GetActorLocation(), Start->GetActorRotation());
 
 				if (AController* Controller = Pawn->GetController())
 				{
-					Controller->SetControlRotation(Starts[Index]->GetActorRotation());
+					Controller->SetControlRotation(Start->GetActorRotation());
 				}
 			}
+		};
+
+		MoveTo(Zombie ? Zombie->GetPawn() : nullptr, ZombieStart);
+		for (int32 Index = 0; Index < Humans.Num(); ++Index)
+		{
+			MoveTo(Humans[Index] ? Humans[Index]->GetPawn() : nullptr, AssignedHumanStarts[Index]);
 		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("[DeathMatch] '%s' 스폰이 부족해 참가자를 옮기지 않았다 (좀비용 %d · 인간용 %d · 진영무관 %d — 서로 다른 2곳 필요)"),
-			*FADeathMatch::ArenaPlayerStartTag.ToString(), ZombieStarts.Num(), HumanStarts.Num(), AnyStarts.Num());
+			TEXT("[DeathMatch] '%s' 스폰이 부족해 참가자를 옮기지 않았다 (좀비용 %d · 인간용 %d · 진영무관 %d — 참가자 %d명 필요)"),
+			*FADeathMatch::ArenaPlayerStartTag.ToString(), ZombieStarts.Num(), HumanStarts.Num(), AnyStarts.Num(),
+			Contenders.Num());
 	}
 
 	// 수직 연결 봉쇄.
@@ -223,8 +303,8 @@ void UFADeathMatchSubsystem::LeaveArena()
 		FAGameState->SetDeathMatchArenaActive(false);
 	}
 
-	ActiveHuman.Reset();
 	ActiveZombie.Reset();
+	ActiveHumans.Reset();
 }
 
 bool UFADeathMatchSubsystem::PlayerStartHasTag(const APlayerStart* PlayerStart, const FName& Tag)

@@ -102,6 +102,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Result")
 	void OnReturnToLobbyClicked();
 
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Result")
+	void OnReturnToLobbyHovered();
+
 	/**
 	 * 순위가 확정되거나 바뀌었을 때. WBP 가 행 위젯을 직접 그린다면 여기서 그릴 것.
 	 */
@@ -138,7 +141,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
 	float RefreshInterval = 0.25f;
 
+	/** 순위를 한 줄씩 훑는 간격(초). 전부 동시에 울리면 한 덩어리로 뭉개진다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	float RankRevealInterval = 0.15f;
+
 private:
+	/** 순위표가 처음 채워졌을 때 한 줄씩 소리를 낸다. 갱신 때마다 다시 울리지는 않는다. */
+	void StartRankReveal();
+	void TickRankReveal();
+
 	/** 순위를 다시 계산한다. 이전과 결과가 같으면 아무것도 하지 않는다. */
 	void RefreshEntries();
 
@@ -158,4 +169,8 @@ private:
 	bool bUsingFallbackLayout = false;
 
 	float TimeSinceRefresh = 0.0f;
+
+	FTimerHandle RankRevealTimerHandle;
+	int32 RankRevealIndex = 0;
+	bool bRankRevealStarted = false;
 };

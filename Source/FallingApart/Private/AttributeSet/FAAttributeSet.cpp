@@ -22,7 +22,12 @@ UFAAttributeSet::UFAAttributeSet()
 
 	// 시야
 	InitVisionRange(6000.0f);
-	InitFieldOfView(90.0f);
+
+	// 포획 및 구출
+	InitGrabRange(200.0f);
+	InitInfectDuration(3.0f);
+	InitRescueDuration(0.0f);
+	InitContestGauge(50.0f);
 }
 
 void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,float& NewValue)
@@ -55,21 +60,33 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	}
 	else if (Attribute == GetStaminaAttribute())
 	{
-		// 현재 스태미나 는 최대 스태미나에서 0 사이로 설정 
+		// 현재 스태미나 는 최대 스태미나에서 0 사이로 설정
 		NewValue = FMath::Clamp(NewValue,0.0f,GetMaxStamina());
 	}
 	else if (Attribute == GetMaxStaminaAttribute())
 	{
-		// 최대 기본값 5 
+		// 최대 기본값 5
 		NewValue = FMath::Max(NewValue,5.0f);
 	}
 	else if (Attribute == GetVisionRangeAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,6000.0f);
 	}
-	else if (Attribute == GetFieldOfViewAttribute())
+	else if (Attribute == GetGrabRangeAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue,0.0f,90.0f);
+		NewValue = FMath::Clamp(NewValue, 50.0f, 1000.0f);
+	}
+	else if (Attribute == GetInfectDurationAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.5f, 10.0f);
+	}
+	else if (Attribute == GetRescueDurationAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 5.0f);
+	}
+	else if (Attribute == GetContestGaugeAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
 }
 
@@ -111,7 +128,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		const float ClampedMaxStamina =FMath::Max(GetMaxStamina(),0.0f);
 		SetMaxStamina(ClampedMaxStamina);
-		
+
 		// 최대값이 줄었을 경우에만 현재값 제한
 		if (GetStamina() > ClampedMaxStamina)
 		{
@@ -122,9 +139,17 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		SetVisionRange(FMath::Clamp(GetVisionRange(),0.0f,6000.0f));
 	}
-	else if (ChangedAttribute ==GetFieldOfViewAttribute())
+	else if (ChangedAttribute == GetGrabRangeAttribute())
 	{
-		SetVisionRange(FMath::Clamp(GetFieldOfView(),0.0f,6000.0f));
+		SetGrabRange(FMath::Clamp(GetGrabRange(), 50.0f, 1000.0f));
+	}
+	else if (ChangedAttribute == GetInfectDurationAttribute())
+	{
+		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 10.0f));
+	}
+	else if (ChangedAttribute == GetRescueDurationAttribute())
+	{
+		SetRescueDuration(FMath::Clamp(GetRescueDuration(), 0.0f, 5.0f));
 	}
 }
 
@@ -141,6 +166,10 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,Stamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxStamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,VisionRange,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, GrabRange, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, InfectDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RescueDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, ContestGauge, COND_None, REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -187,8 +216,22 @@ void UFAAttributeSet::OnRep_MaxStamina(const FGameplayAttributeData& OldValue)
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,VisionRange,OldValue);
 }
 
-void UFAAttributeSet::OnRep_FieldOfView(const FGameplayAttributeData& OldValue)
+void UFAAttributeSet::OnRep_GrabRange(const FGameplayAttributeData& OldValue)
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,FieldOfView,OldValue);
-	
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, GrabRange, OldValue);
+}
+
+void UFAAttributeSet::OnRep_InfectDuration(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, InfectDuration, OldValue);
+}
+
+void UFAAttributeSet::OnRep_RescueDuration(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, RescueDuration, OldValue);
+}
+
+void UFAAttributeSet::OnRep_ContestGauge(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, ContestGauge, OldValue);
 }

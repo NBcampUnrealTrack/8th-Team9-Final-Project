@@ -2,6 +2,7 @@
 
 #include "Voice/FAVoiceComponent.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
@@ -456,6 +457,12 @@ void UFAVoiceComponent::HandleTalkerStateChanged(bool bIsTalking)
 	if (SpeakingIndicator)
 	{
 		SpeakingIndicator->SetVisibility(bIsTalking);
+	}
+
+	// 발화 시작 신호는 본인에게만 아주 작게. 남의 것까지 울리면 12인 방이 시끄러워진다.
+	if (bIsTalking && GetOwner() && GetOwner()->HasLocalNetOwner())
+	{
+		UFAAudioSubsystem::PlayFASound(this, TEXT("Voice_TalkStart"));
 	}
 
 	OnTalkingStateChanged.Broadcast(bIsTalking);

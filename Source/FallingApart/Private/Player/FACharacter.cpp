@@ -1,6 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacter.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Camera/CameraComponent.h"
 #include "GAS/FAAbilitySystemComponent.h"
@@ -57,13 +58,11 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
 {
-	// 가지고 있는 AbilitySystemComponent를 return 해줌  ( 쓸수 딴데서 데이터 확인할 수 있게 해줌 ) 
 	return AbilitySystemComponent;
 }
 
 UFACharacterMovementComponent* AFACharacter::GetFAMovementComponent() const
 {
-	// 가지고 있는 
 	return Cast<UFACharacterMovementComponent>(GetCharacterMovement());
 }
 
@@ -155,76 +154,6 @@ void AFACharacter::ApplyInvulnerability(float Duration)
 	}
 }
 
-void AFACharacter::StartQTESync()
-{
-	GetWorldTimerManager().SetTimer(QTESyncTimerHandle, this, &AFACharacter::SyncQTEPressesWithServer, 0.15f, true);
-}
-
-void AFACharacter::StopQTESync()
-{
-	GetWorldTimerManager().ClearTimer(QTESyncTimerHandle);
-	LocalQTEPressCount = 0;
-	QTE_TargetVictim = nullptr;
-}
-
-void AFACharacter::ReceiveQTEPress(AFACharacter* InstigatorCharacter, int32 Presses)
-{
-	if (!HasAuthority() || !InstigatorCharacter)
-		return;
-
-	UAbilitySystemComponent* InstigatorASC = InstigatorCharacter->GetAbilitySystemComponent();
-
-	if (!InstigatorASC || !AbilitySystemComponent)
-		return;
-
-	const FAGameplayTags& FATags = FAGameplayTags::Get();
-
-	// 잡힌 사람에게 더 이상 'State_Contesting' 태그가 없다면, 이미 승패가 결정난 이후에 네트워크 지연으로 뒤늦게 도착한 패킷이므로 무시
-	if (!AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
-		return;
-
-	if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Zombie) && InstigatorASC->HasMatchingGameplayTag(FATags.State_Grabbing))
-	{
-		CurrentQTEGauge -= Presses * 4.0f;
-	}
-	else if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Human))
-	{
-		if (InstigatorASC->HasMatchingGameplayTag(FATags.State_Grabbed))
-		{
-			CurrentQTEGauge += Presses * 1.0f;
-		}
-		else
-		{
-			CurrentQTEGauge += Presses * 2.0f;
-		}
-	}
-
-	CurrentQTEGauge = FMath::Clamp(CurrentQTEGauge, 0.f, 100.f);
-
-	if (CurrentQTEGauge >= 100.f)
-	{
-		AbilitySystemComponent->SetLooseGameplayTagCount(FATags.State_Contesting, 0);
-		StopQTESync();
-
-		// TODO: 인간 승리 로직
-	}
-	else if (CurrentQTEGauge <= 0.f)
-	{
-		AbilitySystemComponent->SetLooseGameplayTagCount(FATags.State_Contesting, 0);
-		StopQTESync();
-
-		// TODO: 좀비 승리 로직
-	}
-}
-
-void AFACharacter::ResetQTEGauge()
-{
-	if (HasAuthority())
-	{
-		CurrentQTEGauge = 50.f;
-	}
-}
-
 void AFACharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -233,12 +162,6 @@ void AFACharacter::Tick(float DeltaTime)
 	{
 		UpdateCameraCollision(DeltaTime);
 	}
-}
-
-void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AFACharacter, CurrentQTEGauge);
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -259,10 +182,15 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	// 앉기 시작했을 떄 호출되는 함수
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	CameraBoom->TargetOffset.Z += HalfHeightAdjust;
+
+	// 크라우치는 bIsCrouched 가 복제되면서 모든 머신에서 이 함수가 불리므로 주변 사람에게도 들린다.
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySoundAtLocation(TEXT("Crouch_In"), GetActorLocation());
+	}
 
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 
@@ -274,10 +202,14 @@ void AFACharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 
 void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
-	//앉기(Crouch)를 해제했을 때 호출되는 함수
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
 	CameraBoom->TargetOffset.Z -= HalfHeightAdjust;
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		Audio->PlaySoundAtLocation(TEXT("Crouch_Out"), GetActorLocation());
+	}
 
 	GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 
@@ -303,6 +235,7 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		AddMovementInput(RightDirection, MovementVector.X);
 	}
 }
+
 void AFACharacter::Look(const FInputActionValue& Value)
 {
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
@@ -313,42 +246,45 @@ void AFACharacter::Look(const FInputActionValue& Value)
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
 }
+
 void AFACharacter::Input_Jump()
 {
-	// QTE 진행 중이면 점프를 막고 연타 카운트 증가
-	const FGameplayTag QTETag = FAGameplayTags::Get().State_Contesting;
+	if (!AbilitySystemComponent) return;
 
-	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(QTETag))
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting))
 	{
-		LocalQTEPressCount++;
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_ContestMash));
 		return;
 	}
 
-	const FGameplayTag JumpTag = FAGameplayTags::Get().Ability_Jump;
+	// 평상시 점프 어빌리티
+	const FGameplayTag JumpTag = FATags.Ability_Jump;
 
-	if (AbilitySystemComponent)
+	if (AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(JumpTag)))
 	{
-		if (AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(JumpTag)))
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.Ability->GetAssetTags().HasTagExact(JumpTag))
 		{
 			return;
-		}
-
-		for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
-		{
-			if (Spec.Ability && Spec.Ability->GetAssetTags().HasTagExact(JumpTag))
-			{
-				return;
-			}
 		}
 	}
 
 	// BP_FACharacter 의 DefaultAbilities 에 GA_Jump 를 아직 안 넣은 상태 — 기존 동작 유지.
 	Jump();
 }
+
 void AFACharacter::Input_StopJumping()
 {
 	StopJumping();
 }
+
 void AFACharacter::ToggleCrouch()
 {
 	if (GetCharacterMovement()->IsFalling())
@@ -377,7 +313,6 @@ void AFACharacter::UpdateCrouchCamera()
 
 void AFACharacter::TogglePerspective()
 {
-	//1인칭 ↔ 3인칭 상태를 전환하고, 카메라 전환용 타이머를 시작하는 함수
 	bIsFirstPerson = !bIsFirstPerson;
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 
@@ -389,8 +324,6 @@ void AFACharacter::TogglePerspective()
 
 void AFACharacter::UpdatePerspectiveCamera()
 {
-	//1인칭 3인칭 시점 전환을 부드럽게 하는 코드 
-	//Rule 에서 강제로 변경시 보임
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
 	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
 	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
@@ -410,7 +343,6 @@ void AFACharacter::UpdatePerspectiveCamera()
 
 void AFACharacter::UpdateCameraCollision(float DeltaTime)
 {
-	// 3인칭 카메라 벽에 부딫혔을 때 부드럽게 복구하는 함수 
 	float TargetArmLength = ThirdPersonArmLength;
 	FVector Start = CameraBoom->GetComponentLocation();
 	FVector Direction = (FollowCamera->GetComponentLocation() - Start).GetSafeNormal();
@@ -447,40 +379,18 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 
 void AFACharacter::TriggerPrimary()
 {
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
-}
+	// 행동 불가 상태 검사 (QTE 중이거나 기절 상태면 무시)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Contesting) || AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Stunned))
+		return;
 
-void AFACharacter::OnRep_QTEGauge()
-{
-	// UI 처리
-	if (GEngine)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Cyan, FString::Printf(TEXT("QTE 게이지: %.1f"), CurrentQTEGauge));
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Grab));
 	}
-}
-
-void AFACharacter::SyncQTEPressesWithServer()
-{
-	//클라이언트에서 로컬로 누적한 QTE 버튼 입력 횟수를 서버에 한꺼번에 전송하고, 
-	//전송 후 로컬 카운트를 0으로 초기화하는 함수
-	if (LocalQTEPressCount > 0)
+	else if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human))
 	{
-		// 포획 또는 포획 풀기 입력 횟수 를 서버에 한번에 모아서 보내는 함수 
-		Server_SendQTEPresses(LocalQTEPressCount);
-		LocalQTEPressCount = 0;
-	}
-}
-
-bool AFACharacter::Server_SendQTEPresses_Validate(int32 Presses)
-{
-	return (Presses >= 0 && Presses <= 15); // 비정상 입력 차단
-}
-
-void AFACharacter::Server_SendQTEPresses_Implementation(int32 Presses)
-{
-	if (IsValid(QTE_TargetVictim))
-	{
-		// 지정된 타겟(잡힌 인간)에게 클릭 횟수 전달
-		QTE_TargetVictim->ReceiveQTEPress(this, Presses);
+		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
 	}
 }

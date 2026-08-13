@@ -240,6 +240,10 @@ private:
 	UFUNCTION()
 	void HandleCard2Clicked();
 
+	/** 카드 3장이 공유하는 호버 소리. UI_Hover 와 분리 — 카드가 더 무겁게 들려야 한다. */
+	UFUNCTION()
+	void HandleCardHovered();
+
 	UPROPERTY(Transient)
 	TArray<FFADraftCardInfo> Cards;
 

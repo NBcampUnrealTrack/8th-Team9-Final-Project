@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Game/FAGameState.h"
@@ -95,6 +95,8 @@ void AFAGameState::GetRankedPlayerStates(TArray<AFAPlayerState*>& OutRanked) con
 		}
 	}
 
+	// 데스매치 결과 반영은 CompareRank() 4차(완전 동점 단계) 안에서 AFAPlayerState::GetDeathMatchPlacement() 로
+	// 처리한다 — 여기서 별도로 서브시스템을 조회하지 않는다 (UFADeathMatchSubsystem::EndDeathMatch() 참고).
 	OutRanked.Sort([](const AFAPlayerState& A, const AFAPlayerState& B)
 	{
 		return CompareRank(A, B);

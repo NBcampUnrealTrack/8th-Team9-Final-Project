@@ -46,8 +46,10 @@ UFAOnlineSessionSubsystem::UFAOnlineSessionSubsystem():
 		this,&ThisClass::OnJoinSessionComplete)),
 	DestroySessionCompleteDelegate(FOnDestroySessionCompleteDelegate::CreateUObject(
 		this,&ThisClass::OnDestroySessionComplete)),
-	StartSessionCompleteDelegate(FOnStartSessionCompleteDelegate::CreateUObject
-		(this,&ThisClass::OnStartSessionComplete))
+	StartSessionCompleteDelegate(FOnStartSessionCompleteDelegate::CreateUObject(
+		this,&ThisClass::OnStartSessionComplete)),
+	UpdateSessionCompleteDelegate(FOnUpdateSessionCompleteDelegate::CreateUObject(
+		this,&ThisClass::OnUpdateSessionComplete))
 {
 
 }
@@ -259,6 +261,25 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 	}
 }
 
+void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount)
+{
+	OperationState = ESessionOperationState::Starting;
+	
+	LastSessionSettings->bAllowJoinInProgress = false;
+	LastSessionSettings->bAllowJoinViaPresence = false;
+	
+	LastSessionSettings->Set(SETTING_MAPNAME,MapId.ToString(), EOnlineDataAdvertisementType::ViaOnlineService);
+	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
+	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
+	{
+		OperationState = ESessionOperationState::Idle;
+		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
+		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed, FString());
+		
+	}
+	
+}
+
 void UFAOnlineSessionSubsystem::DestroySession()
 {
 	if (OperationState != ESessionOperationState::Idle)
@@ -285,7 +306,13 @@ void UFAOnlineSessionSubsystem::DestroySession()
 void UFAOnlineSessionSubsystem::StartSession()
 {
 	//TODO : StartSession기능 확인
-	//SessionInterface->StartSession(NAME_GameSession);
+	OperationState = ESessionOperationState::Starting;
+	StartSessionCompleteDelegateHandle = SessionInterface->AddOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegate);
+	if (!SessionInterface->StartSession(NAME_GameSession))
+	{
+		SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteDelegateHandle);
+		OperationState = ESessionOperationState::Idle;
+	}
 
 }
 
@@ -304,6 +331,27 @@ void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
 ESessionOperationState UFAOnlineSessionSubsystem::GetCurrentOperationState() const
 {
 	return OperationState;
+}
+
+FNamedOnlineSession* UFAOnlineSessionSubsystem::GetCurrentSession() const
+{
+	FNamedOnlineSession* CurrentNamedSession = SessionInterface->GetNamedSession(NAME_GameSession);
+	if (CurrentNamedSession)
+	{
+		return CurrentNamedSession;
+	}
+	return nullptr;
+}
+
+TSoftObjectPtr<UWorld> UFAOnlineSessionSubsystem::ResolveMap(FName GetSelectedMapId)
+{
+	FString PathString = FString::Printf(TEXT("/Game/FallingApart/Level/%s.%s"), *GetSelectedMapId.ToString(), *GetSelectedMapId.ToString());
+
+	FSoftObjectPath SoftPath(PathString);
+
+	TSoftObjectPtr<UWorld> WorldSoftPtr(SoftPath);
+	
+	return WorldSoftPtr;
 }
 
 void UFAOnlineSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -387,4 +435,12 @@ void UFAOnlineSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool
 void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
 {
 	OperationState = ESessionOperationState::Idle;
+	
+	OnSessionPreparedForMatch.Broadcast(bWasSuccessful);
+	
+}
+
+void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful)
+{
+	StartSession();
 }

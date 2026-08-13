@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "PrototypeMainMenu.generated.h"
+#include "FAMainMenuWidget.generated.h"
 
 
 class UFAOnlineSessionSubsystem;
@@ -27,7 +27,7 @@ enum class EPrototypeMenuPage : uint8
  * 
  */
 UCLASS()
-class FALLINGAPART_API UPrototypeMainMenu : public UUserWidget
+class FALLINGAPART_API UFAMainMenuWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
@@ -115,7 +115,6 @@ private:
 	// 온라인 세션을 제어하기위한 서브시스템 포인터
 	// 주의사항, 싱글톤 서브시스템이기 때문에 다른 클래스 위젯등에서 작업시 Menu가 살아있으면 콜백 여기서 발생함.
 	// 이점을 고려하여 작성해야함.
-	// TODO : 위젯을 분리하였으니 코드 책임도 분리하기
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;
 };

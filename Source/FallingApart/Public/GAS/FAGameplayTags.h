@@ -91,6 +91,14 @@ public:
 	//~ ========================= 어빌리티 태그 =========================
 
 	FGameplayTag Ability_Jump;
+	FGameplayTag Ability_Grab;
+	FGameplayTag Ability_Rescue;
+	FGameplayTag Ability_RescueContest;
+	FGameplayTag Ability_ContestMash;
+
+	//~ ========================= 이벤트 태그 =========================
+
+	FGameplayTag Event_Contest_Mash;
 
 	//~ ========================= SetByCaller 데이터 태그 =========================
 
