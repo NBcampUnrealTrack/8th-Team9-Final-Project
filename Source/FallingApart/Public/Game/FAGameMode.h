@@ -45,9 +45,7 @@ public:
 	/** 라운드를 즉시 종료한다. 승패가 이미 확정된 경우에만 호출할 것. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Game")
 	void EndRound(EFARoundResult Result);
-	
-	UFUNCTION(Exec)
-	void ForceEndRound();
+
 	/**
 	 * 데스매치 참가자 확정 (GDD 5.4 · 1등 완전 동점자 2~3명).
 	 *

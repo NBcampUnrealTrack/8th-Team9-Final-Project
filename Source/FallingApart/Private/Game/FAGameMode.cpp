@@ -226,11 +226,6 @@ void AFAGameMode::EndRound(EFARoundResult Result)
 		FMath::Max(0.1f, RoundEndDelay), false);
 }
 
-void AFAGameMode::ForceEndRound()
-{
-	EndRound(EFARoundResult::HumanWin);
-}
-
 void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 {
 	const float Now = GetServerTime();
