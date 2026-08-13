@@ -11,12 +11,6 @@
 #include "Rule/FARuleTypes.h"
 #include "TimerManager.h"
 
-namespace FADraft
-{
-	static constexpr float SelectionTimeLimit = 10.0f;
-	static constexpr float ChainDraftInterval = 6.0f;
-}
-
 bool UFARuleDraftSubsystem::IsDraftAllowed() const
 {
 	const AFAGameState* FAGameState = GetWorld() ? GetWorld()->GetGameState<AFAGameState>() : nullptr;
@@ -45,6 +39,9 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Draft] StartDraftForAllPlayers — DraftIndex=%d"), DraftIndex);
+
+	// 코드 재컴파일 없이 Project Settings → Falling Apart | Rule 에서 바꿀 수 있게 설정값으로 조회한다.
+	const float SelectionTimeLimit = UFARuleSettings::GetSelectionTimeLimit();
 
 	for (APlayerState* PlayerState : GameState->PlayerArray)
 	{
@@ -85,7 +82,7 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 			CandidateIds.Add(Candidate.RuleId);
 		}
 
-		FAPlayerState->Client_ShowDraftUI(CandidateIds, FADraft::SelectionTimeLimit);
+		FAPlayerState->Client_ShowDraftUI(CandidateIds, SelectionTimeLimit);
 
 		// 혹시 이전 드래프트의 타이머가 아직 남아있으면 지우고 새로 건다.
 		if (FTimerHandle* ExistingHandle = PendingTimers.Find(WeakPlayer))
@@ -97,7 +94,7 @@ void UFARuleDraftSubsystem::StartDraftForAllPlayers(int32 DraftIndex)
 		FTimerDelegate TimeoutDelegate = FTimerDelegate::CreateUObject(
 			this, &UFARuleDraftSubsystem::HandleDraftTimeout, WeakPlayer);
 
-		GetWorld()->GetTimerManager().SetTimer(NewHandle, TimeoutDelegate, FADraft::SelectionTimeLimit, false);
+		GetWorld()->GetTimerManager().SetTimer(NewHandle, TimeoutDelegate, SelectionTimeLimit, false);
 		PendingTimers.Add(WeakPlayer, NewHandle);
 	}
 }
@@ -398,9 +395,10 @@ void UFARuleDraftSubsystem::ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState>
 		return;
 	}
 
+	// 코드 재컴파일 없이 Project Settings → Falling Apart | Rule 에서 바꿀 수 있게 설정값으로 조회한다.
 	FTimerDelegate NextDelegate = FTimerDelegate::CreateUObject(
 		this, &UFARuleDraftSubsystem::ProcessNextChainDraft, ForPlayer, RemainingCount - 1);
 
 	FTimerHandle Handle;
-	GetWorld()->GetTimerManager().SetTimer(Handle, NextDelegate, FADraft::ChainDraftInterval, false);
+	GetWorld()->GetTimerManager().SetTimer(Handle, NextDelegate, UFARuleSettings::GetChainDraftInterval(), false);
 }
