@@ -715,6 +715,21 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 }
 
+void AFAGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+	Super::HandleSeamlessTravelPlayer(C);
+	APlayerController* PlayerController = Cast<APlayerController>(C);
+	APlayerState* TravelledPlayerState = PlayerController ? PlayerController->PlayerState : nullptr;
+	if (!TravelledPlayerState || !TravelledPlayerState->GetUniqueId().IsValid())
+	{
+		return;
+	}
+
+	TravelledPlayerState->RegisterPlayerWithSession(false);
+
+	UE_LOG(LogFAOSS, Log, TEXT("[FA] 심리스 트래블 후 세션 재등록: %s"), *TravelledPlayerState->GetPlayerName());
+}
+
 void AFAGameMode::Logout(AController* Exiting)
 {
 	AFAPlayerState* FAPlayerState = Exiting ? Cast<AFAPlayerState>(Exiting->PlayerState) : nullptr;
