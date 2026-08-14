@@ -42,12 +42,12 @@ public:
 	void SetVoiceChannel(EFAVoiceChannel NewChannel);
 
 	/**
-	 * 최대 거리(uu). 기본 1500 = 15m.
+	 * 최대 거리(uu). 기본 4000 = 40m.
 	 */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	virtual float GetHearingRadius() const;
 
-	/** 감쇠가 시작되는 거리(uu). 기본 1000 = 10m. */
+	/** 감쇠가 시작되는 거리(uu). 기본 2500 = 25m. */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	virtual float GetFullVolumeRadius() const;
 
@@ -98,11 +98,11 @@ protected:
 
 	/** 들리는 최대 거리(uu). Global 채널에서는 무시. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float HearingRadius = 1500.f;
+	float HearingRadius = 4000.f;
 
-	/** 감쇄 없는 거리. */
+	/** 감쇄 없는 거리. 이 안에서는 거리와 무관하게 같은 음량. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float FullVolumeRadius = 1000.f;
+	float FullVolumeRadius = 2500.f;
 
 	/** HearingRadius 지점의 음량(dB). -60 무음. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice", meta = (ClampMin = "-60", ClampMax = "0"))

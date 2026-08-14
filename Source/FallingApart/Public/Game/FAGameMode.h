@@ -79,6 +79,10 @@ protected:
 	virtual void HandleMatchHasStarted() override;
 	virtual void HandleMatchHasEnded() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+
+	/** 트래블로 넘어온 플레이어를 세션에 다시 등록한다 — 안 하면 서버가 보이스를 못 받는다. */
+	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
+
 	virtual void Logout(AController* Exiting) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 	virtual void UpdateGameplayMuteList(APlayerController* aPlayer) override;
