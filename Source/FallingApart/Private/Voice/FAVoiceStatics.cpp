@@ -167,9 +167,18 @@ namespace FAVoiceDebug
 		// 기본값 0.08(≈ -22dBFS)은 웹캠·노트북 마이크가 통과하지 못한다.
 		const IConsoleVariable* SilenceCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.SilenceDetectionThreshold"));
 		const IConsoleVariable* NoiseGateCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicNoiseGateThreshold"));
-		UE_LOG(LogFAVoice, Display, TEXT("마이크 게이트 : Silence %.4f / NoiseGate %.4f"),
+		const IConsoleVariable* MicGainCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicInputGain"));
+
+		// 게인은 ini 를 봐도 실제 적용값을 알 수 없다 — 섹션 우선순위와 콘솔 입력이 덮어쓰기 때문에
+		// 반드시 런타임 값을 찍어서 확인해야 한다.
+		const float MicGain = MicGainCVar != nullptr ? MicGainCVar->GetFloat() : -1.f;
+
+		UE_LOG(LogFAVoice, Display, TEXT("마이크 게이트 : Silence %.4f / NoiseGate %.4f / Gain %.2f%s"),
 			SilenceCVar != nullptr ? SilenceCVar->GetFloat() : -1.f,
-			NoiseGateCVar != nullptr ? NoiseGateCVar->GetFloat() : -1.f);
+			NoiseGateCVar != nullptr ? NoiseGateCVar->GetFloat() : -1.f,
+			MicGain,
+			// 게인이 곱해진 뒤 int16 로 하드 클리핑되므로, 높은 게인은 큰 목소리를 그대로 뭉갠다.
+			MicGain > 2.f ? TEXT("   <<< 클리핑 위험 (큰 목소리가 깨진다)") : TEXT(""));
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));
 	}
