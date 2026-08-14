@@ -1,0 +1,87 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GAS/FAGameplayAbility.h"
+#include "FAGA_RescueContest.generated.h"
+
+class AFACharacter;
+class UGameplayEffect;
+
+/**
+ * 좀비 서버에서 1개만 실행되어 3명(좀비, 인질, 구조자)의 줄다리기를 통제하는 어빌리티.
+ * 게이지 0/100 도달 또는 3초 타임아웃 시 승패를 판정한다 (설계문서 §3.3).
+ */
+UCLASS()
+class FALLINGAPART_API UFAGA_RescueContest : public UFAGameplayAbility
+{
+	GENERATED_BODY()
+
+public:
+	UFAGA_RescueContest();
+
+	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
+protected:
+	/** QTE 중 부여할 상태 (State.Contesting + 이동/행동 불가) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
+	TSubclassOf<UGameplayEffect> ContestingEffectClass;
+
+	/** 인간 승리 시 좀비에게 적용할 기절 GE (기본 2초 / Z30 룰 적용 시 8초) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
+	TSubclassOf<UGameplayEffect> ZombieStunEffectClass;
+
+	/** 줄다리기 제한 시간(초). 이 시간이 지나면 게이지가 50 을 넘었는지로 승패를 가른다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Contest")
+	float ContestDuration = 3.0f;
+
+private:
+	//~ GAS Tasks 콜백
+	UFUNCTION()
+	void OnHumanWin();
+
+	UFUNCTION()
+	void OnZombieWin();
+
+	UFUNCTION()
+	void OnTimeOut();
+
+	/** 대결 결과 확정 및 처리 */
+	void ResolveContestOutcome(bool bHumanWon);
+
+	/**
+	 * 줄다리기 게이지가 움직일 때마다 참가자 3명의 화면으로 흘려보낸다.
+	 */
+	void HandleContestGaugeChanged(const struct FOnAttributeChangeData& Data);
+
+	/**
+	 * 참가자 전원에게 줄다리기 진행도를 써 넣는다.
+	 *
+	 * 포획 게이지(잡힌 인간 · 좀비)와 QTE 상태(3명 전원) 양쪽에 같이 넣는다.
+	 * 구조자는 포획 상태가 아예 없어서 QTE 상태 쪽에만 값이 들어간다.
+	 */
+	void BroadcastResistRatio(float Ratio);
+
+private:
+	UPROPERTY()
+	TWeakObjectPtr<AFACharacter> TargetZombie;
+
+	UPROPERTY()
+	TWeakObjectPtr<AFACharacter> Rescuer;
+
+	UPROPERTY()
+	TWeakObjectPtr<AFACharacter> GrabbedVictim;
+
+	/** 어빌리티 종료 시 상태 일괄 해제를 위한 GE 핸들 맵 */
+	TMap<AFACharacter*, FActiveGameplayEffectHandle> ContestingHandles;
+
+	/** ContestGauge 변경 구독. EndAbility 에서 반드시 해제한다. */
+	FDelegateHandle ContestGaugeChangedHandle;
+
+	/**
+	 * 승패를 이미 확정했는가.
+	 * 완료 경로가 게이지 100 · 게이지 0 · 3초 타임아웃 세 갈래라 같은 프레임에 둘이 겹칠 수 있고,
+	 * 그러면 구출 점수가 두 번 붙는다.
+	 */
+	bool bOutcomeResolved = false;
+};

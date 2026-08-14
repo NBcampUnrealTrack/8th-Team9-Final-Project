@@ -24,9 +24,8 @@ public:
 	//GameplayEffect로 계산된 NewValue를 Attribute별 유효 범위로 제한합니다.
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute,float& NewValue) override;
 
-	//  Instant 가 실행된 후 호출 
+	//  Instant 가 실행된 후 호출
 	// 최종 Attribute 값을 다시 검사하고 유효 범위 제한
-	
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 #pragma region Movement
@@ -46,7 +45,7 @@ public:
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, SprintMultiplier)
 
 	// 지면 마찰력 기본값 8.0
-	// Move.LowFriction 
+	// Move.LowFriction
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_GroundFriction,Category = "Attribute|Movement")
 	FGameplayAttributeData GroundFriction;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GroundFriction)
@@ -91,13 +90,44 @@ public:
 #pragma region Vision
 
 public:
-	// 시야 기본값 6000 
+	// 시야 기본값 6000
 	//Vision.Fog 적용값: 800uu
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_VisionRange,Category = "Attribute|Vision")
 	FGameplayAttributeData VisionRange;
 
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, VisionRange)
 
+	// 카메라 시야각
+	//Vision.NarrowFOV
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_FieldOfView,Category = "Attribute|Vision")
+	FGameplayAttributeData FieldOfView;
+
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, FieldOfView)
+
+
+#pragma endregion
+
+#pragma region GrabAndRescue
+public:
+	// 포획 사거리 기본값 200.0uu (2.0m)
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_GrabRange, Category = "Attribute|Grab")
+	FGameplayAttributeData GrabRange;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GrabRange)
+
+	// 감염 소요 시간 기본값 3.0초
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
+	FGameplayAttributeData InfectDuration;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)
+
+	// 구출 QTE 진입 선딜레이 기본값 0.0초
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RescueDuration, Category = "Attribute|Rescue")
+	FGameplayAttributeData RescueDuration;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, RescueDuration)
+
+	// QTE 줄다리기 게이지 (기본 50. 0=좀비 승리, 100=인간 승리)
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ContestGauge, Category = "Attribute|QTE")
+	FGameplayAttributeData ContestGauge;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, ContestGauge)
 #pragma endregion
 
 #pragma region RepNotify
@@ -129,6 +159,20 @@ protected:
 
 	UFUNCTION()
 	void OnRep_VisionRange(const FGameplayAttributeData& OldValue);
+	
+	UFUNCTION()
+	void OnRep_FieldOfView(const FGameplayAttributeData& OldValue);
 
+	UFUNCTION()
+	void OnRep_GrabRange(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_InfectDuration(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_RescueDuration(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_ContestGauge(const FGameplayAttributeData& OldValue);
 #pragma endregion
 };

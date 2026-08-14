@@ -36,21 +36,27 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 private:
+	/** GameState에 필요 데이터 전파. LobbyGameState->SetLobbySnapshot를 참고 */
 	void RefreshLobbyState();
-	
+	/** 게임 시작이 가능한 상태인지 갱신 */
 	void EvaluateLobby();
-	
+	/** 게임 시작 가능 여부를 ,최소시작가능 인원이 레디중이면 시작 가능(임시) */ 
 	bool CanStartGame(int32& OutPlayerCount, int32& OutReadyCount) const;
-	
+	/** 게임 시작, 매치로 이동 */
 	void CommitGameStart();
 	
 	void HandleSessionPrepared(bool bSuccess);
+	
+	void HandleSessionReopened(bool bSuccess);
 	
 	void TravelToSelectedMap();
 	
 	void RollbackGameStart();
 	
 	AFALobbyGameState* GetLobbyGameState() const;
+	
+
+
 	
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	int32 MinPlayersToStart = 2;
@@ -71,6 +77,31 @@ private:
 	
 	FDelegateHandle PreparedForMatchDelegateHandle;
 	
+	FDelegateHandle ReopenedForLobbyDelegateHandle;
+	
 	bool bGameStartCommitted = false;
+	bool bRollbackInProgress = false;
+	
+	
+#pragma region StartTimer
+public:
+	void RequestStartCountDown(APlayerController* RequestingController);
+private:
+	bool IsHostController(APlayerController* Controller);
+	
+	
+	void StartGameCountdown();
+	void CancelGameCountdown();
+	void HandleGameCountdownFinished();
+	bool IsCountdownActive() const;
+	
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
+	float GameStartCountdownDelayInSeconds = 5.f;
+	
+	FTimerHandle GameStartCountdownTimerHandle;
+	
+	float CountdownEndServerTime = 0.f;
+	
+#pragma endregion StartTimer
 };
 

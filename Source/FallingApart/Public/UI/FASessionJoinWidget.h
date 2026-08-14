@@ -42,6 +42,9 @@ protected:
 	UFUNCTION()
 	void RefreshButtonClicked();
 
+	UFUNCTION()
+	void HandleButtonHovered();
+
 private:
 	void RequestRefresh();
 	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);

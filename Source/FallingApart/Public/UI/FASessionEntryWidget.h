@@ -30,6 +30,9 @@ public:
 protected:
 	UFUNCTION()
 	void OnJoinButtonClicked();
+
+	UFUNCTION()
+	void OnJoinButtonHovered();
 private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UTextBlock> SessionTitleText;

@@ -42,6 +42,12 @@ protected:
 
 	/** 자동 전진(Z05/H05) — 전진 성분은 최대로 고정하고 좌우 조향만 플레이어에게 남긴다. */
 	FVector ComputeForceForwardAcceleration(const FVector& InputAcceleration) const;
+	
+
+	/** 이동 입력 반전(Z13/H10) — 컨트롤러 시점 기준 앞뒤와 좌우 성분을 뒤집는다. */
+	FVector ComputeFlippedLRAcceleration(const FVector& InputAcceleration) const;
+	
+	
 
 private:
 	mutable TWeakObjectPtr<UAbilitySystemComponent> CachedASC;

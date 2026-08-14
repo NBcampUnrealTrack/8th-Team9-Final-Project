@@ -33,7 +33,31 @@ namespace FADraftAudio
 	static const FName TimerUrgent(TEXT("Draft_TimerUrgent"));
 
 	/** 남은 시간이 이 값 이하면 급한 소리로 바꾼다 (UX 가이드 §8.2 — 3초부터 붉게 점멸). */
-	static constexpr int32 UrgentSeconds = 3;
+	static constexpr float UrgentSeconds = 3.0f;
+
+	//~ 라운드 시계(UFAHUDWidget)와 같은 방식 — 짧은 tick 을 간격만 좁혀가며 반복한다.
+	//~ 루프를 피치로 빠르게 돌리면 음정까지 올라가 시계가 아닌 삑삑거리는 소리가 된다.
+
+	/** 이 시간 아래부터 초침 간격이 좁아지기 시작한다. */
+	static constexpr float AccelSeconds = 10.0f;
+
+	/** AccelSeconds 위에서 쓰는 간격(초). */
+	static constexpr float IntervalSlow = 1.0f;
+
+	/** 남은 시간 0 에서의 간격(초). AccelSeconds 부터 여기까지 선형으로 좁아진다. */
+	static constexpr float IntervalFast = 0.2f;
+
+	/** 남은 시간에 대응하는 초침 간격. */
+	float GetTickInterval(float SecondsRemaining)
+	{
+		if (SecondsRemaining >= AccelSeconds)
+		{
+			return IntervalSlow;
+		}
+
+		const float Alpha = FMath::Clamp(SecondsRemaining / AccelSeconds, 0.0f, 1.0f);
+		return FMath::Lerp(IntervalFast, IntervalSlow, Alpha);
+	}
 }
 
 namespace FADraftUI
@@ -95,6 +119,7 @@ void UFADraftWidget::ShowCandidates(const TArray<FName>& CandidateRuleIds, float
 	SelectionDuration = FMath::Max(0.0f, SelectionTime);
 	SelectionDeadline = GetWorld() ? GetWorld()->GetTimeSeconds() + SelectionDuration : -1.0f;
 	LastDisplayedSeconds = -1;
+	TickAccumulator = 0.0f;
 	bIsOpen = true;
 
 	RefreshCards();
@@ -293,15 +318,22 @@ void UFADraftWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 		LastDisplayedSeconds = WholeSeconds;
 		RefreshTimerText(WholeSeconds);
 
-		// 0 초는 AutoPick 이 대신 울리므로 여기서 겹쳐 내지 않는다.
-		if (WholeSeconds > 0)
+		OnSelectionTimeChanged(Remaining, WholeSeconds);
+	}
+
+	// 초침은 표시 초와 분리한다 — 표시 초에 묶여 있으면 간격이 1초 밑으로 못 내려간다.
+	// 0 초는 AutoPick 이 대신 울리므로 여기서 겹쳐 내지 않는다.
+	if (Remaining > 0.0f)
+	{
+		TickAccumulator += InDeltaTime;
+		if (TickAccumulator >= FADraftAudio::GetTickInterval(Remaining))
 		{
-			UFAAudioSubsystem::PlayFASound(this, WholeSeconds <= FADraftAudio::UrgentSeconds
+			TickAccumulator = 0.0f;
+
+			UFAAudioSubsystem::PlayFASound(this, Remaining <= FADraftAudio::UrgentSeconds
 				? FADraftAudio::TimerUrgent
 				: FADraftAudio::TimerTick);
 		}
-
-		OnSelectionTimeChanged(Remaining, WholeSeconds);
 	}
 
 	if (Remaining <= 0.0f)

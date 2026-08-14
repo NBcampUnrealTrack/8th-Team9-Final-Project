@@ -2,6 +2,7 @@
 
 #include "Voice/FAVoiceStatics.h"
 
+#include "Components/AudioComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -14,6 +15,8 @@
 #include "Net/VoiceConfig.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
+#include "UObject/UObjectIterator.h"
+#include "VoipListenerSynthComponent.h"
 #include "Voice/FAVoiceTypes.h"
 
 void UFAVoiceStatics::SetMicThreshold(float Threshold)
@@ -55,6 +58,48 @@ bool UFAVoiceStatics::DoesConfigRequirePushToTalk()
 	GConfig->GetBool(TEXT("/Script/Engine.GameSession"), TEXT("bRequiresPushToTalk"), bRequiresPushToTalk, GGameIni);
 
 	return bRequiresPushToTalk;
+}
+
+void UFAVoiceStatics::ShutdownVoicePlaybackForWorld(UWorld* World)
+{
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	// 원격 토커 정리를 먼저 요청한다. 여기서 UVOIPTalker::OnTalkingEnd() 가 불려
+	// 발화 아이콘 등 게임 쪽 상태가 정상적으로 닫힌다.
+	if (const IOnlineVoicePtr VoiceInterface = Online::GetVoiceInterface(World))
+	{
+		VoiceInterface->RemoveAllRemoteTalkers();
+	}
+
+	// 위 호출만으로는 컴포넌트 등록이 풀리지 않는다.
+	// 다른 월드(PIE 다중 인스턴스)의 것까지 건드리지 않도록 이 월드 소속만 고른다.
+	for (TObjectIterator<UVoipListenerSynthComponent> It; It; ++It)
+	{
+		UVoipListenerSynthComponent* SynthComponent = *It;
+		if (!IsValid(SynthComponent) || SynthComponent->GetWorld() != World)
+		{
+			continue;
+		}
+
+		SynthComponent->Stop();
+
+		// AudioComponent 는 SynthComponent 의 자식이 아니라 별도로 등록되므로 따로 떼야 한다.
+		if (UAudioComponent* AudioComponent = SynthComponent->GetAudioComponent())
+		{
+			if (AudioComponent->IsRegistered())
+			{
+				AudioComponent->UnregisterComponent();
+			}
+		}
+
+		if (SynthComponent->IsRegistered())
+		{
+			SynthComponent->UnregisterComponent();
+		}
+	}
 }
 
 namespace FAVoiceDebug
@@ -122,9 +167,18 @@ namespace FAVoiceDebug
 		// 기본값 0.08(≈ -22dBFS)은 웹캠·노트북 마이크가 통과하지 못한다.
 		const IConsoleVariable* SilenceCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.SilenceDetectionThreshold"));
 		const IConsoleVariable* NoiseGateCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicNoiseGateThreshold"));
-		UE_LOG(LogFAVoice, Display, TEXT("마이크 게이트 : Silence %.4f / NoiseGate %.4f"),
+		const IConsoleVariable* MicGainCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicInputGain"));
+
+		// 게인은 ini 를 봐도 실제 적용값을 알 수 없다 — 섹션 우선순위와 콘솔 입력이 덮어쓰기 때문에
+		// 반드시 런타임 값을 찍어서 확인해야 한다.
+		const float MicGain = MicGainCVar != nullptr ? MicGainCVar->GetFloat() : -1.f;
+
+		UE_LOG(LogFAVoice, Display, TEXT("마이크 게이트 : Silence %.4f / NoiseGate %.4f / Gain %.2f%s"),
 			SilenceCVar != nullptr ? SilenceCVar->GetFloat() : -1.f,
-			NoiseGateCVar != nullptr ? NoiseGateCVar->GetFloat() : -1.f);
+			NoiseGateCVar != nullptr ? NoiseGateCVar->GetFloat() : -1.f,
+			MicGain,
+			// 게인이 곱해진 뒤 int16 로 하드 클리핑되므로, 높은 게인은 큰 목소리를 그대로 뭉갠다.
+			MicGain > 2.f ? TEXT("   <<< 클리핑 위험 (큰 목소리가 깨진다)") : TEXT(""));
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));
 	}

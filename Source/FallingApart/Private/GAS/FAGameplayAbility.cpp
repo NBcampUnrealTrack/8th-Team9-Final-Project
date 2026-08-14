@@ -10,8 +10,8 @@ UFAGameplayAbility::UFAGameplayAbility()
 	// 액터당 1개로 재사용.
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 
-	// 포획·QTE 판정만 예외적으로 서버 권한(ServerOnly)
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+	NetSecurityPolicy = EGameplayAbilityNetSecurityPolicy::ServerOnlyTermination;
 }
 
 AFACharacter* UFAGameplayAbility::GetFACharacter() const
@@ -21,5 +21,8 @@ AFACharacter* UFAGameplayAbility::GetFACharacter() const
 
 UFAAbilitySystemComponent* UFAGameplayAbility::GetFAAbilitySystemComponent() const
 {
+	//현재 실행 중인 GameplayAbility가 사용하고 있는 AbilitySystemComponent를 
+	//UFAAbilitySystemComponent 타입으로 가져오는 헬퍼 함수
+	// CurrentActorInfo 가 true 면 형변환 없으면 nullptr 
 	return CurrentActorInfo ? Cast<UFAAbilitySystemComponent>(CurrentActorInfo->AbilitySystemComponent.Get()) : nullptr;
 }

@@ -43,6 +43,82 @@ enum class EFARoundResult : uint8
 };
 
 /**
+ * 포획(감염) 진행 상태. 서버가 채우고 전 클라이언트에 복제된다.
+ */
+USTRUCT(BlueprintType)
+struct FFACaptureState
+{
+	GENERATED_BODY()
+
+	/** 감염이 완료되는 서버 월드 시각(초). TotalDuration 이 0 이면 의미 없음. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float EndServerTime = 0.0f;
+
+	/** 감염까지 걸리는 총 시간(초). 0 이면 포획 중이 아니다 — 이 값 하나가 활성 여부를 겸한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float TotalDuration = 0.0f;
+
+	/**
+	 * 구출 QTE 로 감염 타이머가 멈춰 있는 동안의 남은 시간(초).
+	 * 0 보다 크면 게이지는 이 값에서 멈춘다 — 서버 시각으로 계산하면 QTE 중에도 혼자 채워진다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float PausedRemaining = 0.0f;
+
+	/** 이 캐릭터가 잡힌 쪽인가. false 면 잡고 있는 좀비. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	bool bIsVictim = false;
+
+	/** 구출 QTE 줄다리기 진행도 0~1 (1 = 인간 승리 직전). QTE 중이 아니면 0. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float ResistRatio = 0.0f;
+
+	bool IsActive() const { return TotalDuration > 0.0f; }
+};
+
+/** 구출 QTE(줄다리기)에서 이 캐릭터가 맡은 역할. */
+UENUM(BlueprintType)
+enum class EFAContestRole : uint8
+{
+	/** QTE 중이 아님 */
+	None	= 0,
+	/** 붙잡고 있는 좀비 — ContestGauge 를 들고 있는 호스트 */
+	Zombie	= 1,
+	/** 붙잡힌 인질 */
+	Victim	= 2,
+	/** 구하러 온 인간 */
+	Rescuer	= 3
+};
+
+/**
+ * 구출 QTE 진행 상태. 참가자 3명(좀비 · 인질 · 구조자) 전원의 캐릭터에 서버가 채우고 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFAContestState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	EFAContestRole Role = EFAContestRole::None;
+
+	/** 줄다리기 게이지 0~1. 1 이면 인간 승리(구출 성공) 직전, 0 이면 좀비 승리 직전. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	float Gauge = 0.5f;
+
+	/** QTE 가 끝나는 서버 월드 시각(초). 프롬프트의 남은 시간 표시용. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	float EndServerTime = 0.0f;
+
+	/**
+	 * 게이지를 들고 있는 좀비.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Contest")
+	TObjectPtr<AActor> HostZombie = nullptr;
+
+	bool IsActive() const { return Role != EFAContestRole::None; }
+};
+
+/**
  * 플레이어 점수 집계 단위 (GDD 5부 · 기술문서 4.1).
  */
 USTRUCT(BlueprintType)
