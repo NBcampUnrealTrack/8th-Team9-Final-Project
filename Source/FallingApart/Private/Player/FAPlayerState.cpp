@@ -275,6 +275,21 @@ void AFAPlayerState::Client_ShowDraftUI_Implementation(const TArray<FName>& Cand
 	}
 }
 
+void AFAPlayerState::Client_HideDraftUI_Implementation()
+{
+	// Client_ShowDraftUI 와 같은 이유로 이 PS 의 주인 컨트롤러에서만 닫는다.
+	APlayerController* OwningController = GetPlayerController();
+	if (!OwningController || !OwningController->IsLocalController())
+	{
+		return;
+	}
+
+	if (AFAHUD* FAHUD = Cast<AFAHUD>(OwningController->GetHUD()))
+	{
+		FAHUD->HideDraftUI();
+	}
+}
+
 void AFAPlayerState::Server_ConfirmDraft_Implementation(int32 SelectedIndex)
 {
 	if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())

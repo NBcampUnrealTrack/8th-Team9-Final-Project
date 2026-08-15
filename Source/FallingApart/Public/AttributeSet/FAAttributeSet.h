@@ -114,7 +114,7 @@ public:
 	FGameplayAttributeData GrabRange;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GrabRange)
 
-	// 감염 소요 시간 기본값 3.0초
+	// 감염 소요 시간 기본값 10.0초 클램프 0.5~15.0
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)

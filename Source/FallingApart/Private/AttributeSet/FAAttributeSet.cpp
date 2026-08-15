@@ -26,7 +26,8 @@ UFAAttributeSet::UFAAttributeSet()
 
 	// 포획 및 구출
 	InitGrabRange(200.0f);
-	InitInfectDuration(3.0f);
+	// 2026-08-15 3.0 → 10.0. 3초는 잡히자마자 끝나서 구출이 성립할 시간이 없었다.
+	InitInfectDuration(10.0f);
 	InitRescueDuration(0.0f);
 	InitContestGauge(50.0f);
 }
@@ -83,7 +84,8 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	}
 	else if (Attribute == GetInfectDurationAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.5f, 10.0f);
+		// 상한은 기본값(10)보다 위여야 한다 — 같으면 '감염 시간 증가' 계열 룰이 통째로 무효가 된다.
+		NewValue = FMath::Clamp(NewValue, 0.5f, 15.0f);
 	}
 	else if (Attribute == GetRescueDurationAttribute())
 	{
@@ -154,7 +156,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	}
 	else if (ChangedAttribute == GetInfectDurationAttribute())
 	{
-		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 10.0f));
+		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 15.0f));
 	}
 	else if (ChangedAttribute == GetRescueDurationAttribute())
 	{

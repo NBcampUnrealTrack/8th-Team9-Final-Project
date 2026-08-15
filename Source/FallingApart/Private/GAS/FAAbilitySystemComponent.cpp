@@ -64,6 +64,19 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 		return false;
 	}
 
+	if (const UGameplayEffect* EffectCDO = EffectClass->GetDefaultObject<UGameplayEffect>())
+	{
+		if (EffectCDO->DurationPolicy != EGameplayEffectDurationType::Infinite)
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("[Rule] %s: GE(%s) 의 Duration Policy 가 %s 다 — 룰 GE 는 Infinite 여야 한다. ")
+				TEXT("Instant 면 Base Value 가 영구히 바뀌어 감염 시 룰을 제거해도 디버프가 안 풀린다. ")
+				TEXT("애셋을 열어 Duration Policy 를 Infinite 로 바꿀 것."),
+				*RuleId.ToString(), *GetNameSafe(EffectClass),
+				EffectCDO->DurationPolicy == EGameplayEffectDurationType::Instant ? TEXT("Instant") : TEXT("HasDuration"));
+		}
+	}
+
 	//호출하면 현재 ASC를 기준으로 새로운 GameplayEffectContext를 만들어 줍니다.
 	//Effect 가 발생한 정보를 담아 Context 에 넣고 
 	FGameplayEffectContextHandle Context = MakeEffectContext();

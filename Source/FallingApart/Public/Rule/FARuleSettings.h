@@ -38,9 +38,17 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "1.0"))
 	float SelectionTimeLimit = 10.0f;
 
-	/** 연속 드래프트 1장당 간격(초) (GDD 3.4 · 4번 다이어그램 "연속 드래프트 N회 · 1장당 6초"). */
+	/**
+	 * 연속 드래프트의 선택 제한 시간(초). 정규 드래프트(SelectionTimeLimit)보다 짧게 잡는다.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "1.0"))
+	float ChainSelectionTimeLimit = 5.0f;
+
+	/**
+	 * 연속 드래프트 1장당 간격(초).
+	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "0.5"))
-	float ChainDraftInterval = 6.0f;
+	float ChainDraftInterval = 2.0f;
 
 	//~ ---------------- 조회 헬퍼 ----------------
 
@@ -54,6 +62,9 @@ public:
 
 	/** 드래프트 후보 선택 제한 시간(초). */
 	static float GetSelectionTimeLimit();
+
+	/** 연속 드래프트의 선택 제한 시간(초). */
+	static float GetChainSelectionTimeLimit();
 
 	/** 연속 드래프트 1장당 간격(초). */
 	static float GetChainDraftInterval();
