@@ -126,6 +126,14 @@ public:
 	UFUNCTION(Client, Reliable)
 	void Client_ShowDraftUI(const TArray<FName>& CandidateRuleIds, float SelectionTime);
 	
+	/**
+	 * 열려 있는 드래프트 UI 를 선택 없이 닫는 신호.
+	 * 라운드가 끝나면 서버가 남은 드래프트를 전부 취소하고 이걸 보낸다 — 안 보내면
+	 * 다음 라운드가 시작된 뒤에도 이전 라운드의 선택창이 화면에 남는다.
+	 */
+	UFUNCTION(Client, Reliable)
+	void Client_HideDraftUI();
+
 	/** 플레이어가 후보 중 하나를 골랐을 때 클라이언트가 호출. 서버가 검증 후 확정한다. */
 	UFUNCTION(Server, Reliable, WithValidation)
 	void Server_ConfirmDraft(int32 SelectedIndex);

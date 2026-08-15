@@ -92,6 +92,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/** 목소리가 나올 씬 컴포넌트를 결정. 헤드 소켓이 없는 Pawn 이면 루트 + 오프셋으로 대체. */
@@ -173,6 +174,10 @@ private:
 	void SetupVoiceSource();
 	void SetupListenerAnchor();
 	void SetupSpeakingIndicator();
+	bool ShouldShowSpeakingIndicator() const;
+
+	/** 발화 중에만 도는 폴링. 거리 밖으로 나가면 아이콘을 숨긴다. */
+	void UpdateSpeakingIndicator();
 	void ApplyListenerOverride();
 	USoundAttenuation* BuildAttenuation();
 	void HandleTalkerStateChanged(bool bIsTalking);
