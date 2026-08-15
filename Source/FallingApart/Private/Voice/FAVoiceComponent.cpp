@@ -179,6 +179,20 @@ void UFAVoiceComponent::ApplyTalkerSettings()
 
 	Talker->Settings.ComponentToAttachTo = bProximity ? VoiceSourceComponent : nullptr;
 	Talker->Settings.AttenuationSettings = bProximity ? BuildAttenuation() : nullptr;
+
+	// FVoiceSettings 에는 음량 항목이 없다. 재생 배수는 Talker 가 직접 들고 있다가
+	// 엔진이 재생 컴포넌트를 건네주는 순간(OnTalkingBegin) 적용한다.
+	Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume);
+}
+
+void UFAVoiceComponent::SetVoicePlaybackVolume(float NewVolume)
+{
+	VoicePlaybackVolume = FMath::Max(0.f, NewVolume);
+
+	if (Talker)
+	{
+		Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume);
+	}
 }
 
 void UFAVoiceComponent::StartTalking()
