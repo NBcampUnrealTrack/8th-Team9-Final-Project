@@ -17,11 +17,36 @@
 #include "OnlineSubsystemUtils.h"
 #include "UObject/UObjectIterator.h"
 #include "VoipListenerSynthComponent.h"
+#include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTypes.h"
+
+namespace FAVoiceStaticsInternal
+{
+	/** 출력 볼륨의 실체는 UFAVoiceTalker 가 읽는 CVar 이다. 이름을 한 곳에만 둔다. */
+	static IConsoleVariable* FindOutputVolumeCVar()
+	{
+		return IConsoleManager::Get().FindConsoleVariable(TEXT("FAVoice.OutputVolume"));
+	}
+}
 
 void UFAVoiceStatics::SetMicThreshold(float Threshold)
 {
 	UVOIPStatics::SetMicThreshold(FMath::Clamp(Threshold, 0.f, 1.f));
+}
+
+void UFAVoiceStatics::SetVoiceOutputVolume(float Volume)
+{
+	if (IConsoleVariable* CVar = FAVoiceStaticsInternal::FindOutputVolumeCVar())
+	{
+		// Sink 가 지금 발화 중인 화자들에게 새 값을 밀어준다 (UFAVoiceTalker::RefreshAllTalkingVolumes).
+		CVar->Set(FMath::Max(0.f, Volume), ECVF_SetByGameSetting);
+	}
+}
+
+float UFAVoiceStatics::GetVoiceOutputVolume()
+{
+	const IConsoleVariable* CVar = FAVoiceStaticsInternal::FindOutputVolumeCVar();
+	return CVar != nullptr ? CVar->GetFloat() : 1.f;
 }
 
 FName UFAVoiceStatics::GetVoiceBackendName()
@@ -179,6 +204,26 @@ namespace FAVoiceDebug
 			MicGain,
 			// 게인이 곱해진 뒤 int16 로 하드 클리핑되므로, 높은 게인은 큰 목소리를 그대로 뭉갠다.
 			MicGain > 2.f ? TEXT("   <<< 클리핑 위험 (큰 목소리가 깨진다)") : TEXT(""));
+
+		// "작게 들린다"의 답은 대부분 여기 있다. 마이크 게인은 클리핑 때문에 못 올리므로
+		// 음량은 재생 배수로 번다 — 엔진 기본은 1.5 다.
+		const float UserOutputVolume = UFAVoiceStatics::GetVoiceOutputVolume();
+		UE_LOG(LogFAVoice, Display, TEXT("출력 볼륨 : 사용자 %.2f (FAVoice.OutputVolume)"), UserOutputVolume);
+
+		for (TObjectIterator<UFAVoiceTalker> It; It; ++It)
+		{
+			const UFAVoiceTalker* Talker = *It;
+			if (Talker == nullptr || Talker->GetWorld() != World)
+			{
+				continue;
+			}
+
+			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s"),
+				*GetNameSafe(Talker->GetOwner()),
+				Talker->GetPlaybackVolumeMultiplier(),
+				Talker->GetEffectivePlaybackVolume(),
+				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""));
+		}
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));
 	}
