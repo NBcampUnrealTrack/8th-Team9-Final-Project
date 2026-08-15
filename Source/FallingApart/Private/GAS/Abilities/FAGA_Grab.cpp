@@ -112,7 +112,8 @@ void UFAGA_Grab::ActivateAbility(
 		}
 
 		float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
-		if (InfectDuration <= 0.0f) InfectDuration = 3.0f;
+		// Attribute 가 아직 초기화 전이면 쓰는 폴백. UFAAttributeSet 의 기본값과 같이 움직여야 한다.
+		if (InfectDuration <= 0.0f) InfectDuration = 10.0f;
 
 		ZombieChar->GetWorld()->GetTimerManager().SetTimer(
 			InfectTimerHandle,

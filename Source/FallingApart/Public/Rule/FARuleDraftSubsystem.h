@@ -48,6 +48,13 @@ public:
 
 	// 감염 시 연속 드래프트. GameMode::HandleInfection() 이 호출.
 	void StartChainDraft(AFAPlayerState* Victim, int32 RemovedRuleCount);
+
+	/**
+	 * 진행 중인 모든 드래프트를 즉시 취소한다. AFAGameMode::EndRound() 가 호출.
+	 *
+	 * 라운드가 끝나는 세 경우(마지막 1명 감염 · 선택 도중 전원 감염 · 라운드 시간 종료) 모두
+	 */
+	void CancelAllPendingDrafts();
 	
 	/**
 	 * 클라이언트가 선택을 확정할 때 호출 (AFAPlayerState 의 Server RPC 가 이 함수를 부른다).
@@ -88,12 +95,32 @@ private:
 	// 최종 확정 처리 — 정상 확정과 타임아웃 확정이 공유하는 공통 로직.
 	void ApplyDraftResult(AFAPlayerState* ForPlayer, const FFADraftCandidate& Chosen);
 	
-	// 연속 드래프트 1장을 즉시 적용하고, 남은 장수가 있으면 6초 뒤 자신을 다시 예약한다.
+	/**
+	 * 연속 드래프트 1회차. 좀비 후보를 뽑아 선택 UI 를 띄운다 — 정규 드래프트와 같은 방식
+	 */
 	void ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount);
+
+	/**
+	 * 한 장이 확정된 뒤(선택·타임아웃 무관) 남은 연속 드래프트가 있으면 다음 회차를 예약한다.
+	 * ApplyDraftResult 가 정규·연속 양쪽의 공통 종착지라 그곳에서 부른다.
+	 */
+	void ContinueChainDraftIfPending(AFAPlayerState* ForPlayer);
+
+	/** 연속 드래프트 후보 풀 — 좀비 진영에서 보유 중이 아닌 카드 중 무작위 최대 3장. */
+	TArray<FFADraftCandidate> GenerateChainCandidates(const TArray<FName>& HeldRuleIds) const;
+
+	/** 후보를 보내고 타임아웃 타이머를 거는 공통 처리. 정규·연속 드래프트가 함께 쓴다. */
+	void SendCandidatesToPlayer(AFAPlayerState* ForPlayer, const TArray<FFADraftCandidate>& Candidates, float TimeLimit);
 
 	// 플레이어별로 "지금 보낸 후보가 뭐였는지" 기억해두는 표.
 	TMap<TWeakObjectPtr<AFAPlayerState>, TArray<FFADraftCandidate>> PendingCandidates;
 
-	// 플레이어별 10초 타임아웃 타이머.
+	// 플레이어별 선택 타임아웃 타이머.
 	TMap<TWeakObjectPtr<AFAPlayerState>, FTimerHandle> PendingTimers;
+
+	/**
+	 * 연속 드래프트가 진행 중인 플레이어의 남은 장수.
+	 * 한 장이 확정될 때마다 줄고, 0 이 되면 항목 자체를 지운다.
+	 */
+	TMap<TWeakObjectPtr<AFAPlayerState>, int32> PendingChainCounts;
 };

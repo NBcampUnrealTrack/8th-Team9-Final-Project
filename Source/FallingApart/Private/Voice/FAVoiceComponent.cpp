@@ -27,7 +27,9 @@ namespace FAVoice
 
 UFAVoiceComponent::UFAVoiceComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	// 평상시엔 돌 필요가 없다. 발화 중에만 켜서 아이콘 거리 판정을 한다(HandleTalkerStateChanged).
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 
 	// VoiceChannel 을 서버에서 바꿨을 때 모든 머신의 재생 방식이 따라가야 함.
 	SetIsReplicatedByDefault(true);
@@ -158,12 +160,6 @@ void UFAVoiceComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 void UFAVoiceComponent::RefreshVoiceAttenuation()
 {
 	ApplyTalkerSettings();
-
-	if (SpeakingIndicator)
-	{
-		// 전역 채널은 거리 개념이 없으므로 컬링하지 않음.
-		SpeakingIndicator->SetCullDistance(VoiceChannel == EFAVoiceChannel::Proximity ? GetHearingRadius() : 0.f);
-	}
 }
 
 void UFAVoiceComponent::ApplyTalkerSettings()
@@ -415,9 +411,6 @@ void UFAVoiceComponent::SetupSpeakingIndicator()
 	SpeakingIndicator->RegisterComponent();
 	SpeakingIndicator->AttachToComponent(VoiceSourceComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	SpeakingIndicator->SetRelativeLocation(SpeakingIndicatorOffset);
-
-	// 아이콘은 목소리가 들리는 거리에서만 보여야 함.
-	SpeakingIndicator->SetCullDistance(GetHearingRadius());
 	SpeakingIndicator->SetVisibility(false);
 }
 
@@ -479,7 +472,17 @@ void UFAVoiceComponent::HandleTalkerStateChanged(bool bIsTalking)
 {
 	if (SpeakingIndicator)
 	{
-		SpeakingIndicator->SetVisibility(bIsTalking);
+		// 발화 중에만 틱을 켠다. 말하지 않는 동안 거리를 잴 이유가 없다(12인 방 × 매 프레임).
+		SetComponentTickEnabled(bIsTalking);
+
+		if (bIsTalking)
+		{
+			UpdateSpeakingIndicator();
+		}
+		else
+		{
+			SpeakingIndicator->SetVisibility(false);
+		}
 	}
 
 	// 발화 시작 신호는 본인에게만 아주 작게. 남의 것까지 울리면 12인 방이 시끄러워진다.
@@ -489,6 +492,75 @@ void UFAVoiceComponent::HandleTalkerStateChanged(bool bIsTalking)
 	}
 
 	OnTalkingStateChanged.Broadcast(bIsTalking);
+}
+
+void UFAVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// 틱은 발화 중에만 켜져 있다
+	UpdateSpeakingIndicator();
+}
+
+bool UFAVoiceComponent::ShouldShowSpeakingIndicator() const
+{
+	if (!IsTalking())
+	{
+		return false;
+	}
+
+	// 전역/관전 채널은 거리 개념이 없다.
+	if (VoiceChannel != EFAVoiceChannel::Proximity)
+	{
+		return true;
+	}
+
+	const float CutoffDistance = GetHearingRadius();
+	if (CutoffDistance <= 0.f)
+	{
+		return true;
+	}
+
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+	if (LocalController == nullptr)
+	{
+		return false;
+	}
+
+	// 기준점은 카메라가 아니라 로컬 플레이어의 Pawn
+	FVector ListenerLocation;
+	if (const APawn* LocalPawn = LocalController->GetPawn())
+	{
+		ListenerLocation = LocalPawn->GetActorLocation();
+	}
+	else
+	{
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ListenerLocation, ViewRotation);
+	}
+
+	const AActor* Owner = GetOwner();
+	if (Owner == nullptr)
+	{
+		return false;
+	}
+
+	return FVector::DistSquared(ListenerLocation, Owner->GetActorLocation()) <= FMath::Square(CutoffDistance);
+}
+
+void UFAVoiceComponent::UpdateSpeakingIndicator()
+{
+	if (SpeakingIndicator == nullptr)
+	{
+		return;
+	}
+
+	const bool bShouldShow = ShouldShowSpeakingIndicator();
+	if (bShouldShow != SpeakingIndicator->IsVisible())
+	{
+		SpeakingIndicator->SetVisibility(bShouldShow);
+	}
 }
 
 APlayerState* UFAVoiceComponent::GetOwningPlayerState() const
