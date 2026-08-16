@@ -97,8 +97,11 @@ struct SETTINGSKIT_API FSKSettingsValues
 	 * 마이크 게이트(무음 판정) 임계값(0~1). 높일수록 작은 소리를 잘라낸다.
 	 * 마이크 감도가 사람마다 달라 한 세트 값으로 팀 전원을 맞출 수 없어서 슬라이더로 뺐다.
 	 */
+	//~ 0.5 = 슬라이더 한가운데. 브리지의 환산표가 가운데를 ini 튜닝값(0.02)에 맞춰 두었으므로
+	//~ 여기 기본값도 0.5 여야 한다. 예전에 0.02 로 적어둬서, 새로 설치하면 게이트가
+	//~ 0.0056 까지 내려가 사실상 꺼진 상태로 시작했다.
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
-	float VoiceGateThreshold = 0.02f;
+	float VoiceGateThreshold = 0.5f;
 
 	/** 보이스 수신 전체 끄기. */
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
