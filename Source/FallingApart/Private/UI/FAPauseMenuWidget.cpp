@@ -13,6 +13,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Player/FAPlayerController.h"
+#include "SettingsKitMenuWidget.h"
 #include "Styling/CoreStyle.h"
 
 #define LOCTEXT_NAMESPACE "FAPauseMenu"
@@ -27,7 +28,6 @@ namespace FAPauseMenuUI
 	static const FName SoundOpen(TEXT("UI_PauseOpen"));
 	static const FName SoundClose(TEXT("UI_PauseClose"));
 	static const FName SoundClick(TEXT("UI_Click"));
-	static const FName SoundDenied(TEXT("UI_Denied"));
 	static const FName SoundHover(TEXT("UI_Hover"));
 }
 
@@ -62,16 +62,7 @@ void UFAPauseMenuWidget::OnMainMenuClicked()
 
 void UFAPauseMenuWidget::OnSettingsClicked()
 {
-	if (!SettingsWidgetClass)
-	{
-		// 눌러도 아무 일 없는 버튼이라 최소한 "안 된다"는 건 들려야 한다.
-		UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundDenied);
-
-		// 사운드 클래스 · 키 바인딩이 아직 없어 설정 화면은 나중에 붙인다.
-		UE_LOG(LogTemp, Warning,
-			TEXT("[FA] 일시정지 메뉴: 설정 화면이 아직 없다. 만들고 나면 WBP_FAPauseMenu 의 SettingsWidgetClass 에 지정할 것."));
-		return;
-	}
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundClick);
 
 	// 이미 떠 있으면 중복 생성하지 않는다.
 	if (SettingsWidget && SettingsWidget->IsInViewport())
@@ -79,7 +70,12 @@ void UFAPauseMenuWidget::OnSettingsClicked()
 		return;
 	}
 
-	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), SettingsWidgetClass);
+	// WBP 를 안 지정했으면 플러그인의 C++ 설정창을 그대로 쓴다. 임시 레이아웃이지만 네 탭이 다 돈다.
+	// WBP_FASettings 가 만들어지면 WBP_FAPauseMenu 의 SettingsWidgetClass 에 지정하면 된다.
+	const TSubclassOf<UUserWidget> WidgetClass =
+		SettingsWidgetClass ? SettingsWidgetClass : TSubclassOf<UUserWidget>(USKSettingsMenuWidget::StaticClass());
+
+	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
 	if (SettingsWidget)
 	{
 		SettingsWidget->AddToViewport(SettingsWidgetZOrder);
