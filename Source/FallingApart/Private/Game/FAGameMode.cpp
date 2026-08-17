@@ -599,7 +599,7 @@ void AFAGameMode::AssignStartingTeams()
 		}
 
 		FAPlayerState->ResetForNewRound();
-		FAPlayerState->SetTeam(EFATeam::Human);
+		FAPlayerState->SetTeam(EFATeam::Zombie);
 		Candidates.Add(FAPlayerState);
 	}
 

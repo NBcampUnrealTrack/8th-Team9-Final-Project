@@ -25,6 +25,8 @@ public:
 	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 	virtual FVector GetAirControl(float DeltaTime, float TickAirControl, const FVector& FallAcceleration) override;
 	virtual FVector ConstrainInputAcceleration(const FVector& InputAcceleration) const override;
+	virtual bool DoJump(bool bReplayingMoves) override;
+	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	//~ End
 
 	/** 경련·경직·QTE 등으로 이동이 완전히 봉인된 상태인가. */
@@ -42,6 +44,9 @@ protected:
 
 	/** 자동 전진(Z05/H05) — 전진 성분은 최대로 고정하고 좌우 조향만 플레이어에게 남긴다. */
 	FVector ComputeForceForwardAcceleration(const FVector& InputAcceleration) const;
+
+	/** 역행(Z06) — 앞/뒤 키 입력을 모두 후방 이동으로 변환하고 좌우 입력은 유지한다. */
+	FVector ComputeBackwardOnlyAcceleration(const FVector& InputAcceleration) const;
 	
 
 	/** 이동 입력 반전(Z13/H10) — 컨트롤러 시점 기준 앞뒤와 좌우 성분을 뒤집는다. */
@@ -53,4 +58,10 @@ private:
 	mutable TWeakObjectPtr<UAbilitySystemComponent> CachedASC;
 
 	float DefaultGroundFriction = 8.0f;
+
+	/** 저마찰 룰 상태에서 최대 이동속도로 달리다 입력을 놓았을 때 정지까지 걸리는 목표 시간. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Movement|LowFriction", meta = (ClampMin = "0.1"))
+	float LowFrictionStopDuration = 1.5f;
+	
+	
 };
