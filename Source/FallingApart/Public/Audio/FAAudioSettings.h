@@ -9,6 +9,8 @@
 
 class UDataTable;
 class USoundAttenuation;
+class USoundClass;
+class USoundMix;
 
 /**
  * 사운드 표 다섯 장의 위치를 프로젝트 설정에 한 번만 박아두는 곳.
@@ -54,6 +56,29 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Audio|Defaults")
 	TMap<EFASoundCategory, TSoftObjectPtr<USoundAttenuation>> DefaultAttenuationByCategory;
+
+	//~ ---------------- 설정창 볼륨 ----------------
+	//
+	// 설정창의 볼륨 슬라이더는 이 SoundClass 들의 볼륨을 SoundMix 로 덮어쓰는 방식으로 먹는다.
+	// 계층은 Master 를 부모로 두는 것을 전제로 한다 — SoundClass 볼륨은 부모로 내려가며 곱해지므로
+	// Master 하나만 움직여도 전부 같이 움직인다.
+	// 비워두면 그 슬라이더는 조용히 아무 일도 하지 않는다(경고 1회).
+
+	/** 볼륨 오버라이드를 실을 SoundMix. 이게 없으면 볼륨 조절 자체가 동작하지 않는다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Audio|Mix")
+	TSoftObjectPtr<USoundMix> UserSettingsSoundMix;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio|Mix")
+	TSoftObjectPtr<USoundClass> MasterSoundClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio|Mix")
+	TSoftObjectPtr<USoundClass> MusicSoundClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio|Mix")
+	TSoftObjectPtr<USoundClass> SFXSoundClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Audio|Mix")
+	TSoftObjectPtr<USoundClass> UISoundClass;
 
 	//~ ---------------- 룰 사운드 3단 폴백 ----------------
 

@@ -242,6 +242,13 @@ void AFAGameMode::EndRound(EFARoundResult Result)
 
 	ClearRoundTimers();
 
+	// 선택 중이던 드래프트를 여기서 끊는다. 안 끊으면 타임아웃 타이머가 살아남아
+	// 다음 라운드에서 룰이 붙고, 클라이언트 선택창도 라운드를 넘어 계속 떠 있는다.
+	if (UFARuleDraftSubsystem* Draft = GetWorld()->GetSubsystem<UFARuleDraftSubsystem>())
+	{
+		Draft->CancelAllPendingDrafts();
+	}
+
 	SettleRoundScore(Result);
 
 	FAGameState->SetRoundPhase(EFARoundPhase::RoundEnd);

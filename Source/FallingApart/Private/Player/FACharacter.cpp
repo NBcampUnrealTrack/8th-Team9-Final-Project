@@ -23,6 +23,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
+#include "Settings/FASettingsBridge.h"
 
 
 namespace FACharacterAudio
@@ -692,8 +693,12 @@ void AFACharacter::Look(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
+		// 설정창의 감도 · Y축 반전. 설정이 없으면 각각 1.0 / false 라 예전과 똑같이 움직인다.
+		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
+		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
+
+		AddControllerYawInput(LookAxisVector.X * Sensitivity);
+		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}
 }
 

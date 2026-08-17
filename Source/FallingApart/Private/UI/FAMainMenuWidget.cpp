@@ -8,6 +8,7 @@
 #include "Components/WidgetSwitcher.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "SettingsKitMenuWidget.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
 
@@ -18,7 +19,6 @@ namespace FAMainMenuAudio
 	static const FName Click(TEXT("UI_Click"));
 	static const FName Back(TEXT("UI_Back"));
 	static const FName Hover(TEXT("UI_Hover"));
-	static const FName Denied(TEXT("UI_Denied"));
 	static const FName PopupOpen(TEXT("UI_PopupOpen"));
 	static const FName Success(TEXT("UI_Success"));
 	static const FName Error(TEXT("UI_Error"));
@@ -310,10 +310,24 @@ void UFAMainMenuWidget::OnJoinButtonClicked()
 
 void UFAMainMenuWidget::OnSettingButtonClicked()
 {
-	// 눌러도 아무 일 없는 버튼이라 최소한 "안 된다"는 건 들려야 한다 (일시정지 메뉴와 같은 처리).
-	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Denied);
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Click);
 
-	//TODO : 메뉴 UI추가 및 설정 창 이동
+	// 이미 떠 있으면 중복 생성하지 않는다.
+	if (SettingsWidget && SettingsWidget->IsInViewport())
+	{
+		return;
+	}
+
+	// 일시정지 메뉴와 같은 창을 띄운다 — 설정은 한 곳에서만 관리한다.
+	// WBP 를 안 지정했으면 플러그인의 C++ 임시 레이아웃이 뜬다.
+	const TSubclassOf<UUserWidget> WidgetClass =
+		SettingsWidgetClass ? SettingsWidgetClass : TSubclassOf<UUserWidget>(USKSettingsMenuWidget::StaticClass());
+
+	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
+	if (SettingsWidget)
+	{
+		SettingsWidget->AddToViewport(SettingsWidgetZOrder);
+	}
 }
 
 void UFAMainMenuWidget::OnQuitButtonClicked()
