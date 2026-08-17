@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUDWidget.h"
+#include "UI/FARuleSlotsWidget.h"
 
 AFAHUD::AFAHUD()
 {
@@ -13,6 +14,9 @@ AFAHUD::AFAHUD()
 
 	// WBP_FADraft 가 만들어지기 전에도 드래프트를 테스트할 수 있어야 한다.
 	DraftWidgetClass = UFADraftWidget::StaticClass();
+
+	// 룰 칸도 같은 이유로 C++ 기본 위젯을 기본값으로 둔다.
+	RuleSlotsWidgetClass = UFARuleSlotsWidget::StaticClass();
 }
 
 void AFAHUD::BeginPlay()
@@ -36,6 +40,23 @@ void AFAHUD::BeginPlay()
 	{
 		HUDWidget->AddToViewport(HUDWidgetZOrder);
 	}
+
+	CreateRuleSlotsWidget();
+}
+
+void AFAHUD::CreateRuleSlotsWidget()
+{
+	// 비워두는 것도 정상이다 — WBP_FAHUD 안에 룰 칸을 직접 넣은 구성.
+	if (!RuleSlotsWidgetClass)
+	{
+		return;
+	}
+
+	RuleSlotsWidget = CreateWidget<UFARuleSlotsWidget>(PlayerOwner, RuleSlotsWidgetClass);
+	if (RuleSlotsWidget)
+	{
+		RuleSlotsWidget->AddToViewport(RuleSlotsZOrder);
+	}
 }
 
 void AFAHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -50,6 +71,12 @@ void AFAHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		DraftWidget->RemoveFromParent();
 		DraftWidget = nullptr;
+	}
+
+	if (RuleSlotsWidget)
+	{
+		RuleSlotsWidget->RemoveFromParent();
+		RuleSlotsWidget = nullptr;
 	}
 
 	Super::EndPlay(EndPlayReason);
