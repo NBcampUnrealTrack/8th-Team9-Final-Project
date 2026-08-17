@@ -9,6 +9,7 @@
 
 class UFADraftWidget;
 class UFAHUDWidget;
+class UFARuleSlotsWidget;
 
 /**
  * 인게임 HUD 위젯의 소유자.
@@ -42,6 +43,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Draft")
 	UFADraftWidget* GetDraftWidget() const { return DraftWidget; }
 
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Rule")
+	UFARuleSlotsWidget* GetRuleSlotsWidget() const { return RuleSlotsWidget; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -64,10 +68,27 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
 	int32 DraftWidgetZOrder = 10;
 
+	/**
+	 * 좌하단 보유 룰 4칸. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 *
+	 * WBP_FAHUD 안에 룰 칸을 직접 넣을 거라면 여기를 **비워야 한다** — 안 그러면 두 벌이 겹친다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
+	TSubclassOf<UFARuleSlotsWidget> RuleSlotsWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
+	int32 RuleSlotsZOrder = 1;
+
 private:
+	/** 룰 칸 위젯을 만들어 뷰포트에 올린다. 클래스가 비어 있으면 아무것도 하지 않는다. */
+	void CreateRuleSlotsWidget();
+
 	UPROPERTY(Transient)
 	TObjectPtr<UFAHUDWidget> HUDWidget;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFADraftWidget> DraftWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFARuleSlotsWidget> RuleSlotsWidget;
 };
