@@ -7,6 +7,7 @@
 #include "Game/FAGameTypes.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
+#include "Rule/FARuleTypes.h"
 #include "FACharacter.generated.h"
 
 class UFAAbilitySystemComponent;
@@ -21,6 +22,7 @@ class UMaterialInterface;
 class AFAPlayerState;
 class UFACharacterStatusComponent;
 class UFACaptureMarkerWidget;
+class UFARuleMarkerWidget;
 class UWidgetComponent;
 
 UCLASS()
@@ -187,6 +189,22 @@ protected:
 	/** 복제된 포획 · QTE 상태를 머리 위 위젯으로 흘려보낸다. 매 프레임. */
 	void UpdateCaptureMarker();
 
+	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
+	void SetupRuleMarker();
+
+	/**
+	 * 이 프레임에 머리 위 룰 아이콘을 그려야 하는가.
+	 *
+	 * 남의 것만 · 룰이 1장이라도 있을 때 · 컬링 거리 안에서만
+	 */
+	bool ShouldShowRuleMarker() const;
+
+	/** 복제된 보유 룰을 머리 위 위젯으로 흘려보낸다. 매 프레임. */
+	void UpdateRuleMarker(float DeltaTime);
+
+	/** 시야 가림 트레이스 1회. 결과는 bRuleMarkerOccluded 에 캐시된다. */
+	void UpdateRuleMarkerOcclusion();
+
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class USpringArmComponent* CameraBoom;
@@ -272,6 +290,50 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
 	float CaptureMarkerCullDistance = 3000.0f;
 
+	//~ ---------------- 머리 위 보유 룰 아이콘  ----------------
+
+	/**
+	 * 다른 플레이어 머리 위에 뜨는 보유 룰 아이콘 WBP.
+	 * 비워두면 3D 표시 없이 본인 HUD 4칸만 돈다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	TSubclassOf<UFARuleMarkerWidget> RuleMarkerWidgetClass;
+
+	/** 캡슐 원점 기준 위치. 감염 게이지와 겹치지 않게 그보다 위에 둔다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	FVector RuleMarkerOffset = FVector(0.0f, 0.0f, 145.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	FVector2D RuleMarkerDrawSize = FVector2D(160.0f, 40.0f);
+
+	/** 이 거리 밖에서는 그리지 않는다. 0 이면 컬링하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	float RuleMarkerCullDistance = 4000.0f;
+
+	/** 이 거리부터 아이콘 대신 계열 색 점 3개로 축약한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	float RuleMarkerAbbreviateDistance = 1800.0f;
+
+	/** 거리 감쇠가 시작되는 거리. 이 안쪽에서는 원래 크기 그대로. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	float RuleMarkerFullScaleDistance = 800.0f;
+
+	/** 컬링 거리에서의 최소 배율. 0.4 면 원래 크기의 40%. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+	float RuleMarkerMinScale = 0.45f;
+
+	/**
+	 * 벽에 가려지면 숨길지.
+	 *
+	 * 켜두면 '보이는 상대의 룰만 읽을 수 있다'
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	bool bHideRuleMarkerWhenOccluded = true;
+
+	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
+	float RuleMarkerOcclusionInterval = 0.2f;
+
 private:
 	/**
 	 * 포획 진행 상태.
@@ -286,6 +348,22 @@ private:
 	/** 머리 위 감염 게이지. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> CaptureMarker;
+
+	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> RuleMarker;
+
+	/** 룰 아이콘에 넘길 표시 사본. 매 프레임 새로 만들지 않도록 보유 목록이 바뀔 때만 다시 채운다. */
+	UPROPERTY(Transient)
+	TArray<FFARuleDisplayInfo> CachedRuleDisplayInfos;
+
+	/** CachedRuleDisplayInfos 를 만든 기준 목록. */
+	TArray<FName> CachedRuleIds;
+
+	/** 마지막 가림 판정 이후 흐른 시간(초). */
+	float RuleMarkerOcclusionTimer = 0.0f;
+
+	bool bRuleMarkerOccluded = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
