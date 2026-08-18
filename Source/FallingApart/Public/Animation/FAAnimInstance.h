@@ -67,6 +67,12 @@ protected:
 	bool bIsFalling;
 
 	/*
+	  일반 이동 자세 선택에만 사용하며 GAS 상태 Override 와는 분리한다.
+	 */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
+	bool bIsCrouched = false;
+
+	/*
 	  AnimGraph 의 StatusOverride 상태머신이 직접 읽는 값.
 	  우선순위: Grabbed > Contesting > Grabbing > Seizure > Stunned > None.
 	 */
