@@ -18,11 +18,14 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Rule/FARuleSettings.h"
 #include "UI/FACaptureMarkerWidget.h"
+#include "UI/FARuleMarkerWidget.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
+#include "Settings/FASettingsBridge.h"
 
 
 namespace FACharacterAudio
@@ -44,6 +47,9 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UFACharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
+
+	// WBP_FARuleMarker 가 만들어지기 전에도 머리 위 룰 표시를 확인할 수 있어야 한다.
+	RuleMarkerWidgetClass = UFARuleMarkerWidget::StaticClass();
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -328,6 +334,167 @@ void AFACharacter::UpdateCaptureMarker()
 	}
 }
 
+//~ ---------------- 머리 위 보유 룰 아이콘 ----------------
+
+void AFACharacter::SetupRuleMarker()
+{
+	if (RuleMarkerWidgetClass == nullptr || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	RuleMarker = NewObject<UWidgetComponent>(this);
+	RuleMarker->SetWidgetSpace(EWidgetSpace::Screen);
+	RuleMarker->SetDrawAtDesiredSize(false);
+	RuleMarker->SetDrawSize(RuleMarkerDrawSize);
+	RuleMarker->SetWidgetClass(RuleMarkerWidgetClass);
+	RuleMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RuleMarker->RegisterComponent();
+	RuleMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	RuleMarker->SetRelativeLocation(RuleMarkerOffset);
+	RuleMarker->SetVisibility(false);
+}
+
+bool AFACharacter::ShouldShowRuleMarker() const
+{
+	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
+	if (IsLocallyControlled())
+	{
+		return false;
+	}
+
+	if (!AbilitySystemComponent || AbilitySystemComponent->GetActiveRuleCount() <= 0)
+	{
+		return false;
+	}
+
+	if (bHideRuleMarkerWhenOccluded && bRuleMarkerOccluded)
+	{
+		return false;
+	}
+
+	if (RuleMarkerCullDistance > 0.0f)
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+		if (!LocalController)
+		{
+			return false;
+		}
+
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		if (FVector::DistSquared(ViewLocation, GetActorLocation()) > FMath::Square(RuleMarkerCullDistance))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void AFACharacter::UpdateRuleMarkerOcclusion()
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+	if (!LocalController)
+	{
+		bRuleMarkerOccluded = true;
+		return;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	// 위젯이 뜨는 지점(머리 위)을 겨눈다. 발치를 겨누면 난간 뒤에 서 있을 때 아이콘이 깜빡인다.
+	const FVector MarkerLocation = GetActorLocation() + RuleMarkerOffset;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FARuleMarkerOcclusion), /*bTraceComplex=*/false);
+	Params.AddIgnoredActor(this);
+	if (const APawn* LocalPawn = LocalController->GetPawn())
+	{
+		Params.AddIgnoredActor(LocalPawn);
+	}
+
+	FHitResult Hit;
+	bRuleMarkerOccluded = World->LineTraceSingleByChannel(Hit, ViewLocation, MarkerLocation, ECC_Visibility, Params);
+}
+
+void AFACharacter::UpdateRuleMarker(float DeltaTime)
+{
+	if (!RuleMarker)
+	{
+		return;
+	}
+
+	if (bHideRuleMarkerWhenOccluded)
+	{
+		RuleMarkerOcclusionTimer += DeltaTime;
+		if (RuleMarkerOcclusionTimer >= RuleMarkerOcclusionInterval)
+		{
+			RuleMarkerOcclusionTimer = 0.0f;
+			UpdateRuleMarkerOcclusion();
+		}
+	}
+
+	const bool bShouldShow = ShouldShowRuleMarker();
+
+	if (bShouldShow != RuleMarker->IsVisible())
+	{
+		RuleMarker->SetVisibility(bShouldShow);
+	}
+
+	if (!bShouldShow)
+	{
+		return;
+	}
+
+	// 보유 목록이 바뀔 때만 DT 를 다시 뒤진다. 매 프레임 8명분을 조회할 이유가 없다.
+	const TArray<FName>& ActiveRuleIds = AbilitySystemComponent->GetActiveRuleIds();
+	if (ActiveRuleIds != CachedRuleIds)
+	{
+		CachedRuleIds = ActiveRuleIds;
+
+		CachedRuleDisplayInfos.Reset(CachedRuleIds.Num());
+		for (const FName& RuleId : CachedRuleIds)
+		{
+			CachedRuleDisplayInfos.Add(UFARuleSettings::MakeRuleDisplayInfo(RuleId));
+		}
+	}
+
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+
+	float Scale = 1.0f;
+	bool bAbbreviated = false;
+
+	if (LocalController)
+	{
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		const float Distance = FVector::Dist(ViewLocation, GetActorLocation());
+
+		bAbbreviated = RuleMarkerAbbreviateDistance > 0.0f && Distance > RuleMarkerAbbreviateDistance;
+
+		// 거리 감쇠 — 가까운 상대가 크게 보여야 '누구의 룰인지'가 헷갈리지 않는다.
+		const float FadeEnd = FMath::Max(RuleMarkerCullDistance, RuleMarkerFullScaleDistance + 1.0f);
+		const float Alpha = FMath::Clamp(
+			(Distance - RuleMarkerFullScaleDistance) / (FadeEnd - RuleMarkerFullScaleDistance), 0.0f, 1.0f);
+
+		Scale = FMath::Lerp(1.0f, RuleMarkerMinScale, Alpha);
+	}
+
+	if (UFARuleMarkerWidget* MarkerWidget = Cast<UFARuleMarkerWidget>(RuleMarker->GetUserWidgetObject()))
+	{
+		MarkerWidget->UpdateMarker(CachedRuleDisplayInfos, Scale, bAbbreviated);
+	}
+}
+
 void AFACharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -339,6 +506,7 @@ void AFACharacter::BeginPlay()
 	ApplyTeamMaterial(FAPlayerState ? FAPlayerState->GetTeam() : EFATeam::None);
 
 	SetupCaptureMarker();
+	SetupRuleMarker();
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -612,6 +780,7 @@ void AFACharacter::Tick(float DeltaTime)
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
+	UpdateRuleMarker(DeltaTime);
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -692,8 +861,12 @@ void AFACharacter::Look(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
+		// 설정창의 감도 · Y축 반전. 설정이 없으면 각각 1.0 / false 라 예전과 똑같이 움직인다.
+		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
+		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
+
+		AddControllerYawInput(LookAxisVector.X * Sensitivity);
+		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}
 }
 
@@ -746,8 +919,16 @@ void AFACharacter::ToggleCrouch()
 	if (GetCharacterMovement()->IsFalling())
 		return;
 
+	const bool bCrouchOnly = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Move_CrouchOnly);
+
+
 	if (bIsCrouched)
 	{
+		if (bCrouchOnly)
+		{
+			return;
+		}
 		UnCrouch();
 	}
 	else

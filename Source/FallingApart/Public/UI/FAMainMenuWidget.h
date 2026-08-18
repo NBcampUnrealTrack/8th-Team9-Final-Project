@@ -41,6 +41,18 @@ public:
 	//* 로비 레벨의 경로 입력 선택 */
 	UPROPERTY(EditDefaultsOnly,Category = "FallingApart|Level")
 	TSoftObjectPtr<UWorld> TargetLevelPath;
+
+	/**
+	 * 설정 창 위젯 클래스. 일시정지 메뉴(`UFAPauseMenuWidget`)와 같은 창을 띄운다.
+	 * 비워두면 SettingsKit 플러그인의 C++ 임시 레이아웃이 뜬다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	TSubclassOf<UUserWidget> SettingsWidgetClass;
+
+	/** 메인 메뉴 위에 떠야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	int32 SettingsWidgetZOrder = 120;
+
 protected:
 	// 버튼 이벤트 바인딩
 	virtual void NativeOnInitialized() override;
@@ -121,4 +133,8 @@ private:
 	// 이점을 고려하여 작성해야함.
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;
+
+	/** 지금 떠 있는 설정 창. 두 번 눌러도 겹쳐 뜨지 않게 들고 있는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> SettingsWidget;
 };
