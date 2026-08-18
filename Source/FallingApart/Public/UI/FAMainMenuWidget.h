@@ -41,6 +41,18 @@ public:
 	//* 로비 레벨의 경로 입력 선택 */
 	UPROPERTY(EditDefaultsOnly,Category = "FallingApart|Level")
 	TSoftObjectPtr<UWorld> TargetLevelPath;
+
+	/**
+	 * 설정 창 위젯 클래스. 일시정지 메뉴(`UFAPauseMenuWidget`)와 같은 창을 띄운다.
+	 * 비워두면 SettingsKit 플러그인의 C++ 임시 레이아웃이 뜬다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	TSubclassOf<UUserWidget> SettingsWidgetClass;
+
+	/** 메인 메뉴 위에 떠야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	int32 SettingsWidgetZOrder = 120;
+
 protected:
 	// 버튼 이벤트 바인딩
 	virtual void NativeOnInitialized() override;
@@ -78,9 +90,6 @@ private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UButton> ConfirmHostButton;
 	
-	UPROPERTY(meta=(BindWidget))
-	TObjectPtr<UButton> ConfirmJoinButton;
-	
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UButton> SettingButton;
  
@@ -107,7 +116,14 @@ private:
 	
 	UFUNCTION()
 	void ReturnToMainMenuButtonClicked();
-	
+
+	/** 버튼 전체가 공유하는 호버 소리. 표의 쿨다운(0.04초)이 목록을 빠르게 훑을 때의 연사를 막는다. */
+	UFUNCTION()
+	void OnButtonHovered();
+
+	/** 버튼 하나에 클릭·호버 소리를 한 번에 물린다. null 이면 아무것도 하지 않는다. */
+	void BindButtonAudio(UButton* Button);
+
 	void CloseMenu();
 	
 	void RestoreGameInputMode();
@@ -117,4 +133,8 @@ private:
 	// 이점을 고려하여 작성해야함.
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;
+
+	/** 지금 떠 있는 설정 창. 두 번 눌러도 겹쳐 뜨지 않게 들고 있는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> SettingsWidget;
 };

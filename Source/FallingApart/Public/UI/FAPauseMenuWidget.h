@@ -58,8 +58,8 @@ protected:
 
 	/**
 	 * 설정 창 위젯 클래스.
-	 * 사운드 클래스 · 키 바인딩이 아직 없어 설정 화면 자체를 만들지 않았다 — 기본값은 비어 있다.
-	 * 설정 화면을 만들면 WBP_FAPauseMenu 클래스 디폴트에서 여기에 지정할 것.
+	 * 비워두면 SettingsKit 플러그인의 `USKSettingsMenuWidget`(C++ 임시 레이아웃)이 뜬다.
+	 * WBP_FASettings 를 만들면 WBP_FAPauseMenu 클래스 디폴트에서 여기에 지정할 것.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
 	TSubclassOf<UUserWidget> SettingsWidgetClass;

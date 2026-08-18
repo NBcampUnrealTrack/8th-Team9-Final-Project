@@ -3,10 +3,16 @@
 
 #include "UI/FASessionCreateWidget.h"
 
+#include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
 #include "Components/SpinBox.h"
 #include "GameFramework/PlayerState.h"
+
+namespace FASessionCreateAudio
+{
+	static const FName SliderTick(TEXT("UI_SliderTick"));
+}
 
 bool UFASessionCreateWidget::Initialize()
 {
@@ -20,8 +26,17 @@ bool UFASessionCreateWidget::Initialize()
 			NicknameInput->SetText(FText::FromString(PlayerState->GetPlayerName()));
 		}
 	}
-	
+	if (MaxConnectionSpinBox)
+	{
+		MaxConnectionSpinBox->OnValueChanged.AddUniqueDynamic(this, &ThisClass::HandleMaxConnectionChanged);
+	}
+
 	return true;
+}
+
+void UFASessionCreateWidget::HandleMaxConnectionChanged(float NewValue)
+{
+	UFAAudioSubsystem::PlayFASound(this, FASessionCreateAudio::SliderTick);
 }
 
 void UFASessionCreateWidget::SubmitCreateRequest()

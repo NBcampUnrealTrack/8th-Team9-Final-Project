@@ -67,6 +67,29 @@ void AFALobbyPlayerController::PreClientTravel(const FString& PendingURL, ETrave
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
 }
 
+bool AFALobbyPlayerController::IsLobbyHost() const
+{
+	//리슨서버 호스트 체크
+	return HasAuthority()
+		&& IsLocalController()
+		&& GetNetMode() == NM_ListenServer;
+}
+
+void AFALobbyPlayerController::RequestStartCountdown()
+{
+	if (!IsLocalController())
+		return;
+	Server_RequestStartCountdown();
+}
+
+void AFALobbyPlayerController::Server_RequestStartCountdown_Implementation()
+{
+	if (AFALobbyGameMode* LobbyGameMode = GetWorld()->GetAuthGameMode<AFALobbyGameMode>())
+	{
+		LobbyGameMode->RequestStartCountDown(this);
+	}
+}
+
 void AFALobbyPlayerController::CreateLobbyWidget()
 {
 	if (LobbyWidgetClass)

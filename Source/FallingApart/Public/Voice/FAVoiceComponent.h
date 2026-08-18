@@ -42,18 +42,25 @@ public:
 	void SetVoiceChannel(EFAVoiceChannel NewChannel);
 
 	/**
-	 * 최대 거리(uu). 기본 1500 = 15m.
+	 * 최대 거리(uu). 기본 4000 = 40m.
 	 */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	virtual float GetHearingRadius() const;
 
-	/** 감쇠가 시작되는 거리(uu). 기본 1000 = 10m. */
+	/** 감쇠가 시작되는 거리(uu). 기본 2500 = 25m. */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	virtual float GetFullVolumeRadius() const;
 
 	/** 반경이 바뀌었을 때(확성/침묵 룰 등) 감쇠를 다시 만들어 적용. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
 	void RefreshVoiceAttenuation();
+
+	/** 이 화자의 목소리를 재생할 배수. 발화 중이면 즉시 반영된다. */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
+	void SetVoicePlaybackVolume(float NewVolume);
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
+	float GetVoicePlaybackVolume() const { return VoicePlaybackVolume; }
 
 	/** 마이크 송신 시작. 푸시투토크 키의 Pressed 에 연결. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
@@ -85,6 +92,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	/** 목소리가 나올 씬 컴포넌트를 결정. 헤드 소켓이 없는 Pawn 이면 루트 + 오프셋으로 대체. */
@@ -98,15 +106,25 @@ protected:
 
 	/** 들리는 최대 거리(uu). Global 채널에서는 무시. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float HearingRadius = 1500.f;
+	float HearingRadius = 4000.f;
 
-	/** 감쇄 없는 거리. */
+	/** 감쇄 없는 거리. 이 안에서는 거리와 무관하게 같은 음량. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float FullVolumeRadius = 1000.f;
+	float FullVolumeRadius = 2500.f;
 
 	/** HearingRadius 지점의 음량(dB). -60 무음. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice", meta = (ClampMin = "-60", ClampMax = "0"))
 	float AttenuationAtMaxDb = -60.f;
+
+	/**
+	 * 이 화자의 목소리 재생 배수. 사용자 출력 볼륨(FAVoice.OutputVolume)과 곱해진다.
+	 *
+	 * 엔진 기본 재생 배수는 1.5 인데(OnlineSubsystemUtils.cpp) 그레이박스 맵에서 너무 작았다.
+	 * 마이크 게인(voice.MicInputGain)으로는 이 이상 못 올린다 — 캡처 경로가 int16 에 게인을
+	 * 곱하면서 하드 클리핑하기 때문에 크게 말하면 지직거린다. 그래서 음량은 재생 쪽에서 번다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "8.0"))
+	float VoicePlaybackVolume = 3.5f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice")
 	TObjectPtr<USoundAttenuation> AttenuationOverride;
@@ -156,6 +174,10 @@ private:
 	void SetupVoiceSource();
 	void SetupListenerAnchor();
 	void SetupSpeakingIndicator();
+	bool ShouldShowSpeakingIndicator() const;
+
+	/** 발화 중에만 도는 폴링. 거리 밖으로 나가면 아이콘을 숨긴다. */
+	void UpdateSpeakingIndicator();
 	void ApplyListenerOverride();
 	USoundAttenuation* BuildAttenuation();
 	void HandleTalkerStateChanged(bool bIsTalking);

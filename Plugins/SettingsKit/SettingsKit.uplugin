@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Settings Kit",
+	"Description": "프로젝트에 의존하지 않는 설정 메뉴 묶음. 값 보관·저장·UI 만 담당하고, 실제 적용(오디오 믹스·보이스·감도)은 델리게이트로 게임 쪽에 넘긴다. 폴더째 복사하면 다른 프로젝트에서도 그대로 쓸 수 있다.",
+	"Category": "UI",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "SettingsKit",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		}
+	]
+}
