@@ -599,11 +599,21 @@ void AFAGameMode::AssignStartingTeams()
 		}
 
 		FAPlayerState->ResetForNewRound();
-		FAPlayerState->SetTeam(EFATeam::Zombie);
+		// 여기는 '시작 좀비를 뽑기 전의 기본 진영' 이다 — Zombie 로 두면 아래에서 누굴 뽑든
+		// 전원 좀비인 라운드가 되어 인간이 한 명도 없다.
+		FAPlayerState->SetTeam(EFATeam::Human);
 		Candidates.Add(FAPlayerState);
 	}
 
 	const int32 ZombieCount = GetStartingZombieCount(Candidates.Num());
+
+	// PIE 는 마지막 클라이언트의 PostLogin 이 매치 시작보다 늦게 끝나는 경우가 있어,
+	// 여기 후보 수가 실제 접속 인원보다 적게 잡히면 나머지가 전부 '난입 = 좀비' 로 들어온다.
+	// 진영이 이상하면 이 줄부터 볼 것
+	UE_LOG(LogTemp, Log,
+		TEXT("[FA] 진영 배정 — 후보 %d명 / 시작 좀비 %d명 (NumPlayers=%d, MinPlayersToStart=%d, Override=%d, 로비컨텍스트=%s)"),
+		Candidates.Num(), ZombieCount, NumPlayers, MinPlayersToStart, StartingZombieCountOverride,
+		bHasLobbyMatchContext ? TEXT("있음") : TEXT("없음"));
 
 	// 직전 라운드의 시작 좀비는 후보에서 뺀다. 빼고 나서 인원이 모자랄 때만 전원 풀로 되돌린다
 	// (3인 테스트처럼 인원이 적으면 연속 배정이 불가피하다).
@@ -715,8 +725,11 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		if (AFAPlayerState* FAPlayerState = Cast<AFAPlayerState>(NewPlayer->PlayerState))
 		{
-			FAPlayerState->ResetForNewRound();
-			FAPlayerState->SetTeam(EFATeam::Zombie);
+			if (FAPlayerState->GetTeam() == EFATeam::None)
+			{
+				FAPlayerState->ResetForNewRound();
+				FAPlayerState->SetTeam(EFATeam::Zombie);
+			}
 		}
 		UpdateTeamCounts(false);
 	}
