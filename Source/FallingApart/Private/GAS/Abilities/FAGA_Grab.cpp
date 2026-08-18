@@ -37,7 +37,7 @@ UFAGA_Grab::UFAGA_Grab()
 	ActivationBlockedTags.AddTag(Tags.State_Grabbing);
 	ActivationBlockedTags.AddTag(Tags.State_Grabbed);
 
-	RemainingInfectTime = 0.0f;
+	InfectProgress = 0.0f;
 }
 
 void UFAGA_Grab::ActivateAbility(
@@ -65,8 +65,9 @@ void UFAGA_Grab::ActivateAbility(
 		return;
 	}
 
-	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 QTE 의 남은 시간이 남아 있으면 안 된다.
-	RemainingInfectTime = 0.0f;
+	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 포획의 진행도가 남아 있으면 안 된다.
+	InfectProgress = 0.0f;
+	bInfectPaused = false;
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
@@ -113,28 +114,23 @@ void UFAGA_Grab::ActivateAbility(
 
 		float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
 		// Attribute 가 아직 초기화 전이면 쓰는 폴백. UFAAttributeSet 의 기본값과 같이 움직여야 한다.
-		if (InfectDuration <= 0.0f) InfectDuration = 10.0f;
+		if (InfectDuration <= 0.0f) InfectDuration = 5.0f;
+
+		BaseInfectDuration = InfectDuration;
+		CurrentInfectRate = 1.0f / BaseInfectDuration;
 
 		ZombieChar->GetWorld()->GetTimerManager().SetTimer(
-			InfectTimerHandle,
+			GrabTickHandle,
 			this,
-			&UFAGA_Grab::OnInfectTimerExpired,
-			InfectDuration,
-			false
-		);
-
-		// 거리 이탈 검사용 타이머
-		ZombieChar->GetWorld()->GetTimerManager().SetTimer(
-			DistanceCheckTimerHandle,
-			this,
-			&UFAGA_Grab::CheckDistanceDuringGrab,
-			0.1f,
+			&UFAGA_Grab::TickGrab,
+			GrabTickInterval,
 			true
 		);
 
 		// HUD 감염 게이지 — 이 어빌리티는 ServerOnly 라 화면을 직접 못 그린다.
-		TargetHuman->BeginCaptureState(/*bInIsVictim=*/true, InfectDuration);
-		ZombieChar->BeginCaptureState(/*bInIsVictim=*/false, InfectDuration);
+		TargetHuman->BeginCaptureState(/*bInIsVictim=*/true);
+		ZombieChar->BeginCaptureState(/*bInIsVictim=*/false);
+		PushCaptureProgress();
 	}
 }
 
@@ -166,52 +162,37 @@ UFAGA_Grab* UFAGA_Grab::FindActiveInstance(UAbilitySystemComponent* ASC)
 
 void UFAGA_Grab::PauseInfectTimer()
 {
-	if (UWorld* World = GetWorld())
-	{
-		// 타이머가 안 돌고 있으면 -1 이 온다.
-		RemainingInfectTime = World->GetTimerManager().GetTimerRemaining(InfectTimerHandle);
-		World->GetTimerManager().ClearTimer(InfectTimerHandle);
+	// 틱은 계속 돌려둔다 — 거리 이탈 검사는 QTE 중에도 살아 있어야 한다.
+	bInfectPaused = true;
 
-		// 게이지도 같이 멈춘다 — 안 멈추면 QTE 로 겨루는 동안 감염이 혼자 채워지는 것처럼 보인다.
-		if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
-		{
-			ZombieChar->PauseCaptureState(RemainingInfectTime);
-		}
-		if (GrabbedVictim.IsValid())
-		{
-			GrabbedVictim->PauseCaptureState(RemainingInfectTime);
-		}
-	}
+	// 게이지도 같이 멈춘다 — 안 멈추면 QTE 로 겨루는 동안 감염이 혼자 채워지는 것처럼 보인다.
+	// 속도 0 을 내보내면 클라이언트가 외삽을 멈춰 진행도가 그 자리에 선다.
+	PushCaptureProgress();
 }
 
 void UFAGA_Grab::ResumeInfectTimer()
 {
-	if (UWorld* World = GetWorld())
-	{
-		if (RemainingInfectTime > 0.0f)
-		{
-			World->GetTimerManager().SetTimer(
-				InfectTimerHandle,
-				this,
-				&UFAGA_Grab::OnInfectTimerExpired,
-				RemainingInfectTime,
-				false
-			);
+	// 처음부터 다시 도는 게 아니라 쌓아둔 진행도에서 이어진다.
+	bInfectPaused = false;
 
-			// 처음부터 다시 도는 게 아니라 남은 시간부터 이어진다 — 게이지 기준 시각도 같이 옮긴다.
-			if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
-			{
-				ZombieChar->ResumeCaptureState(RemainingInfectTime);
-			}
-			if (GrabbedVictim.IsValid())
-			{
-				GrabbedVictim->ResumeCaptureState(RemainingInfectTime);
-			}
-		}
+	PushCaptureProgress();
+}
+
+void UFAGA_Grab::PushCaptureProgress()
+{
+	const float Rate = bInfectPaused ? 0.0f : CurrentInfectRate;
+
+	if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
+	{
+		ZombieChar->UpdateCaptureProgress(InfectProgress, Rate);
+	}
+	if (GrabbedVictim.IsValid())
+	{
+		GrabbedVictim->UpdateCaptureProgress(InfectProgress, Rate);
 	}
 }
 
-void UFAGA_Grab::CheckDistanceDuringGrab()
+void UFAGA_Grab::TickGrab()
 {
 	AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo());
 	if (!ZombieChar || !GrabbedVictim.IsValid())
@@ -220,14 +201,36 @@ void UFAGA_Grab::CheckDistanceDuringGrab()
 		return;
 	}
 
+	// 거리 판정이 먼저다 — 이미 놓친 포획으로 감염이 한 틱 더 차면 안 된다.
 	float Distance = FVector::Dist(ZombieChar->GetActorLocation(), GrabbedVictim->GetActorLocation());
 	if (Distance > 300.0f)
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return;
+	}
+
+	if (bInfectPaused)
+	{
+		return;
+	}
+
+	// 저항이 셀수록 감염이 느려진다: 저항 0 이면 BaseInfectDuration, 최대면 × MaxResistTimeMultiplier.
+	// 저항 강도는 여기서 감쇠시킨다 — 손을 놓으면 알아서 0 으로 돌아온다.
+	const float ResistLevel = GrabbedVictim->UpdateResistLevel(GrabTickInterval);
+	const float CurrentDuration = FMath::Max(0.1f, BaseInfectDuration * FMath::Lerp(1.0f, MaxResistTimeMultiplier, ResistLevel));
+
+	CurrentInfectRate = 1.0f / CurrentDuration;
+	InfectProgress += GrabTickInterval * CurrentInfectRate;
+
+	PushCaptureProgress();
+
+	if (InfectProgress >= 1.0f)
+	{
+		CompleteInfection();
 	}
 }
 
-void UFAGA_Grab::OnInfectTimerExpired()
+void UFAGA_Grab::CompleteInfection()
 {
 	if (GrabbedVictim.IsValid())
 	{
@@ -263,8 +266,7 @@ void UFAGA_Grab::EndAbility(
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().ClearTimer(InfectTimerHandle);
-		World->GetTimerManager().ClearTimer(DistanceCheckTimerHandle);
+		World->GetTimerManager().ClearTimer(GrabTickHandle);
 	}
 
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();

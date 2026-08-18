@@ -119,7 +119,8 @@ public:
 	FGameplayAttributeData GrabRange;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GrabRange)
 
-	// 감염 소요 시간 기본값 10.0초 클램프 0.5~15.0
+	// 감염 소요 시간(저항 0 기준) 기본값 5.0초 클램프 0.5~15.0
+	// 실제 감염 시간은 인질의 저항 강도에 따라 이 값의 1~3배 사이에서 움직인다.
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)

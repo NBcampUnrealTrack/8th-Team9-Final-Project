@@ -79,20 +79,33 @@ public:
 	float GetCaptureInfectionRatio() const;
 
 	//~ 서버 전용 — UFAGA_Grab · UFAGA_RescueContest 만 호출한다.
-	/** 포획 시작. Duration 초 뒤에 감염이 확정된다. */
-	void BeginCaptureState(bool bInIsVictim, float Duration);
+	/** 포획 시작. 진행도 0 에서 시작하고 UpdateCaptureProgress 가 채워 나간다. */
+	void BeginCaptureState(bool bInIsVictim);
 
-	/** QTE 진입으로 감염 타이머가 멈췄다. RemainingSeconds 는 남은 감염 시간. */
-	void PauseCaptureState(float RemainingSeconds);
-
-	/** QTE 가 끝나 감염 타이머가 다시 흐른다. */
-	void ResumeCaptureState(float RemainingSeconds);
+	/**
+	 * 감염 진행도(0~1)와 지금의 초당 진행 속도를 갱신한다.
+	 * 속도 0 이 곧 '멈춤' 이다 — 구출 QTE 중에는 0 을 넣어 게이지를 세운다.
+	 */
+	void UpdateCaptureProgress(float Progress, float RatePerSecond);
 
 	/** 구출 QTE 줄다리기 진행도(0~1). 포획 중이 아니면 무시된다. */
 	void SetCaptureResistRatio(float Ratio);
 
 	/** 포획 종료 — 감염 성공·취소 어느 쪽이든 반드시 불러야 게이지가 내려간다. */
 	void EndCaptureState();
+
+	//~ ---------------- 감염 저항 (WASD 연타) ----------------
+	//~ 저항은 감염을 취소하지 못한다. 감염 속도를 늦춰 구조자가 올 시간을 버는 것이 전부다.
+
+	/**
+	 * 저항 강도를 DeltaSeconds 만큼 감쇠시킨 뒤 현재 값(0~1)을 돌려준다. 서버 전용.
+	 *
+	 * 감쇠가 있어야 '계속 빠르게 눌러야 유지되는' 것이 된다
+	 */
+	float UpdateResistLevel(float DeltaSeconds);
+
+	/** 현재 저항 강도 0~1. 서버에서만 의미가 있다. */
+	float GetResistLevel() const { return ResistLevel; }
 
 	//~ ---------------- 구출 QTE (줄다리기) ----------------
 	//~ 포획과 달리 참가자가 셋(좀비 · 인질 · 구조자)이라 상태를 따로 들고 있다.
@@ -156,6 +169,29 @@ protected:
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+
+	/**
+	 * 이동 입력이 끊긴 순간. 저항 판정의 '마지막 방향' 을 지운다.
+	 * 이게 없으면 W 를 뗐다 다시 누르는 연타가 방향 변화로 안 잡혀서 한 키만 두들기는 사람은
+	 * 저항이 전혀 안 오른다.
+	 */
+	void Input_MoveReleased();
+
+	/**
+	 * 잡혀 있는 동안의 WASD 를 저항 입력으로 바꾼다. 방향이 바뀔 때마다 1회.
+	 * 한 방향으로 꾹 누르고 있는 것은 저항이 아니다 — 번갈아 빠르게 눌러야 유지된다.
+	 */
+	void HandleResistInput(const FVector2D& MovementVector);
+
+	/** 이동 벡터를 WASD 네 방향(1~4)으로 뭉친다. 0 이면 입력 없음(데드존). */
+	static int32 QuantizeResistDirection(const FVector2D& MovementVector);
+
+	/** 저항 입력 1회. 잡힌 본인의 클라이언트만 보낸다. */
+	UFUNCTION(Server, Unreliable)
+	void Server_ReportResistInput();
+
+	/** 서버가 저항 입력 1회를 반영한다. 매크로 연타를 막는 레이트 제한이 여기 있다. */
+	void RegisterResistInput();
 
 	/** GA_Jump 를 통해 점프한다 — 점프 불가 룰(Z01/H01)이 여기서 걸린다. */
 	void Input_Jump();
@@ -290,6 +326,24 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture")
 	float CaptureMarkerCullDistance = 3000.0f;
 
+	/** 저항 입력 1회가 올리는 저항 강도(0~1 기준). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.01", ClampMax = "1.0"))
+	float ResistGainPerInput = 0.2f;
+
+	/**
+	 * 저항 강도가 초당 떨어지는 양.
+	 * Gain 과 짝을 이뤄 '최대 저항을 유지하는 데 필요한 연타 속도' 를 정한다 — 0.2 / 1.0 이면 초당 5회다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.0"))
+	float ResistDecayPerSecond = 1.0f;
+
+	/**
+	 * 서버가 받아들이는 저항 입력의 최소 간격(초).
+	 * 매크로가 초당 수백 번을 보내도 이 이상은 먹지 않는다 — 사람이 낼 수 있는 속도보다 살짝 위로 둔다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.0"))
+	float ResistInputMinInterval = 0.08f;
+
 	//~ ---------------- 머리 위 보유 룰 아이콘  ----------------
 
 	/**
@@ -344,6 +398,18 @@ private:
 	/** 구출 QTE 참가 상태. 참가자 3명 전원이 각자 자기 몫을 들고 있다. */
 	UPROPERTY(Replicated)
 	FFAContestState ContestState;
+
+	/**
+	 * 저항 강도 0~1. 서버 전용이라 복제하지 않는다 —
+	 * 화면에는 감염 게이지가 느려지는 것으로만 드러난다.
+	 */
+	float ResistLevel = 0.0f;
+
+	/** 마지막으로 받아들인 저항 입력의 서버 시각(초). 레이트 제한용. 음수면 아직 없음. */
+	float LastResistInputTime = -1.0f;
+
+	/** 로컬 클라이언트가 마지막으로 보고한 이동 방향(1~4). 0 이면 입력 없음. */
+	int32 LastResistDirection = 0;
 
 	/** 머리 위 감염 게이지. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
