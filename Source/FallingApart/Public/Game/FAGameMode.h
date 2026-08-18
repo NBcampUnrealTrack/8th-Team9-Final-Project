@@ -107,6 +107,16 @@ protected:
 	/** 라운드 점수 정산 (GDD 5.1 / 5.2 · 기술문서 4.2) */
 	void SettleRoundScore(EFARoundResult Result);
 
+	/**
+	 * 결과 화면이 읽을 라운드 스냅샷을 GameState 에 떠 둔다 (GDD 8.4).
+	 * 반드시 CommitRoundScore() '전에' 불러야 한다 — 커밋이 라운드 점수를 0 으로 지운다.
+	 */
+	void BuildRoundResultSnapshot(EFARoundResult Result, const TArray<AFAPlayerState*>& AllPlayerStates);
+
+	/** 라운드 결과 화면을 전 클라이언트에 띄우고 내린다. */
+	void ShowRoundResult();
+	void HideRoundResult();
+
 	void StartNextRoundOrEndMatch();
 
 	/** 라운드 시작 시 시작 좀비를 무작위로 뽑고 나머지를 인간으로 배정한다. */
