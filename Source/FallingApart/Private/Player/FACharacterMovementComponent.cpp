@@ -85,7 +85,6 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	// 속도 계열 룰은 전부 이 Attribute 하나만 건`드린다
 	// -15% 와 -30% 를 동시에 들면 GAS 배수 합산 규칙에 따라 -45% 가 된다.
 	const float RuleSpeed = FMath::Max(0.0f, Attributes->GetMoveSpeed());
-	UE_LOG(LogTemp, Warning, TEXT("[MoveSpeed] Current: %.2f"), RuleSpeed);
 	switch (MovementMode)
 	{
 	case MOVE_Walking:
@@ -203,7 +202,7 @@ bool UFACharacterMovementComponent::DoJump(bool bReplayingMoves)
 {
 	if (const UFAAttributeSet* Attributes = GetOwnerAttributes())
 	{
-		this->JumpZVelocity =FMath::Max(0.0f, Attributes->GetJumpZVelocity());
+		this->JumpZVelocity =FMath::Max(0.0f, Attributes->GetRuleJumpZVelocity());
 	}
 
 	return Super::DoJump(bReplayingMoves);
