@@ -718,3 +718,15 @@ void UFAOnlineSessionSubsystem::ClearPendingMatchContext()
 {
 	PendingMatchContext.Reset();
 }
+
+void UFAOnlineSessionSubsystem::SetPendingNickname(const FString& Nickname)
+{
+	PendingNickname = Nickname;
+}
+
+const FString& UFAOnlineSessionSubsystem::GetPendingNickname() const
+{
+	return PendingNickname;
+}
+
+

@@ -20,11 +20,17 @@ class FALLINGAPART_API AFALobbyGameMode : public AGameModeBase
 public:
 	AFALobbyGameMode();
 	
+	/// 멀티플레이어 레벨 입장 순서는 PreLogin-Login-InitNewPlayer-PostLogin순.
+	/// PreLogin은 인원체크, 중복접속, 패스워드등 접속 허용 규칙에 적합
+	/// InitNewPlayer는 로그인 처리 이후 플레이어의 정보를 초기화하는 부분으로, 이때 Replicate되기전 Controller나 PlayerState의 정보 처리에 적합.
+	/// PostLogin은 초기화가 끝나고 복제가 활성화된후 호출되며, 접속 알림이나 UI연동 등에 적합함.
+	
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
 	
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	
 	virtual void Logout(AController* Exiting) override;
+	
 	
 	/// PlayerController에서 준비 입력받아 처리
 	void SetPlayerReady(APlayerController* NewPlayerController, bool bReady);
@@ -32,6 +38,8 @@ public:
 	
 	
 protected:
+	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal = L"") override;
+	
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
@@ -55,6 +63,10 @@ private:
 	
 	AFALobbyGameState* GetLobbyGameState() const;
 	
+	// 닉네임 중복 검사 등...
+	FString SanitizeNickname(APlayerController* NewPlayerController, FString Nickname);
+	
+	void SetPlayerNickname(APlayerController* NewPlayerController, FString NewNickname);
 
 
 	

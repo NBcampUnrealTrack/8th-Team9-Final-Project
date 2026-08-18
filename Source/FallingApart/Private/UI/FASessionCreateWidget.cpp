@@ -45,7 +45,8 @@ void UFASessionCreateWidget::SubmitCreateRequest()
 	Request.MaxConnections = GetMaxConnections();
 	Request.ServerName = GetSessionName().TrimStartAndEnd();
 	Request.Password = GetPasswordString();
-
+	Request.Nickname = GetNickname();
+	
 	OnCreateSessionRequested.Broadcast(Request);
 }
 
@@ -61,6 +62,11 @@ int32 UFASessionCreateWidget::GetMaxConnections() const
 FString UFASessionCreateWidget::GetPasswordString() const
 {
 	return PrivateSessionPass->GetText().ToString();
+}
+
+FString UFASessionCreateWidget::GetNickname() const
+{
+	return NicknameInput->GetText().ToString();
 }
 
 void UFASessionCreateWidget::NativeConstruct()

@@ -62,7 +62,7 @@ protected:
 	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
 	void HandleSessionRefreshRequested();
-	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
 
 	// 세션 서브시스템 완료 콜백
 	void OnCreateSessionComplete(EFASessionRequestResult Result);

@@ -218,4 +218,17 @@ private:
 	FFAPendingMatchContext PendingMatchContext;
 	
 #pragma endregion MatchContext
+	
+#pragma region Nickname
+public:
+	// 세션 생성/입장 요청 전 닉네임 저장
+	void SetPendingNickname(const FString& Nickname);
+	
+	// 생성/입장 직전에 가져가 URL파라미터에 적용.
+	const FString& GetPendingNickname() const;
+
+private:
+	FString PendingNickname;
+	
+#pragma endregion 
 };
