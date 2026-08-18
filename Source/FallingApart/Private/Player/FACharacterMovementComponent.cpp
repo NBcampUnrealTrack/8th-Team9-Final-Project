@@ -66,7 +66,8 @@ bool UFACharacterMovementComponent::IsMovementFrozen() const
 	// State.Stunned 는 경련(Z07/H06)·착지 경직·QTE 패배 경직이 공유하는 창구
 	// 새로운 경직 룰은 태그를 새로 만들지 말고 이 태그를 1.5초짜리 GE 로 붙일 것.
 	return ASC->HasMatchingGameplayTag(Tags.State_Stunned)
-		|| ASC->HasMatchingGameplayTag(Tags.State_Contesting);
+		|| ASC->HasMatchingGameplayTag(Tags.State_Contesting)
+		|| (ASC->HasMatchingGameplayTag(Tags.Rule_Bite_RootedGrab) && ASC->HasMatchingGameplayTag(Tags.State_Grabbing));
 }
 
 float UFACharacterMovementComponent::GetMaxSpeed() const
@@ -137,7 +138,7 @@ void UFACharacterMovementComponent::CalcVelocity(float DeltaTime, float Friction
 				&& Acceleration.IsNearlyZero()
 				&& LowFrictionStopDuration > UE_KINDA_SMALL_NUMBER)
 			{
-				
+
 				// 기본 CMC 제동 마찰까지 적용하면 70% 감소 상태에서도 너무 빨리 멈춘다.
 				// 입력을 놓은 동안에는 마찰 감속을 제거하고 선형 감속만 사용해,
 				// 최대 이동속도에서 약 LowFrictionStopDuration초 동안 미끄러지게 한다.
@@ -161,9 +162,9 @@ FVector UFACharacterMovementComponent::GetAirControl(float DeltaTime, float Tick
 	{
 		// Z09/H08 공중 마비는 이 값을 0 으로 만든다.
 		TickAirControl = FMath::Clamp(Attributes->GetAirControl(), 0.0f, 1.0f);
-		
+
 		const float AttributeAirControl = Attributes->GetAirControl();
-		
+
 	}
 	return Super::GetAirControl(DeltaTime, TickAirControl, FallAcceleration);
 }
@@ -176,7 +177,7 @@ FVector UFACharacterMovementComponent::ConstrainInputAcceleration(const FVector&
 	{
 		return FVector::ZeroVector;
 	}
-	
+
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 

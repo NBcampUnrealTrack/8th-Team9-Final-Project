@@ -179,8 +179,12 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 
 			if (ZombieStunEffectClass)
 			{
-				FGameplayEffectSpecHandle StunSpec = MakeOutgoingGameplayEffectSpec(ZombieStunEffectClass);
-				ZombieASC->ApplyGameplayEffectSpecToSelf(*StunSpec.Data.Get());
+				FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(ZombieStunEffectClass);
+
+				// [Z30 구조 트라우마] 룰 태그가 있으면 8초, 없으면 기본 기절 시간 적용
+				float StunDuration = ZombieASC->HasMatchingGameplayTag(Tags.Rule_Bite_RescueStun) ? 8.f : 3.f;
+				SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, StunDuration);
+				ZombieASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 			}
 		}
 
