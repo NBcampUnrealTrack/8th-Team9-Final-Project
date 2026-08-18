@@ -44,30 +44,43 @@ public:
 
 	/** Z07 경련 / H06 발작 — 6초마다 1.5초 정지. Periodic GE 가 State.Stunned 를 1.5초 부여. */
 	FGameplayTag Rule_Move_Seizure;
-	
+
 	/* Z09 공중 마비 /H08 공중 마비 -공중 제어 0  */
 	FGameplayTag Rule_Move_NoAriControl;
-	
+
 	/* Z11 착지 경직 /H09 착지 경직 - 착지 시 1초 정지  */
 	FGameplayTag Rule_Move_LandStun;
-	
-	// ~ ==========================Input Tag ===================
+
+	// ~ ========================== Input Tag ===================
 
 	/* Z13 뒤엉킨 신경 / H10 뒤엉킨 신경 -  5초 마다 좌우 입력 반전 */
 	FGameplayTag Rule_Input_FlipLR;
-	
-	
-	
-	
-	// ~ ==========================Vision Tag ===================
-	
+
+	// ~ ========================== Vision Tag ===================
+
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
-	
+
 	/* Z17 흑백 / H18 흑백 -  시야거리 8m */
 	FGameplayTag Rule_Vision_Desautrate;
-	
-	
+
+	//~ ========================= Bite Tag =========================
+
+	/** Z26 무딘 이빨 — 감염 시간 3초 → 5초 */
+	FGameplayTag Rule_Bite_TimeUp;
+
+	/** Z27 짧은 팔 — 포획 사거리 2.0m → 1.2m */
+	FGameplayTag Rule_Bite_RangedDown;
+
+	/** Z28 빗나감 — 포획 실패 시 5초 경직 */
+	FGameplayTag Rule_Bite_FailStun;
+
+	/** Z29 고정 턱 — 포획 중 완전 이동 불가 */
+	FGameplayTag Rule_Bite_RootedGrab;
+
+	/** Z30 구조 트라우마 — QTE 패배 시 8초 기절 */
+	FGameplayTag Rule_Bite_RescueStun;
+
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
 
@@ -87,10 +100,9 @@ public:
 	FGameplayTag State_Grabbing;
 	FGameplayTag State_Grabbed;
 	FGameplayTag State_Contesting;
-	
+
 	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
 	FGameplayTag State_Input_Flipped;
-	
 
 	//~ ========================= 어빌리티 태그 =========================
 
@@ -113,11 +125,40 @@ public:
 	 */
 	FGameplayTag Data_Rule_Magnitude;
 
+#pragma region Zombie Rule
+
+	// Move
+	/* Z03  썩은 발목 . 이동속도 -30%.  */
+	FGameplayTag Rule_Move_SpeedDown_L;
+
+	/* Z06  역행 . 후진만 가능  */ //전진 강박 존제시 적용 불가능하게 나올것
+	FGameplayTag Rule_Move_BackwardOnly;
+
+	/* Z12  낮은 도약 . 점프높이 -60%  */
+	FGameplayTag Rule_Move_LowJump;
+
+#pragma endregion
+
+
+#pragma region Human Rule
+
+	// Move
+	/* H03 탈진 . 전력질주 봉인*/
+	FGameplayTag Rule_Move_NoSprint;
+
+	/* H07 포복 . 웅크린 상태로만 이동*/
+	FGameplayTag Rule_Move_CrouchOnly;
+
+	FGameplayTag Rule_Move_Burden;
+
+	FGameplayTag Rule_Move_SlowTurn;
+
+#pragma endregion
 private:
 	static FAGameplayTags Instance;
 
-	// 태그 추가 
-	void AddAllTags(); 
+	// 태그 추가
+	void AddAllTags();
 
 	/** UGameplayTagsManager 등록 + 멤버 대입을 한 줄로. */
 	static FGameplayTag AddTag(const TCHAR* TagName, const TCHAR* DevComment);

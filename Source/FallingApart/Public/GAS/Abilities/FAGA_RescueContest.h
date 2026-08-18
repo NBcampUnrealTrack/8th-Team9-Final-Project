@@ -33,7 +33,7 @@ protected:
 
 	/** 줄다리기 제한 시간(초). 이 시간이 지나면 게이지가 50 을 넘었는지로 승패를 가른다. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Contest")
-	float ContestDuration = 3.0f;
+	float ContestDuration = 3.f;
 
 private:
 	//~ GAS Tasks 콜백

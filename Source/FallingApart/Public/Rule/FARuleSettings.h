@@ -4,10 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "Rule/FARuleTypes.h"
 #include "FARuleSettings.generated.h"
 
 class UDataTable;
-struct FFARuleCardRow;
 
 /**
  * 룰 카드 DataTable 의 위치를 프로젝트 설정에 한 번만 박아두는 곳.
@@ -68,4 +68,25 @@ public:
 
 	/** 연속 드래프트 1장당 간격(초). */
 	static float GetChainDraftInterval();
+
+	//~ ---------------- 표시 정보 (UI 공용) ----------------
+
+	/**
+	 * RuleId 로 UI 표시 사본을 만든다. DT 에 없으면 이름 자리에 RuleId 를 넣고 bFoundInTable = false.
+	 */
+	static FFARuleDisplayInfo MakeRuleDisplayInfo(FName RuleId);
+
+	/**
+	 * 계열 판정. 거래(T)·도박(G) 은 태그 계열보다 우선한다
+	 */
+	static EFARuleCategory GetRuleCategory(const FGameplayTag& RuleTag, EFARuleType Type);
+
+	/** 계열 색. */
+	static FLinearColor GetRuleCategoryColor(EFARuleCategory Category);
+
+	/**
+	 * 도박 카드용 무지개 색. 시간(초)을 넣으면 색상환을 한 바퀴 돈다.
+	 * @param TimeSeconds 월드 시간 등 단조 증가하는 값
+	 */
+	static FLinearColor GetGambleColor(float TimeSeconds);
 };

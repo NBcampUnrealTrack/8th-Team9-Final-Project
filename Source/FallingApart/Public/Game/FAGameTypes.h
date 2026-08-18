@@ -44,26 +44,33 @@ enum class EFARoundResult : uint8
 
 /**
  * 포획(감염) 진행 상태. 서버가 채우고 전 클라이언트에 복제된다.
+ *
+ * 감염은 고정 길이 타이머가 아니다 — 잡힌 사람이 WASD 로 저항하면 차는 속도가 느려진다
+ * (저항 0 이면 5초, 최대로 버티면 15초).
  */
 USTRUCT(BlueprintType)
 struct FFACaptureState
 {
 	GENERATED_BODY()
 
-	/** 감염이 완료되는 서버 월드 시각(초). TotalDuration 이 0 이면 의미 없음. */
+	/** 서버가 마지막으로 보낸 감염 진행도 0~1. 1 에 닿으면 감염이 확정된다. */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float EndServerTime = 0.0f;
-
-	/** 감염까지 걸리는 총 시간(초). 0 이면 포획 중이 아니다 — 이 값 하나가 활성 여부를 겸한다. */
-	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float TotalDuration = 0.0f;
+	float InfectProgress = 0.0f;
 
 	/**
-	 * 구출 QTE 로 감염 타이머가 멈춰 있는 동안의 남은 시간(초).
-	 * 0 보다 크면 게이지는 이 값에서 멈춘다 — 서버 시각으로 계산하면 QTE 중에도 혼자 채워진다.
+	 * 그 시점의 초당 진행 속도. 저항이 셀수록 작아진다.
+	 * 0 은 '멈춤' 이다 — 구출 QTE 중에는 이 값이 0 이라 게이지가 그 자리에 선다.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float PausedRemaining = 0.0f;
+	float InfectRatePerSecond = 0.0f;
+
+	/** InfectProgress 를 찍은 서버 월드 시각(초). 클라이언트는 이 시각부터 속도로 외삽한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float ProgressServerTime = 0.0f;
+
+	/** 포획 중인가. 진행도는 시작 직후 0 이라 활성 여부를 겸할 수 없어 따로 둔다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	bool bActive = false;
 
 	/** 이 캐릭터가 잡힌 쪽인가. false 면 잡고 있는 좀비. */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
@@ -73,7 +80,7 @@ struct FFACaptureState
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
 	float ResistRatio = 0.0f;
 
-	bool IsActive() const { return TotalDuration > 0.0f; }
+	bool IsActive() const { return bActive; }
 };
 
 /** 구출 QTE(줄다리기)에서 이 캐릭터가 맡은 역할. */

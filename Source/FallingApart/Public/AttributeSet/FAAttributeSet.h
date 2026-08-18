@@ -68,8 +68,13 @@ public:
 	//Move.WaterFear
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_WaterMoveSpeedMultiplier,Category = "Attribute|Movement")
 	FGameplayAttributeData WaterMoveSpeedMultiplier;
-
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,WaterMoveSpeedMultiplier)
+	
+	// 점프 기본값 420.0
+	// GameplayEffect에서 배율 또는 고정값으로 변경
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_JumpZVelocity,Category = "Attribute|Movement")
+	FGameplayAttributeData JumpZVelocity;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,JumpZVelocity)
 
 #pragma endregion
 
@@ -114,7 +119,8 @@ public:
 	FGameplayAttributeData GrabRange;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GrabRange)
 
-	// 감염 소요 시간 기본값 10.0초 클램프 0.5~15.0
+	// 감염 소요 시간(저항 0 기준) 기본값 5.0초 클램프 0.5~15.0
+	// 실제 감염 시간은 인질의 저항 강도에 따라 이 값의 1~3배 사이에서 움직인다.
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)
@@ -174,5 +180,8 @@ protected:
 
 	UFUNCTION()
 	void OnRep_ContestGauge(const FGameplayAttributeData& OldValue);
+	
+	UFUNCTION()
+	void OnRep_JumpZVelocity(const FGameplayAttributeData& OldValue);
 #pragma endregion
 };

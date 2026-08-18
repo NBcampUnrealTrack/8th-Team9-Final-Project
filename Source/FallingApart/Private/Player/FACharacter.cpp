@@ -18,7 +18,9 @@
 #include "Components/InputComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Rule/FARuleSettings.h"
 #include "UI/FACaptureMarkerWidget.h"
+#include "UI/FARuleMarkerWidget.h"
 #include "Voice/FAVoiceComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
@@ -45,6 +47,9 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UFACharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
+
+	// WBP_FARuleMarker 가 만들어지기 전에도 머리 위 룰 표시를 확인할 수 있어야 한다.
+	RuleMarkerWidgetClass = UFARuleMarkerWidget::StaticClass();
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -122,48 +127,43 @@ float AFACharacter::GetCaptureInfectionRatio() const
 		return 0.0f;
 	}
 
-	// QTE 로 멈춰 있는 동안은 서버 시각이 계속 흐르므로 저장해 둔 남은 시간을 그대로 쓴다.
-	const float Remaining = CaptureState.PausedRemaining > 0.0f
-		? CaptureState.PausedRemaining
-		: CaptureState.EndServerTime - GetServerWorldTime();
+	// 서버는 스냅샷(진행도 + 그때의 속도)만 띄엄띄엄 보낸다 — 사이는 속도로 외삽해야 게이지가 끊기지 않는다.
+	// 구출 QTE 로 멈춘 동안은 속도가 0 이라 저절로 제자리에 선다.
+	const float Elapsed = FMath::Max(0.0f, GetServerWorldTime() - CaptureState.ProgressServerTime);
 
-	return FMath::Clamp(1.0f - Remaining / CaptureState.TotalDuration, 0.0f, 1.0f);
+	return FMath::Clamp(CaptureState.InfectProgress + Elapsed * CaptureState.InfectRatePerSecond, 0.0f, 1.0f);
 }
 
-void AFACharacter::BeginCaptureState(bool bInIsVictim, float Duration)
+void AFACharacter::BeginCaptureState(bool bInIsVictim)
 {
-	if (!HasAuthority() || Duration <= 0.0f)
+	if (!HasAuthority())
 	{
 		return;
 	}
 
+	CaptureState.bActive = true;
 	CaptureState.bIsVictim = bInIsVictim;
-	CaptureState.TotalDuration = Duration;
-	CaptureState.EndServerTime = GetServerWorldTime() + Duration;
-	CaptureState.PausedRemaining = 0.0f;
+	CaptureState.InfectProgress = 0.0f;
+	CaptureState.InfectRatePerSecond = 0.0f;
+	CaptureState.ProgressServerTime = GetServerWorldTime();
 	CaptureState.ResistRatio = 0.0f;
+
+	// 지난 포획의 저항이 남아 있으면 새로 잡힌 순간부터 감염이 느려진다.
+	ResistLevel = 0.0f;
+	LastResistInputTime = -1.0f;
+	LastResistDirection = 0;
 }
 
-void AFACharacter::PauseCaptureState(float RemainingSeconds)
-{
-	// 남은 시간이 0 이하로 들어오면 '멈춤'과 '진행 중'을 구분할 수 없다 — 그냥 무시한다.
-	if (!HasAuthority() || !CaptureState.IsActive() || RemainingSeconds <= 0.0f)
-	{
-		return;
-	}
-
-	CaptureState.PausedRemaining = RemainingSeconds;
-}
-
-void AFACharacter::ResumeCaptureState(float RemainingSeconds)
+void AFACharacter::UpdateCaptureProgress(float Progress, float RatePerSecond)
 {
 	if (!HasAuthority() || !CaptureState.IsActive())
 	{
 		return;
 	}
 
-	CaptureState.PausedRemaining = 0.0f;
-	CaptureState.EndServerTime = GetServerWorldTime() + FMath::Max(0.0f, RemainingSeconds);
+	CaptureState.InfectProgress = FMath::Clamp(Progress, 0.0f, 1.0f);
+	CaptureState.InfectRatePerSecond = FMath::Max(0.0f, RatePerSecond);
+	CaptureState.ProgressServerTime = GetServerWorldTime();
 }
 
 void AFACharacter::SetCaptureResistRatio(float Ratio)
@@ -184,6 +184,82 @@ void AFACharacter::EndCaptureState()
 	}
 
 	CaptureState = FFACaptureState();
+
+	ResistLevel = 0.0f;
+	LastResistInputTime = -1.0f;
+	LastResistDirection = 0;
+}
+
+//~ ---------------- 감염 저항 (WASD 연타) ----------------
+
+float AFACharacter::UpdateResistLevel(float DeltaSeconds)
+{
+	if (!HasAuthority())
+	{
+		return 0.0f;
+	}
+
+	ResistLevel = FMath::Clamp(ResistLevel - ResistDecayPerSecond * DeltaSeconds, 0.0f, 1.0f);
+
+	return ResistLevel;
+}
+
+int32 AFACharacter::QuantizeResistDirection(const FVector2D& MovementVector)
+{
+	// 데드존을 넉넉히 잡는다 — 살짝 기울어진 스틱이 두 방향 사이에서 떨면 손을 대지 않아도 저항이 오른다.
+	if (MovementVector.SizeSquared() < 0.25f)
+	{
+		return 0;
+	}
+
+	if (FMath::Abs(MovementVector.X) > FMath::Abs(MovementVector.Y))
+	{
+		return MovementVector.X > 0.0f ? 1 : 2;
+	}
+
+	return MovementVector.Y > 0.0f ? 3 : 4;
+}
+
+void AFACharacter::HandleResistInput(const FVector2D& MovementVector)
+{
+	const int32 Direction = QuantizeResistDirection(MovementVector);
+	if (Direction == 0 || Direction == LastResistDirection)
+	{
+		return;
+	}
+
+	LastResistDirection = Direction;
+
+	// 서버에서 부르면 RPC 가 그 자리에서 실행되므로 호스트도 같은 경로를 탄다.
+	Server_ReportResistInput();
+}
+
+void AFACharacter::Input_MoveReleased()
+{
+	LastResistDirection = 0;
+}
+
+void AFACharacter::Server_ReportResistInput_Implementation()
+{
+	RegisterResistInput();
+}
+
+void AFACharacter::RegisterResistInput()
+{
+	// 잡힌 사람만 저항한다. 잡고 있는 좀비 쪽 입력이 섞이면 자기 감염을 자기가 늦추는 꼴이 된다.
+	if (!HasAuthority() || !CaptureState.IsActive() || !CaptureState.bIsVictim)
+	{
+		return;
+	}
+
+	const float Now = GetServerWorldTime();
+	if (LastResistInputTime >= 0.0f && Now - LastResistInputTime < ResistInputMinInterval)
+	{
+		return;
+	}
+
+	LastResistInputTime = Now;
+	ResistLevel = FMath::Clamp(ResistLevel + ResistGainPerInput, 0.0f, 1.0f);
 }
 
 //~ ---------------- 구출 QTE ----------------
@@ -329,6 +405,167 @@ void AFACharacter::UpdateCaptureMarker()
 	}
 }
 
+//~ ---------------- 머리 위 보유 룰 아이콘 ----------------
+
+void AFACharacter::SetupRuleMarker()
+{
+	if (RuleMarkerWidgetClass == nullptr || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	RuleMarker = NewObject<UWidgetComponent>(this);
+	RuleMarker->SetWidgetSpace(EWidgetSpace::Screen);
+	RuleMarker->SetDrawAtDesiredSize(false);
+	RuleMarker->SetDrawSize(RuleMarkerDrawSize);
+	RuleMarker->SetWidgetClass(RuleMarkerWidgetClass);
+	RuleMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RuleMarker->RegisterComponent();
+	RuleMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	RuleMarker->SetRelativeLocation(RuleMarkerOffset);
+	RuleMarker->SetVisibility(false);
+}
+
+bool AFACharacter::ShouldShowRuleMarker() const
+{
+	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
+	if (IsLocallyControlled())
+	{
+		return false;
+	}
+
+	if (!AbilitySystemComponent || AbilitySystemComponent->GetActiveRuleCount() <= 0)
+	{
+		return false;
+	}
+
+	if (bHideRuleMarkerWhenOccluded && bRuleMarkerOccluded)
+	{
+		return false;
+	}
+
+	if (RuleMarkerCullDistance > 0.0f)
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+		if (!LocalController)
+		{
+			return false;
+		}
+
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		if (FVector::DistSquared(ViewLocation, GetActorLocation()) > FMath::Square(RuleMarkerCullDistance))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void AFACharacter::UpdateRuleMarkerOcclusion()
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+	if (!LocalController)
+	{
+		bRuleMarkerOccluded = true;
+		return;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	// 위젯이 뜨는 지점(머리 위)을 겨눈다. 발치를 겨누면 난간 뒤에 서 있을 때 아이콘이 깜빡인다.
+	const FVector MarkerLocation = GetActorLocation() + RuleMarkerOffset;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FARuleMarkerOcclusion), /*bTraceComplex=*/false);
+	Params.AddIgnoredActor(this);
+	if (const APawn* LocalPawn = LocalController->GetPawn())
+	{
+		Params.AddIgnoredActor(LocalPawn);
+	}
+
+	FHitResult Hit;
+	bRuleMarkerOccluded = World->LineTraceSingleByChannel(Hit, ViewLocation, MarkerLocation, ECC_Visibility, Params);
+}
+
+void AFACharacter::UpdateRuleMarker(float DeltaTime)
+{
+	if (!RuleMarker)
+	{
+		return;
+	}
+
+	if (bHideRuleMarkerWhenOccluded)
+	{
+		RuleMarkerOcclusionTimer += DeltaTime;
+		if (RuleMarkerOcclusionTimer >= RuleMarkerOcclusionInterval)
+		{
+			RuleMarkerOcclusionTimer = 0.0f;
+			UpdateRuleMarkerOcclusion();
+		}
+	}
+
+	const bool bShouldShow = ShouldShowRuleMarker();
+
+	if (bShouldShow != RuleMarker->IsVisible())
+	{
+		RuleMarker->SetVisibility(bShouldShow);
+	}
+
+	if (!bShouldShow)
+	{
+		return;
+	}
+
+	// 보유 목록이 바뀔 때만 DT 를 다시 뒤진다. 매 프레임 8명분을 조회할 이유가 없다.
+	const TArray<FName>& ActiveRuleIds = AbilitySystemComponent->GetActiveRuleIds();
+	if (ActiveRuleIds != CachedRuleIds)
+	{
+		CachedRuleIds = ActiveRuleIds;
+
+		CachedRuleDisplayInfos.Reset(CachedRuleIds.Num());
+		for (const FName& RuleId : CachedRuleIds)
+		{
+			CachedRuleDisplayInfos.Add(UFARuleSettings::MakeRuleDisplayInfo(RuleId));
+		}
+	}
+
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+
+	float Scale = 1.0f;
+	bool bAbbreviated = false;
+
+	if (LocalController)
+	{
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+		const float Distance = FVector::Dist(ViewLocation, GetActorLocation());
+
+		bAbbreviated = RuleMarkerAbbreviateDistance > 0.0f && Distance > RuleMarkerAbbreviateDistance;
+
+		// 거리 감쇠 — 가까운 상대가 크게 보여야 '누구의 룰인지'가 헷갈리지 않는다.
+		const float FadeEnd = FMath::Max(RuleMarkerCullDistance, RuleMarkerFullScaleDistance + 1.0f);
+		const float Alpha = FMath::Clamp(
+			(Distance - RuleMarkerFullScaleDistance) / (FadeEnd - RuleMarkerFullScaleDistance), 0.0f, 1.0f);
+
+		Scale = FMath::Lerp(1.0f, RuleMarkerMinScale, Alpha);
+	}
+
+	if (UFARuleMarkerWidget* MarkerWidget = Cast<UFARuleMarkerWidget>(RuleMarker->GetUserWidgetObject()))
+	{
+		MarkerWidget->UpdateMarker(CachedRuleDisplayInfos, Scale, bAbbreviated);
+	}
+}
+
 void AFACharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -340,6 +577,7 @@ void AFACharacter::BeginPlay()
 	ApplyTeamMaterial(FAPlayerState ? FAPlayerState->GetTeam() : EFATeam::None);
 
 	SetupCaptureMarker();
+	SetupRuleMarker();
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -613,6 +851,7 @@ void AFACharacter::Tick(float DeltaTime)
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
+	UpdateRuleMarker(DeltaTime);
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -622,6 +861,7 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AFACharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &AFACharacter::Input_MoveReleased);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AFACharacter::Look);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFACharacter::Input_Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFACharacter::Input_StopJumping);
@@ -673,6 +913,13 @@ void AFACharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdj
 void AFACharacter::Move(const FInputActionValue& Value)
 {
 	FVector2D MovementVector = Value.Get<FVector2D>();
+
+	// 잡혀 있는 동안의 WASD 는 이동이 아니라 저항이다 — 감염을 취소하지는 못하고 늦출 뿐이다.
+	// 이동 입력 자체는 그대로 흘려보낸다. 어차피 State.Grabbed GE 가 속도를 눌러 놓는다.
+	if (CaptureState.IsActive() && CaptureState.bIsVictim)
+	{
+		HandleResistInput(MovementVector);
+	}
 
 	if (Controller != nullptr)
 	{
@@ -751,8 +998,16 @@ void AFACharacter::ToggleCrouch()
 	if (GetCharacterMovement()->IsFalling())
 		return;
 
+	const bool bCrouchOnly = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Move_CrouchOnly);
+
+
 	if (bIsCrouched)
 	{
+		if (bCrouchOnly)
+		{
+			return;
+		}
 		UnCrouch();
 	}
 	else
