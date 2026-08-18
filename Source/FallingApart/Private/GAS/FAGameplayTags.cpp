@@ -31,11 +31,17 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Input
 	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
-	
+
 	//~ 룰 - Vision
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
-	
 	Rule_Vision_Desautrate = AddTag(TEXT("Rule.Vision.Desautrate"), TEXT("Z17/H18 흑백.  시야거리 8m "));
+
+	//~ 룰 - Bite
+	Rule_Bite_TimeUp	 = AddTag(TEXT("Rule.Bite.TimeUp"), TEXT("Z26 무딘 이빨 — 감염 시간 3초 → 5초"));
+	Rule_Bite_RangedDown = AddTag(TEXT("Rule.Bite.RangedDown"), TEXT("Z27 짧은 팔 — 포획 사거리 2.0m → 1.2m"));
+	Rule_Bite_FailStun	 = AddTag(TEXT("Rule.Bite.FailStun"), TEXT("Z28 빗나감 — 포획 실패 시 5초 경직"));
+	Rule_Bite_RootedGrab = AddTag(TEXT("Rule.Bite.RootedGrab"), TEXT("Z29 고정 턱 — 포획 중 완전 이동 불가"));
+	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
 
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
@@ -60,22 +66,19 @@ void FAGameplayTags::AddAllTags()
 
 	//~ SetByCaller
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
-	
+
 #pragma region Zombie Rule
-	
 	Rule_Move_SpeedDown_L  = AddTag(TEXT("Rule.Move.SpeedDown.L"),  TEXT("Z03 이동속도 -30%."));
-	
 	Rule_Move_BackwardOnly  = AddTag(TEXT("Rule.Move.BackwardOnly"),  TEXT("Z06 후진만 가능"));
 	Rule_Move_LowJump  = AddTag(TEXT("Rule.Move.LowJump"),  TEXT("Z12 점프 높이 -60%"));
 
 #pragma endregion
-	
+
 #pragma region Human Rule
-	
 	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03 전력질주 봉인"));
 	Rule_Move_CrouchOnly = AddTag(TEXT("Rule.Move.CrouchOnly"), TEXT("H07 웅크린 상태로만 이동"));
 	Rule_Move_Burden = AddTag(TEXT("Rule.Move.Burden"), TEXT("H11 이동속도-25%,점프높이 -40%"));
 	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));
-#pragma endregion
 
+#pragma endregion
 }

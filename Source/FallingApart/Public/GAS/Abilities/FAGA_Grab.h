@@ -57,6 +57,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> GrabberGrabbingEffectClass;
 
+	/** 포획 실패 시 적용할 Effect (경직) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
+	TSubclassOf<UGameplayEffect> FailStunEffectClass;
+
 private:
 	AFACharacter* FindTargetInFront(AFACharacter* Avatar, float Range, float Radius, struct FGameplayTag RequiredTag);
 	void OnInfectTimerExpired();
