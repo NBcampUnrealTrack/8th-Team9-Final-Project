@@ -15,6 +15,7 @@ UFAAttributeSet::UFAAttributeSet()
 	InitAirControl(0.35f);
 	InitTurnRateScale(1.0f);
 	InitWaterMoveSpeedMultiplier(1.0f);
+	InitJumpZVelocity(420.0f);
 
 	// 스태미나
 	InitMaxStamina(5.0f);
@@ -95,6 +96,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
+	else if (Attribute == GetJumpZVelocityAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue,0.0f,2000.0f);
+	}
 }
 
 void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
@@ -162,6 +167,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		SetRescueDuration(FMath::Clamp(GetRescueDuration(), 0.0f, 5.0f));
 	}
+	else if (ChangedAttribute == GetJumpZVelocityAttribute())
+	{
+		SetJumpZVelocity(FMath::Clamp(GetJumpZVelocity(), 0.0f, 2000.0f));
+	}
 }
 
 void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -181,6 +190,7 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, InfectDuration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RescueDuration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, ContestGauge, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, JumpZVelocity, COND_None, REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -250,4 +260,9 @@ void UFAAttributeSet::OnRep_RescueDuration(const FGameplayAttributeData& OldValu
 void UFAAttributeSet::OnRep_ContestGauge(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, ContestGauge, OldValue);
+}
+
+void UFAAttributeSet::OnRep_JumpZVelocity(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, JumpZVelocity, OldValue);
 }

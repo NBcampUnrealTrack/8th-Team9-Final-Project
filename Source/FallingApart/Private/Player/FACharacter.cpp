@@ -919,8 +919,16 @@ void AFACharacter::ToggleCrouch()
 	if (GetCharacterMovement()->IsFalling())
 		return;
 
+	const bool bCrouchOnly = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Move_CrouchOnly);
+
+
 	if (bIsCrouched)
 	{
+		if (bCrouchOnly)
+		{
+			return;
+		}
 		UnCrouch();
 	}
 	else

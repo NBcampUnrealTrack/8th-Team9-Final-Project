@@ -28,7 +28,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Move_Seizure      = AddTag(TEXT("Rule.Move.Seizure"),      TEXT("Z07/H06 경련·발작. 6초마다 1.5초 State.Stunned."));
 	Rule_Move_NoAriControl = AddTag(TEXT("Rule.Move.NoAriControl"),  TEXT("Z09/H08 공중 마비. 공중 제어 0 "));
 	Rule_Move_LandStun	   = AddTag(TEXT("Rule.Move.LandStun"),      TEXT("Z11/H09 착지 경직 . 착지 시 1초 정지 "));
-	
+
 	//~ 룰 - Input
 	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
 	
@@ -60,4 +60,22 @@ void FAGameplayTags::AddAllTags()
 
 	//~ SetByCaller
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
+	
+#pragma region Zombie Rule
+	
+	Rule_Move_SpeedDown_L  = AddTag(TEXT("Rule.Move.SpeedDown.L"),  TEXT("Z03 이동속도 -30%."));
+	
+	Rule_Move_BackwardOnly  = AddTag(TEXT("Rule.Move.BackwardOnly"),  TEXT("Z06 후진만 가능"));
+	Rule_Move_LowJump  = AddTag(TEXT("Rule.Move.LowJump"),  TEXT("Z12 점프 높이 -60%"));
+
+#pragma endregion
+	
+#pragma region Human Rule
+	
+	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03 전력질주 봉인"));
+	Rule_Move_CrouchOnly = AddTag(TEXT("Rule.Move.CrouchOnly"), TEXT("H07 웅크린 상태로만 이동"));
+	Rule_Move_Burden = AddTag(TEXT("Rule.Move.Burden"), TEXT("H11 이동속도-25%,점프높이 -40%"));
+	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));
+#pragma endregion
+
 }
