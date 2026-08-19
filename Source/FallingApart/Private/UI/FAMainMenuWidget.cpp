@@ -9,6 +9,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "SettingsKitMenuWidget.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
 
@@ -211,6 +212,7 @@ void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchRes
 
 	SessionJoinWidget->SetJoinInProgress(true);
 	OnlineSessionSubsystem->SetPendingNickname(Nickname);
+	OnlineSessionSubsystem->SetPendingPassword(Password);
 	OnlineSessionSubsystem->JoinSession(SessionResult, Password);
 }
 
@@ -238,6 +240,7 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 					TEXT("%s?listen?Nickname=%s"),
 					*LevelPath,
 					*PendingNickname);
+			
 			
 			World->ServerTravel(TravelURL);
 		}
@@ -310,16 +313,32 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 	// 만약 한글이 깨진다면, 아래 함수로 인코딩 및 서버에서 디코딩 필요. HTTP모듈 필요함.
 	//FString EncodedNickname = FGenericPlatformHttp::UrlEncode(PendingNickname);
 	
+	FString PendingPassword = OnlineSessionSubsystem->GetPendingPassword();
+	//패스워드는 특수문자(특히 ?)가 들어갈수 있으므로 반드시 인코딩
+	FString EncodedPassword = FGenericPlatformHttp::UrlEncode(PendingPassword);
+	
 	//URL 작성
 	const FString TravelURL = FString::Printf(
-		TEXT("%s?Nickname=%s"),
+		TEXT("%s?Nickname=%s?Password=%s"),
 		*ConnectString,
-		*PendingNickname);
+		*PendingNickname,
+		*EncodedPassword);
 	
 	if (APlayerController* PlayerController = GetOwningPlayer())
 	{
+		GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::OnNetworkFailure);
 		PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
 	}
+}
+
+void UFAMainMenuWidget::OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
+{
+}
+
+void UFAMainMenuWidget::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType,
+                                         const FString& ErrorString)
+{
+	UE_LOG(LogFAOSS, Error, TEXT("Network failure: %s"), *ErrorString);
 }
 
 

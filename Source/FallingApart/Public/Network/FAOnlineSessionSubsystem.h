@@ -123,7 +123,6 @@ public:
 	 *  클라이언트 : 접속중인 세션에서 이탈*/
 	void DestroySession();
 	
-	/// TODO : 플랫폼에 "게임중" 상태를 알리는 기능, 이후 플레이어의 참가를 막고 경기 상태를 변경하는데 이용함.
 	void StartSession();
 	
 	/// TODO : 플랫폼의 친구에게 참가
@@ -152,6 +151,8 @@ public:
 	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
 	FOnSessionPreparedForMatch OnSessionPreparedForMatch;
 	FOnSessionReopenedForLobby OnSessionReopenedForLobby;
+	
+	FUniqueNetIdRepl GetLocalUniqueNetId();
 
 protected:
 	// 온라인 세션 인터페이스에 등록될 내부 콜백 함수들.
@@ -231,4 +232,20 @@ private:
 	FString PendingNickname;
 	
 #pragma endregion 
+	
+#pragma region Password
+	
+public:
+	bool ValidateHostPassword(const FString& Password);
+	void SetHostPassword(const FString& Password);
+	
+	void ClearHostPassword();
+	void SetPendingPassword(const FString& Password);
+	
+	FString& GetPendingPassword();
+private:
+	FString HostPassword; // 호스트가 검사용으로 가지고있을 패스워드
+	FString PendingPassword; // 클라이언트가 접속시 전달할 패스워드
+	
+#pragma endregion
 };

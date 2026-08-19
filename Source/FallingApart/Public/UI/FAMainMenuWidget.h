@@ -69,8 +69,9 @@ protected:
 	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 	
 	void OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString);
-	
-	
+	void OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
+	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> WidgetSwitcher_Page;
 	

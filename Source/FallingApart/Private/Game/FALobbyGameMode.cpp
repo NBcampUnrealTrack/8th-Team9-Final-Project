@@ -4,6 +4,7 @@
 #include "Game/FALobbyGameMode.h"
 
 #include "Game/FALobbyGameState.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 #include "Kismet/GameplayStatics.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
@@ -28,15 +29,24 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	if (!ErrorMessage.IsEmpty())
 		return;
+	if (UniqueId == OnlineSessionSubsystem->GetLocalUniqueNetId())
+		return;
 	
-	
+	//TODO : 오류 메세지 코드로 분류
 	
 	if (bGameStartCommitted)
 	{
 		ErrorMessage = TEXT("게임이 이미 시작하였습니다.");
 		return;
 	}
-	// Options나 입장 Address속성으로 추가작업
+	
+	FString GuestPassword = UGameplayStatics::ParseOption(Options, TEXT("Password"));
+	FString DecodedPassword = FGenericPlatformHttp::UrlDecode(GuestPassword);
+	if (OnlineSessionSubsystem->ValidateHostPassword(DecodedPassword) == false)
+	{
+		ErrorMessage = TEXT("Invalid Password");
+		return;
+	}
 }
 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
@@ -75,8 +85,11 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 	EvaluateLobby();
 }
 
-FString AFALobbyGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId,
-	const FString& Options, const FString& Portal)
+FString AFALobbyGameMode::InitNewPlayer(
+	APlayerController* NewPlayerController,
+	const FUniqueNetIdRepl& UniqueId,
+	const FString& Options, 
+	const FString& Portal)
 {
 	FString ErrorMessage = Super::InitNewPlayer(
 	   NewPlayerController,

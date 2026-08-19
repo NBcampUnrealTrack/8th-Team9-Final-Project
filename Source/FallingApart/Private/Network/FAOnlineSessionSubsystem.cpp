@@ -12,10 +12,11 @@ DEFINE_LOG_CATEGORY(LogFAOSS);
 
 namespace
 {
-	const FName ProjectSettingKey(TEXT("SPARTA_PROJECT"));
-	const FString ProjectSettingValue(TEXT("FALLING_APART"));
-	const FName ServerNameSettingKey(TEXT("SERVER_NAME"));
-	const FName ServerPasswordSettingKey(TEXT("SERVER_PASSWORD"));
+	const FName ProjectSettingKey(TEXT("SPARTA_PROJECT")); //480 세션구분용
+	const FString ProjectSettingValue(TEXT("FALLING_APART")); //480 세션구분용
+	const FName ServerNameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
+	const FName ServerHasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
+	const FName ServerPasswordSettingKey(TEXT("SERVER_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
 
 	EFASessionRequestResult ConvertJoinResult(EOnJoinSessionCompleteResult::Type Result)
 	{
@@ -170,10 +171,11 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	LastSessionSettings->Set(ServerNameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
 	if (!Password.IsEmpty())
 	{
+		//Password IsEmpty여부로 키 유무 처리.
+		LastSessionSettings->Set(ServerHasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
 		LastSessionSettings->Set(ServerPasswordSettingKey, Password, EOnlineDataAdvertisementType::ViaOnlineService);
+		SetHostPassword(Password);
 	}
-
-	//함수 시그니처에서 직접 참조(&)를 사용하기 떄문에, uniqueId와 세션세팅의 포인터를 넘겨야 함에 주의
 	
 	OperationState = ESessionOperationState::Creating;
 	if(!SessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings))
@@ -262,8 +264,22 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 		return;
 	}
 
-	FString ExpectedPassword;
-	if (SessionResult.Session.SessionSettings.Get(ServerPasswordSettingKey, ExpectedPassword) && ExpectedPassword != Password)
+	// 비밀번호가 있다면, 클라이언트에서는 1차적으로 비밀번호 입력만을 체크.
+	bool bHasPassword;
+	SessionResult.Session.SessionSettings.Get(ServerHasPasswordSettingKey, bHasPassword);
+	if (bHasPassword && Password.IsEmpty())
+	{
+		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidPassword, FString());
+		return;
+	}
+	
+	/**
+	 *TODO : 클라이언트에서 접속전 패스워드 확인 및 세션설정의 평문 암호 제거.
+	 *OnlineBeacon등을 이용한 검증 방식을 검토
+	 */
+	FString ServerPassword;
+	SessionResult.Session.SessionSettings.Get(ServerPasswordSettingKey, ServerPassword);
+	if (Password.IsEmpty() || ServerPassword != Password)
 	{
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidPassword, FString());
 		return;
@@ -375,13 +391,11 @@ void UFAOnlineSessionSubsystem::StartSession()
 
 void UFAOnlineSessionSubsystem::FindFriendSession()
 {
-	//TODO : 스팀 인터페이스 연동
 	//SessionInterface->FindFriendSession()
 }
 
 void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
 {
-	//TODO : 스팀 인터페이스 연동
 	//SessionInterface->SendSessionInviteToFriends()
 }
 
@@ -536,6 +550,15 @@ TSoftObjectPtr<UWorld> UFAOnlineSessionSubsystem::ResolveMap(FName GetSelectedMa
 	return WorldSoftPtr;
 }
 
+FUniqueNetIdRepl UFAOnlineSessionSubsystem::GetLocalUniqueNetId()
+{
+	const ULocalPlayer* LocalPlayer = GetWorld() ? GetWorld()->GetFirstLocalPlayerFromController() : nullptr;
+	if (LocalPlayer)
+		return LocalPlayer->GetPreferredUniqueNetId();
+	else
+		return nullptr;
+}
+
 void UFAOnlineSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
 	// 콜백을 해제하고, 성공을 외부에 알림.
@@ -620,6 +643,8 @@ void UFAOnlineSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool
 	}
 	// TODO : 세션 재생성 기능 추가
 	MultiplayerOnDestroySessionComplete.Broadcast(bWasSuccessful);
+	ClearHostPassword();
+	ClearPendingMatchContext();
 }
 
 void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -729,4 +754,27 @@ const FString& UFAOnlineSessionSubsystem::GetPendingNickname() const
 	return PendingNickname;
 }
 
+bool UFAOnlineSessionSubsystem::ValidateHostPassword(const FString& Password)
+{
+	return HostPassword.IsEmpty() || HostPassword == Password;
+}
 
+void UFAOnlineSessionSubsystem::SetHostPassword(const FString& Password)
+{
+	HostPassword = Password;
+}
+
+void UFAOnlineSessionSubsystem::ClearHostPassword()
+{
+	HostPassword.Empty();
+}
+
+void UFAOnlineSessionSubsystem::SetPendingPassword(const FString& Password)
+{
+	PendingPassword = Password;
+}
+
+FString& UFAOnlineSessionSubsystem::GetPendingPassword()
+{
+	return PendingPassword;
+}
