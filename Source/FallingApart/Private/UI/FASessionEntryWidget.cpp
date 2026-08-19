@@ -6,6 +6,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Components/Button.h"
+#include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 
@@ -75,9 +76,14 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 	}else
 	{
 		UE_LOG(LogFAOSS, Warning, TEXT("FASessionEntryWidget SESSION_STATE를 가져올 수 없음."));
-		
 	}
 
+	
+	// 세션 비밀번호 아이콘
+	bool bHasPassword;
+	Result.Session.SessionSettings.Get(FName(TEXT("HAS_PASSWORD")), bHasPassword);
+	Image_Lock->SetVisibility(
+		bHasPassword == true ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	
 }
 void UFASessionEntryWidget::OnJoinButtonClicked()
