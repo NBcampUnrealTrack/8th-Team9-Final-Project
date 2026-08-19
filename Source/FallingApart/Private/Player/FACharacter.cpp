@@ -942,9 +942,18 @@ void AFACharacter::Look(const FInputActionValue& Value)
 	{
 		// 설정창의 감도 · Y축 반전. 설정이 없으면 각각 1.0 / false 라 예전과 똑같이 움직인다.
 		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
-		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
-		
+		float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
+
+		// 상하 반전 룰 (Vision.FlipY). 사용자 설정 반전과는 곱셈으로 합쳐져서,
+		// 둘 다 켜져 있으면 서로 상쇄돼 원래대로 보인다 — 의도된 동작이다.
+		if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_FlipY))
+		{
+			PitchSign *= -1.f;
+		}
+
+		// 카메라 회전 속도 룰 (H14/Z10 무거운 목 등, SlowTurn 계열).
 		const float TurnRateScale = IsValid(AttributeSet) ? AttributeSet->GetTurnRateScale() : 1.f;
+
 		AddControllerYawInput(LookAxisVector.X * Sensitivity * TurnRateScale);
 		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}

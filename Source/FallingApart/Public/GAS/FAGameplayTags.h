@@ -61,8 +61,20 @@ public:
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
 
-	/* Z17 흑백 / H18 흑백 -  시야거리 8m */
-	FGameplayTag Rule_Vision_Desautrate;
+	/* Z17 흑백 / H18 흑백 -  로컬 PostProcess 채도 0 */
+	FGameplayTag Rule_Vision_Desaturate;
+	
+	/* Z18 안개 / H19 안개 - VisionRange 800uu + PostProcess 안개 */
+	FGameplayTag Rule_Vision_Fog;
+
+	/* Z19 명멸 / H20 암전 - Periodic GE + PostProcess 암전 */
+	FGameplayTag Rule_Vision_Blackout;
+
+	/* Z20 1인칭 강제 / H21 1인칭 강제 - 토글 강제 전환 후 잠금 + FOV -10% */
+	FGameplayTag Rule_Vision_ForceFPS;
+
+	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
+	FGameplayTag Rule_Vision_FlipY;
 
 	//~ ========================= Bite Tag =========================
 
