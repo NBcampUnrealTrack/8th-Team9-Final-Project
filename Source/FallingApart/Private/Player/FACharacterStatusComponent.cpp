@@ -43,9 +43,6 @@ void UFACharacterStatusComponent::BeginPlay()
 		// BeginPlay 전에 룰이 이미 적용된 경우도 처리한다.
 		HandleInputFlipRuleChanged(FlipRuleTag, ASC->GetTagCount(FlipRuleTag));
 
-		// [H07 포복 수정안 — 설명용 주석이므로 현재 실행되지 않음]
-		// CrouchOnly 룰이 붙거나 제거되는 순간을 감지한다.
-		// 실제 적용할 때 아래 코드의 주석을 해제한다.
 		// [ 포복 ]
 		const FGameplayTag CrouchOnlyRuleTag = FAGameplayTags::Get().Rule_Move_CrouchOnly;
 		ASC->RegisterGameplayTagEvent(CrouchOnlyRuleTag, EGameplayTagEventType::NewOrRemoved)
@@ -66,7 +63,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			FAGameplayTags::Get().Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 
-		//[H07 포복 수정안 — 실제 적용할 때 아래 코드의 주석을 해제한다]
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
@@ -106,10 +102,6 @@ void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag 
 		true);
 }
 
-// [H07 포복 수정안 — 설명용 주석이므로 현재 실행되지 않음]
-// 아래 구현을 활성화하면 서버에서 CrouchOnly 태그가 붙는 즉시 포복하고,
-// 태그가 제거되면 다시 일어선다. Crouch 상태는 ACharacter가 복제한다.
-//
 void UFACharacterStatusComponent::HandleCrouchOnlyRuleChanged(const FGameplayTag Tag,int32 NewCount)
  {
  	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
