@@ -7,6 +7,7 @@
 #include "FAGA_Grab.generated.h"
 
 class AFACharacter;
+class UAnimMontage;
 class UGameplayEffect;
 
 /**
@@ -49,6 +50,18 @@ public:
 	AFACharacter* GetGrabbedVictim() const { return GrabbedVictim.Get(); }
 
 protected:
+	/** 좌클릭 포획 시도 때 재생할 전신 공격 몽타주. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Animation")
+	TObjectPtr<UAnimMontage> GrabAttemptMontage;
+
+	/**
+	 * 몽타주 시작 후 실제 포획 판정을 실행할 시점(초).
+	 * 애니메이션 Notify 에 판정을 의존하지 않아 Dedicated Server 에서도 동일하게 동작한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Animation",
+		meta = (ClampMin = "0.0", Units = "s"))
+	float GrabImpactDelay = 1.03f;
+
 	/** 잡힌 인간에게 적용할 Effect (State.Grabbed + 이동속도 감소) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> VictimGrabbedEffectClass;
@@ -80,6 +93,13 @@ protected:
 private:
 	AFACharacter* FindTargetInFront(AFACharacter* Avatar, float Range, float Radius, struct FGameplayTag RequiredTag);
 
+	/** 공격 몽타주의 타격 시점에 서버가 실행하는 실제 포획 판정. */
+	void ResolveGrabAttempt();
+
+	/** 타격 전에 몽타주가 취소·중단되면 포획 시도도 함께 취소한다. */
+	UFUNCTION()
+	void HandleGrabAttemptInterrupted();
+
 	/** 서버 틱 — 거리 이탈 검사 + 저항 강도에 따른 감염 진행도 누적. */
 	void TickGrab();
 
@@ -93,7 +113,11 @@ private:
 	UPROPERTY()
 	TWeakObjectPtr<AFACharacter> GrabbedVictim;
 
+	FTimerHandle GrabImpactTimerHandle;
 	FTimerHandle GrabTickHandle;
+
+	/** 같은 활성화에서 타격 판정이 두 번 실행되는 것을 막는다. */
+	bool bGrabImpactResolved = false;
 
 	/** 감염 진행도 0~1. 고정 타이머가 아니라 저항 강도에 따라 차는 속도가 달라진다. */
 	float InfectProgress = 0.0f;
