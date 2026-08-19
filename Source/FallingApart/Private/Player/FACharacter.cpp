@@ -943,8 +943,9 @@ void AFACharacter::Look(const FInputActionValue& Value)
 		// 설정창의 감도 · Y축 반전. 설정이 없으면 각각 1.0 / false 라 예전과 똑같이 움직인다.
 		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
 		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
-
-		AddControllerYawInput(LookAxisVector.X * Sensitivity);
+		
+		const float TurnRateScale = +IsValid(AttributeSet) ? AttributeSet->GetTurnRateScale() : 1.f;
+		AddControllerYawInput(LookAxisVector.X * Sensitivity * TurnRateScale);
 		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}
 }
