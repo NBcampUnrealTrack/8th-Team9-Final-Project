@@ -9,6 +9,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "SettingsKitMenuWidget.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
 
@@ -181,6 +182,7 @@ void UFAMainMenuWidget::HandleCreateSessionRequested(const FFASessionCreateReque
 {
 	if (OnlineSessionSubsystem)
 	{
+		OnlineSessionSubsystem->SetPendingNickname(Request.Nickname);
 		OnlineSessionSubsystem->CreateSession(Request.MaxConnections, Request.ServerName, Request.Password);
 	}
 }
@@ -201,7 +203,7 @@ void UFAMainMenuWidget::HandleSessionRefreshRequested()
 	OnlineSessionSubsystem->FindSession(100);
 }
 
-void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password)
+void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname)
 {
 	if (!OnlineSessionSubsystem || !SessionJoinWidget)
 	{
@@ -209,11 +211,16 @@ void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchRes
 	}
 
 	SessionJoinWidget->SetJoinInProgress(true);
+	OnlineSessionSubsystem->SetPendingNickname(Nickname);
+	OnlineSessionSubsystem->SetPendingPassword(Password);
 	OnlineSessionSubsystem->JoinSession(SessionResult, Password);
 }
 
 void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 {
+	if (!OnlineSessionSubsystem)
+		return;
+	
 	if (Result == EFASessionRequestResult::Success)
 	{
 		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
@@ -224,9 +231,17 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 		{
 			// UWorld 소프트 참조에서 파일 경로 문자열 추출
 			FString LevelPath = TargetLevelPath.ToSoftObjectPath().GetLongPackageName();
-
-			// 리슨 서버 옵션 설정 (?listen)
-			FString TravelURL = LevelPath + TEXT("?listen");
+			FString PendingNickname = OnlineSessionSubsystem->GetPendingNickname();
+			// 만약 한글이 깨진다면, 아래 함수로 인코딩 및 서버에서 디코딩 필요. HTTP모듈 필요함.
+			//FString EncodedNickname = FGenericPlatformHttp::UrlEncode(OnlineSessionSubsystem->GetPendingNickname());
+			
+			// 서버 URL구성(호스트는 ?listen 필수)
+			const FString TravelURL = FString::Printf(
+					TEXT("%s?listen?Nickname=%s"),
+					*LevelPath,
+					*PendingNickname);
+			
+			
 			World->ServerTravel(TravelURL);
 		}
 		return;
@@ -267,6 +282,9 @@ void UFAMainMenuWidget::OnFindSessionComplete(const TArray<FOnlineSessionSearchR
 
 void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString)
 {
+	if (!OnlineSessionSubsystem)
+		return;
+	
 	if (SessionJoinWidget)
 	{
 		SessionJoinWidget->SetJoinInProgress(false);
@@ -290,10 +308,37 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 
 	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
 
+	
+	FString PendingNickname = OnlineSessionSubsystem->GetPendingNickname();
+	// 만약 한글이 깨진다면, 아래 함수로 인코딩 및 서버에서 디코딩 필요. HTTP모듈 필요함.
+	//FString EncodedNickname = FGenericPlatformHttp::UrlEncode(PendingNickname);
+	
+	FString PendingPassword = OnlineSessionSubsystem->GetPendingPassword();
+	//패스워드는 특수문자(특히 ?)가 들어갈수 있으므로 반드시 인코딩
+	FString EncodedPassword = FGenericPlatformHttp::UrlEncode(PendingPassword);
+	
+	//URL 작성
+	const FString TravelURL = FString::Printf(
+		TEXT("%s?Nickname=%s?Password=%s"),
+		*ConnectString,
+		*PendingNickname,
+		*EncodedPassword);
+	
 	if (APlayerController* PlayerController = GetOwningPlayer())
 	{
-		PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
+		GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::OnNetworkFailure);
+		PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
 	}
+}
+
+void UFAMainMenuWidget::OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
+{
+}
+
+void UFAMainMenuWidget::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType,
+                                         const FString& ErrorString)
+{
+	UE_LOG(LogFAOSS, Error, TEXT("Network failure: %s"), *ErrorString);
 }
 
 

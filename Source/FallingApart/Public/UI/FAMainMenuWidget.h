@@ -62,15 +62,16 @@ protected:
 	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
 	void HandleSessionRefreshRequested();
-	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
 
 	// 세션 서브시스템 완료 콜백
 	void OnCreateSessionComplete(EFASessionRequestResult Result);
 	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 	
 	void OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString);
-	
-	
+	void OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
+	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> WidgetSwitcher_Page;
 	
