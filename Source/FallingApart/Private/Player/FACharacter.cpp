@@ -944,7 +944,7 @@ void AFACharacter::Look(const FInputActionValue& Value)
 		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
 		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
 		
-		const float TurnRateScale = +IsValid(AttributeSet) ? AttributeSet->GetTurnRateScale() : 1.f;
+		const float TurnRateScale = IsValid(AttributeSet) ? AttributeSet->GetTurnRateScale() : 1.f;
 		AddControllerYawInput(LookAxisVector.X * Sensitivity * TurnRateScale);
 		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}

@@ -264,7 +264,7 @@ void UFAAttributeSet::OnRep_ContestGauge(const FGameplayAttributeData& OldValue)
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, ContestGauge, OldValue);
 }
 
-void UFAAttributeSet::OnRep_JumpZVelocity(const FGameplayAttributeData& OldValue)
+void UFAAttributeSet::OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, RuleJumpZVelocity, OldValue);
 }
