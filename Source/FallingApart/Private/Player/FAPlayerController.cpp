@@ -22,6 +22,7 @@
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
+#include "UI/FARoundResultWidget.h"
 #include "UI/FAPauseMenuWidget.h"
 
 AFAPlayerController::AFAPlayerController()
@@ -30,6 +31,9 @@ AFAPlayerController::AFAPlayerController()
 
 	PauseMenuWidgetClass = UFAPauseMenuWidget::StaticClass();
 	MatchResultWidgetClass = UFAMatchResultWidget::StaticClass();
+
+	// WBP 가 없어도 임시 레이아웃으로 뜬다 — UI 담당이 WBP 를 만들면 BP_FAPlayerController 에서 갈아끼울 것.
+	RoundResultWidgetClass = UFARoundResultWidget::StaticClass();
 	PauseMenuKeys.Add(EKeys::Escape);
 }
 
@@ -385,6 +389,61 @@ void AFAPlayerController::Client_ShowMatchResult_Implementation()
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
 	SetShowMouseCursor(true);
+}
+
+//~ ---------------- 라운드 결과 화면 ----------------
+
+bool AFAPlayerController::IsRoundResultOpen() const
+{
+	return RoundResultWidget != nullptr && RoundResultWidget->IsInViewport();
+}
+
+void AFAPlayerController::Client_ShowRoundResult_Implementation()
+{
+	if (!IsLocalController() || IsRoundResultOpen())
+	{
+		return;
+	}
+
+	// RPC 는 월드가 내려가기 시작한 뒤에도 도착할 수 있다 — 그때 위젯을 만들면 ensure 가 터진다.
+	const UWorld* World = GetWorld();
+	if (!World || World->bIsTearingDown)
+	{
+		return;
+	}
+
+	// 매치가 끝나 최종 순위표가 뜬 뒤라면 라운드 결과를 덧씌우지 않는다.
+	if (IsMatchResultOpen())
+	{
+		return;
+	}
+
+	if (!RoundResultWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] AFAPlayerController: RoundResultWidgetClass 가 비어 있어 라운드 결과 화면을 만들지 못했다."));
+		return;
+	}
+
+	if (!RoundResultWidget)
+	{
+		RoundResultWidget = CreateWidget<UFARoundResultWidget>(this, RoundResultWidgetClass);
+		if (!RoundResultWidget)
+		{
+			return;
+		}
+	}
+
+	// 입력 모드는 건드리지 않는다 — 결과를 보는 동안에도 다음 라운드로 그대로 이어져야 한다.
+	RoundResultWidget->AddToViewport(RoundResultZOrder);
+}
+
+void AFAPlayerController::Client_HideRoundResult_Implementation()
+{
+	if (RoundResultWidget && RoundResultWidget->IsInViewport())
+	{
+		RoundResultWidget->RemoveFromParent();
+	}
 }
 
 void AFAPlayerController::ReturnToMainMenu()

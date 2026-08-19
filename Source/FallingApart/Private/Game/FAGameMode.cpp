@@ -130,6 +130,9 @@ void AFAGameMode::StartRound()
 
 	ClearRoundTimers();
 
+	// 지난 라운드 결과 화면이 떠 있으면 걷는다.
+	HideRoundResult();
+
 	FAGameState->SetCurrentRound(FAGameState->GetCurrentRound() + 1);
 	FAGameState->SetLastRoundResult(EFARoundResult::None);
 	FAGameState->SetRoundPhase(EFARoundPhase::RoundStarting);
@@ -257,6 +260,9 @@ void AFAGameMode::EndRound(EFARoundResult Result)
 	UE_LOG(LogTemp, Log, TEXT("[FA] Round %d ended (%s)"), FAGameState->GetCurrentRound(),
 		Result == EFARoundResult::HumanWin ? TEXT("HumanWin") : TEXT("ZombieWin"));
 
+	// 결과 화면은 다음 라운드가 시작되거나(StartRound) 최종 순위표가 뜰 때 내려간다.
+	ShowRoundResult();
+
 	GetWorldTimerManager().SetTimer(RoundEndTimerHandle, this, &AFAGameMode::StartNextRoundOrEndMatch,
 		FMath::Max(0.1f, RoundEndDelay), false);
 }
@@ -318,10 +324,87 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 	// 확정돼 소수점까지 동률이라, 사실상 '생존자 전원 +2' 로 동작하고 있었다.
 	// SurvivalTime 계측 자체는 최종 순위 타이브레이크 3차 기준이라 그대로 남는다.
 
+	// 결과 화면용 스냅샷은 반드시 커밋 '전에' 떠야 한다 — 커밋이 라운드 점수를 0 으로 지운다.
+	BuildRoundResultSnapshot(Result, AllPlayerStates);
+
 	// 정산이 끝난 라운드 점수를 매치 누적으로 넘긴다.
 	for (AFAPlayerState* FAPlayerState : AllPlayerStates)
 	{
 		FAPlayerState->CommitRoundScore();
+	}
+}
+
+void AFAGameMode::BuildRoundResultSnapshot(EFARoundResult Result, const TArray<AFAPlayerState*>& AllPlayerStates)
+{
+	AFAGameState* FAGameState = GetFAGameState();
+	if (!FAGameState)
+	{
+		return;
+	}
+
+	FFARoundResultSnapshot Snapshot;
+	Snapshot.RoundIndex = FAGameState->GetCurrentRound();
+	Snapshot.Result = Result;
+	Snapshot.Rows.Reserve(AllPlayerStates.Num());
+
+	for (const AFAPlayerState* FAPlayerState : AllPlayerStates)
+	{
+		if (!FAPlayerState)
+		{
+			continue;
+		}
+
+		FFARoundResultRow Row;
+		Row.PlayerName = FAPlayerState->GetPlayerName();
+		Row.PlayerState = const_cast<AFAPlayerState*>(FAPlayerState);
+		Row.Score = FAPlayerState->GetRoundScore();
+		Row.SurvivalTime = FAPlayerState->GetRoundScore().SurvivalTime;
+		Row.bSurvived = FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound();
+		Row.TeamAtRoundEnd = FAPlayerState->GetTeam();
+
+		Snapshot.Rows.Add(Row);
+	}
+
+	// GDD 8.4 는 '생존 시간 순위' 다. 동률이면 이번 라운드 점수로 가른다.
+	Snapshot.Rows.Sort([](const FFARoundResultRow& A, const FFARoundResultRow& B)
+		{
+			if (!FMath::IsNearlyEqual(A.SurvivalTime, B.SurvivalTime, 0.01f))
+			{
+				return A.SurvivalTime > B.SurvivalTime;
+			}
+			return A.Score.GetTotal() > B.Score.GetTotal();
+		});
+
+	FAGameState->SetRoundResultSnapshot(Snapshot);
+}
+
+void AFAGameMode::ShowRoundResult()
+{
+	// PIE 를 끄거나 레벨을 옮기면 플레이어가 빠지면서 '전멸' 로 라운드가 끝난다.
+	// 그 흐름에서 위젯을 만들면 UMG 가 ensure 로 잡는다 (UserWidget.cpp 의 !bIsTearingDown).
+	const UWorld* World = GetWorld();
+	if (!World || World->bIsTearingDown)
+	{
+		return;
+	}
+
+	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(Iterator->Get()))
+		{
+			FAPlayerController->Client_ShowRoundResult();
+		}
+	}
+}
+
+void AFAGameMode::HideRoundResult()
+{
+	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(Iterator->Get()))
+		{
+			FAPlayerController->Client_HideRoundResult();
+		}
 	}
 }
 
@@ -424,6 +507,9 @@ void AFAGameMode::ShowFinalRanking()
 	{
 		return;
 	}
+
+	// 최종 순위표가 라운드 결과 화면 위에 겹치면 안 된다.
+	HideRoundResult();
 
 	TArray<AFAPlayerState*> Ranked;
 	FAGameState->GetRankedPlayerStates(Ranked);

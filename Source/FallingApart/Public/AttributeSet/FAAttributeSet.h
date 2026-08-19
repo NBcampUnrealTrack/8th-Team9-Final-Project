@@ -72,9 +72,9 @@ public:
 	
 	// 점프 기본값 420.0
 	// GameplayEffect에서 배율 또는 고정값으로 변경
-	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_JumpZVelocity,Category = "Attribute|Movement")
-	FGameplayAttributeData JumpZVelocity;
-	ATTRIBUTE_ACCESSORS(UFAAttributeSet,JumpZVelocity)
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_RuleJumpZVelocity,Category = "Attribute|Movement")
+	FGameplayAttributeData RuleJumpZVelocity;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,RuleJumpZVelocity)
 
 #pragma endregion
 
@@ -182,6 +182,6 @@ protected:
 	void OnRep_ContestGauge(const FGameplayAttributeData& OldValue);
 	
 	UFUNCTION()
-	void OnRep_JumpZVelocity(const FGameplayAttributeData& OldValue);
+	void OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldValue);
 #pragma endregion
 };

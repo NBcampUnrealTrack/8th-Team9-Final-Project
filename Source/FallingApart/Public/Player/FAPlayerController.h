@@ -9,6 +9,7 @@
 #include "FAPlayerController.generated.h"
 
 class UFAMatchResultWidget;
+class UFARoundResultWidget;
 class UFAPauseMenuWidget;
 class UInputMappingContext;
 
@@ -96,6 +97,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
 	bool IsMatchResultOpen() const;
 
+	//~ ---------------- 라운드 결과 화면 ----------------
+
+	/**
+	 * 라운드 종료 시 호출. RoundEndDelay 동안 떠 있다가 다음 라운드 시작 때 내려간다.
+	 * 최종 순위표와 달리 입력을 가져가지 않는다 — 다음 라운드로 그대로 이어져야 한다.
+	 */
+	UFUNCTION(Client, Reliable)
+	void Client_ShowRoundResult();
+
+	UFUNCTION(Client, Reliable)
+	void Client_HideRoundResult();
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
+	bool IsRoundResultOpen() const;
+
 	/** 게임 프로세스 종료. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void QuitGame();
@@ -128,6 +144,17 @@ protected:
 	int32 MatchResultZOrder = 150;
 
 	/**
+	 * 라운드 결과 화면. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
+	 * UI 담당이 UFARoundResultWidget 을 상속한 WBP 를 만들면 여기서 갈아끼울 것.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	TSubclassOf<UFARoundResultWidget> RoundResultWidgetClass;
+
+	/** HUD 위에는 오되 ESC 메뉴·최종 순위표보다는 아래. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Result")
+	int32 RoundResultZOrder = 90;
+
+	/**
 	 * 일시정지 메뉴 토글 키. 기본은 ESC 하나.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
@@ -153,6 +180,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFAMatchResultWidget> MatchResultWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFARoundResultWidget> RoundResultWidget;
 
 	/** 메인 메뉴 복귀를 두 번 태우지 않기 위한 가드. */
 	bool bReturningToMainMenu = false;
