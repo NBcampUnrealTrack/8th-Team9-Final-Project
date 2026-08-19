@@ -73,7 +73,7 @@ protected:
 	/** 포획 실패 시 적용할 Effect (경직) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> FailStunEffectClass;
-  
+
 	/**
 	 * 인질이 최대로 저항했을 때 감염 시간이 몇 배로 늘어나는가.
 	 *
