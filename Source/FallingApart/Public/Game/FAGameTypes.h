@@ -173,3 +173,61 @@ struct FFAPlayerScore
 
 	void Reset() { *this = FFAPlayerScore(); }
 };
+
+/**
+ * 라운드 결과 화면 한 줄 (GDD 8.4).
+ *
+ * 왜 스냅샷인가 — AFAPlayerState::CommitRoundScore() 가 라운드 점수를 매치 누적으로 넘기면서
+ * RoundScore 를 0 으로 지운다. 그런데 결과 화면은 그 뒤 RoundEndDelay(8초) 동안 떠 있어야 하므로,
+ * PlayerState 를 직접 읽으면 전부 0 이 찍힌다. 그래서 서버가 정산 직후 여기에 떠서 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFARoundResultRow
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	FString PlayerName;
+
+	/** 자기 줄 강조용. 도중에 나간 사람은 null 이 될 수 있으니 이름은 위에 따로 들고 있는다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	TObjectPtr<class AFAPlayerState> PlayerState = nullptr;
+
+	/** 이번 라운드 점수 — 팀/개인 4분할 그대로 (GDD 8.4 '팀/개인 분리 표시'). */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	FFAPlayerScore Score;
+
+	/** 이번 라운드에 인간으로 버틴 시간(초). */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	float SurvivalTime = 0.0f;
+
+	/** 감염되지 않고 끝까지 인간으로 남았는가. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	bool bSurvived = false;
+
+	/** 라운드가 끝난 시점의 진영. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	EFATeam TeamAtRoundEnd = EFATeam::None;
+};
+
+/**
+ * 한 라운드의 결과 전체. 서버가 채워 전 클라이언트로 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFARoundResultSnapshot
+{
+	GENERATED_BODY()
+
+	/** 1부터 시작. 0 이면 아직 채워진 적이 없다는 뜻이라 유효성 판정을 겸한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	int32 RoundIndex = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	EFARoundResult Result = EFARoundResult::None;
+
+	/** 생존 시간 내림차순으로 서버가 미리 정렬해 보낸다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	TArray<FFARoundResultRow> Rows;
+
+	bool IsValid() const { return RoundIndex > 0; }
+};

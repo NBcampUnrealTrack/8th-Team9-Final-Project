@@ -85,6 +85,14 @@ void UFAGA_Grab::ActivateAbility(
 	{
 		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Miss);
 
+		if (SourceASC->HasMatchingGameplayTag(Tags.Rule_Bite_FailStun) && FailStunEffectClass)
+		{
+			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(FailStunEffectClass);
+
+			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 5.f);
+			SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
