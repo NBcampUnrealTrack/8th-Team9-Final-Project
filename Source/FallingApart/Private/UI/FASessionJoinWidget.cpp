@@ -107,6 +107,11 @@ void UFASessionJoinWidget::SetJoinInProgress(bool bIsJoining)
 	SetIsEnabled(!bIsJoining);
 }
 
+FString UFASessionJoinWidget::GetNickname() const
+{
+	return NicknameInput->GetText().ToString();
+}
+
 void UFASessionJoinWidget::RefreshButtonClicked()
 {
 	UFAAudioSubsystem::PlayFASound(this, FASessionJoinAudio::Click);
@@ -130,5 +135,5 @@ void UFASessionJoinWidget::ClearList()
 void UFASessionJoinWidget::HandleSessionEntrySelected(const FOnlineSessionSearchResult& SessionResult)
 {
 	const FString Password = PasswordInput ? PasswordInput->GetText().ToString() : FString();
-	OnSessionJoinRequested.Broadcast(SessionResult, Password);
+	OnSessionJoinRequested.Broadcast(SessionResult, Password, GetNickname());
 }

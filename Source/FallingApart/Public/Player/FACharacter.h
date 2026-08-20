@@ -200,8 +200,15 @@ protected:
 	void ToggleCrouch();
 	void UpdateCrouchCamera();
 	void TogglePerspective();
+	
+	/** 플레이어 입력(TogglePerspective)과 Vision.ForceFPS 룰 양쪽이 이걸 호출한다. */
+	void ForceTogglePerspective();
+	
 	void UpdatePerspectiveCamera();
 	void UpdateCameraCollision(float DeltaTime);
+	
+	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
+	void UpdateVisionEffects();
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
@@ -478,4 +485,7 @@ private:
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
 	FTimerHandle PerspectiveTimerHandle;
+	
+	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
+	bool bVisionForcedFirstPerson = false;
 };

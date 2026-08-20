@@ -116,6 +116,30 @@ void AFALobbyGameState::SetCanHostStartMatch(bool InCanStart)
 	bCanHostStartMatch = InCanStart;
 }
 
+void AFALobbyGameState::AddPlayerState(APlayerState* PlayerState)
+{
+	const int32 PreviousCount = PlayerArray.Num();
+	Super::AddPlayerState(PlayerState);
+	
+	// 실제 플레이어의 수에 변동이 있을때 즉시 UI를 갱신하도록 알림
+	if (PlayerArray.Num() != PreviousCount)
+	{
+		OnLobbyStateChanged.Broadcast();
+	}
+}
+
+void AFALobbyGameState::RemovePlayerState(APlayerState* PlayerState)
+{
+	const int32 PreviousCount = PlayerArray.Num();
+	Super::RemovePlayerState(PlayerState);
+	
+	// 실제 플레이어의 수에 변동이 있을때 즉시 UI를 갱신하도록 알림
+	if (PlayerArray.Num() != PreviousCount)
+	{
+		OnLobbyStateChanged.Broadcast();
+	}
+}
+
 
 void AFALobbyGameState::OnRep_LobbyState()
 {

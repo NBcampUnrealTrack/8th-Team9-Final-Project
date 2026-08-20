@@ -51,6 +51,9 @@ public:
 	/* Z11 착지 경직 /H09 착지 경직 - 착지 시 1초 정지  */
 	FGameplayTag Rule_Move_LandStun;
 
+	/* Z13 등반 불가 /H12 등반 불가 - 오르기·넘기 봉인  */
+	FGameplayTag Rule_Move_NoMantle;
+
 	// ~ ========================== Input Tag ===================
 
 	/* Z13 뒤엉킨 신경 / H10 뒤엉킨 신경 -  5초 마다 좌우 입력 반전 */
@@ -61,25 +64,20 @@ public:
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
 
-	/* Z17 흑백 / H18 흑백 -  시야거리 8m */
-	FGameplayTag Rule_Vision_Desautrate;
+	/* Z17 흑백 / H18 흑백 -  로컬 PostProcess 채도 0 */
+	FGameplayTag Rule_Vision_Desaturate;
 
-	//~ ========================= Bite Tag =========================
+	/* Z18 안개 / H19 안개 - VisionRange 800uu + PostProcess 안개 */
+	FGameplayTag Rule_Vision_Fog;
 
-	/** Z26 무딘 이빨 — 감염 시간 3초 → 5초 */
-	FGameplayTag Rule_Bite_TimeUp;
+	/* Z19 명멸 / H20 암전 - Periodic GE + PostProcess 암전 */
+	FGameplayTag Rule_Vision_Blackout;
 
-	/** Z27 짧은 팔 — 포획 사거리 2.0m → 1.2m */
-	FGameplayTag Rule_Bite_RangedDown;
+	/* Z20 1인칭 강제 / H21 1인칭 강제 - 토글 강제 전환 후 잠금 + FOV -10% */
+	FGameplayTag Rule_Vision_ForceFPS;
 
-	/** Z28 빗나감 — 포획 실패 시 5초 경직 */
-	FGameplayTag Rule_Bite_FailStun;
-
-	/** Z29 고정 턱 — 포획 중 완전 이동 불가 */
-	FGameplayTag Rule_Bite_RootedGrab;
-
-	/** Z30 구조 트라우마 — QTE 패배 시 8초 기절 */
-	FGameplayTag Rule_Bite_RescueStun;
+	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
+	FGameplayTag Rule_Vision_FlipY;
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -137,8 +135,30 @@ public:
 	/* Z12  낮은 도약 . 점프높이 -60%  */
 	FGameplayTag Rule_Move_LowJump;
 
-#pragma endregion
+	// Bite
+	/* Z26 무딘 이빨 . 감염 시간 3초 → 5초 */
+	FGameplayTag Rule_Bite_TimeUp;
 
+	/* Z27 짧은 팔 . 포획 사거리 2.0m → 1.2m */
+	FGameplayTag Rule_Bite_RangedDown;
+
+	/* Z28 빗나감 . 포획 실패 시 5초 경직 */
+	FGameplayTag Rule_Bite_FailStun;
+
+	/* Z29 고정 턱 . 포획 중 완전 이동 불가 */
+	FGameplayTag Rule_Bite_RootedGrab;
+
+	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
+	FGameplayTag Rule_Bite_RescueStun;
+
+	// Trade
+	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
+	FGameplayTag Rule_Trade_Frenzy;
+	
+	/* Z44 유령. 반투명, 이동속도 -35% */
+	FGameplayTag Rule_Trade_Ghost;
+
+#pragma endregion
 
 #pragma region Human Rule
 
@@ -153,7 +173,12 @@ public:
 
 	FGameplayTag Rule_Move_SlowTurn;
 
+	// Rescue
+	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
+	FGameplayTag Rule_Rescue_Disabled;
+
 #pragma endregion
+
 private:
 	static FAGameplayTags Instance;
 

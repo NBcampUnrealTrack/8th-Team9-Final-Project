@@ -852,6 +852,8 @@ void AFACharacter::Tick(float DeltaTime)
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
+
+	UpdateVisionEffects();
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -942,9 +944,19 @@ void AFACharacter::Look(const FInputActionValue& Value)
 	{
 		// 설정창의 감도 · Y축 반전. 설정이 없으면 각각 1.0 / false 라 예전과 똑같이 움직인다.
 		const float Sensitivity = UFASettingsBridge::GetMouseSensitivity(this);
-		const float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
+		float PitchSign = UFASettingsBridge::IsYAxisInverted(this) ? -1.f : 1.f;
 
-		AddControllerYawInput(LookAxisVector.X * Sensitivity);
+		// 상하 반전 룰 (Vision.FlipY). 사용자 설정 반전과는 곱셈으로 합쳐져서,
+		// 둘 다 켜져 있으면 서로 상쇄돼 원래대로 보인다 — 의도된 동작이다.
+		if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_FlipY))
+		{
+			PitchSign *= -1.f;
+		}
+
+		// 카메라 회전 속도 룰 (H14/Z10 무거운 목 등, SlowTurn 계열).
+		const float TurnRateScale = IsValid(AttributeSet) ? AttributeSet->GetTurnRateScale() : 1.f;
+
+		AddControllerYawInput(LookAxisVector.X * Sensitivity * TurnRateScale);
 		AddControllerPitchInput(LookAxisVector.Y * Sensitivity * PitchSign);
 	}
 }
@@ -1029,6 +1041,18 @@ void AFACharacter::UpdateCrouchCamera()
 
 void AFACharacter::TogglePerspective()
 {
+	// Vision.ForceFPS 가 강제한 1인칭 중에는 플레이어의 수동 토글을 막는다.
+	if (AbilitySystemComponent &&
+		AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_ForceFPS))
+	{
+		return;
+	}
+
+	ForceTogglePerspective();
+}
+
+void AFACharacter::ForceTogglePerspective()
+{
 	bIsFirstPerson = !bIsFirstPerson;
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 
@@ -1036,6 +1060,92 @@ void AFACharacter::TogglePerspective()
 	{
 		GetWorldTimerManager().SetTimer(PerspectiveTimerHandle, this, &AFACharacter::UpdatePerspectiveCamera, GetWorld()->GetDeltaSeconds(), true);
 	}
+}
+
+void AFACharacter::UpdateVisionEffects()
+{
+	// 카메라 PostProcess 는 이 카메라를 실제로 보고 있는 클라이언트에서만 의미가 있다.
+	// 서버·다른 클라이언트에서 계산해봐야 아무 화면에도 안 나가니 여기서 걸러낸다.
+	if (!IsLocallyControlled() || !FollowCamera || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	const bool bForceFirstPerson = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_ForceFPS);
+	const bool bDesaturate = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Desaturate);
+	const bool bBlackout = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Blackout);
+
+	// 시야각 축소 (Vision.NarrowFOV) — Attribute 는 이미 있으니 그대로 반영한다.
+	// 1인칭 강제 시 FOV -10% 추가 적용.
+	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
+	{
+		float TargetFOV = Attributes->GetFieldOfView();
+		if (bForceFirstPerson)
+		{
+			TargetFOV *= 0.9f;
+		}
+		FollowCamera->SetFieldOfView(TargetFOV);
+	}
+
+	// 흑백 (Vision.Desaturate) — Attribute 없이 태그 유무로만 켜고 끈다.
+	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bDesaturate;
+	if (bDesaturate)
+	{
+		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+	}
+
+	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 비네트 + 회백색 틴트로 흐릿함을 흉내낸다.
+	// 개인별 로컬 효과라 실제 볼류메트릭 안개 대신 카메라 PostProcess 로 대체한다.
+	float FogAmount = 0.0f;
+	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
+	{
+		constexpr float MaxVisionRange = 6000.0f; // AttributeSet 기본값과 맞춤.
+		const float CurrentVisionRange = Attributes->GetVisionRange();
+
+		// 0 = 정상 시야, 1 = VisionRange 가 바닥(800uu 근처)까지 떨어진 상태.
+		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
+	}
+
+	FollowCamera->PostProcessSettings.bOverride_VignetteIntensity = FogAmount > 0.0f;
+	FollowCamera->PostProcessSettings.VignetteIntensity = FMath::Lerp(0.0f, 3.0f, FogAmount);
+
+	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
+	// 3초 주기로 0.4초간 완전 암전.
+	float BlackoutAmount = 0.0f;
+	if (bBlackout && GetWorld())
+	{
+		constexpr float BlackoutPeriod = 3.0f;
+		constexpr float BlackoutFlashDuration = 0.4f;
+
+		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
+		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
+	}
+
+	// 안개 틴트와 암전 틴트를 하나로 합쳐서 SceneColorTint 한 번에 적용 — 두 효과가 서로 override 값을 덮어쓰지 않게.
+	const float TintTowardsBlack = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
+	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = TintTowardsBlack > 0.0f;
+	FollowCamera->PostProcessSettings.SceneColorTint =
+		FMath::Lerp(FLinearColor::White, FLinearColor::Black, TintTowardsBlack);
+
+	// 1인칭 강제 (Vision.ForceFPS)
+	if (bForceFirstPerson && !bIsFirstPerson)
+	{
+		bVisionForcedFirstPerson = true;
+		ForceTogglePerspective();
+	}
+	else if (!bForceFirstPerson && bVisionForcedFirstPerson)
+	{
+		bVisionForcedFirstPerson = false;
+		if (bIsFirstPerson)
+		{
+			ForceTogglePerspective();
+		}
+	}
+
+	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 세 효과(흑백·안개·암전) 중 하나라도 켜져 있으면 블렌드.
+	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f;
+	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
 }
 
 void AFACharacter::UpdatePerspectiveCamera()

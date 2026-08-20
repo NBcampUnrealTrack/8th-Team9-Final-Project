@@ -9,6 +9,7 @@
 #include "FASessionEntryWidget.generated.h"
 
 
+class UImage;
 class UButton;
 class UTextBlock;
 
@@ -48,6 +49,9 @@ private:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UButton> Button_Join;
+	
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UImage> Image_Lock;
 	
 	FOnlineSessionSearchResult EntryData;
 };
