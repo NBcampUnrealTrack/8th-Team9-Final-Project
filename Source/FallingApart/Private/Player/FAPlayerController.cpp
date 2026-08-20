@@ -13,6 +13,7 @@
 #include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/PackageName.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
@@ -29,7 +30,16 @@ AFAPlayerController::AFAPlayerController()
 {
 	bReplicates = true;
 
+	// 로비 · 인게임 어느 컨트롤러로 들어와도 WBP 가 뜨게 여기서 기본값을 잡는다.
+	// 못 찾으면 C++ 임시 레이아웃으로 떨어진다.
+	static ConstructorHelpers::FClassFinder<UFAPauseMenuWidget> PauseMenuWBP(
+		TEXT("/Game/FallingApart/WBP/WBP_FAPauseMenu"));
 	PauseMenuWidgetClass = UFAPauseMenuWidget::StaticClass();
+	if (PauseMenuWBP.Succeeded())
+	{
+		PauseMenuWidgetClass = PauseMenuWBP.Class;
+	}
+
 	MatchResultWidgetClass = UFAMatchResultWidget::StaticClass();
 
 	// WBP 가 없어도 임시 레이아웃으로 뜬다 — UI 담당이 WBP 를 만들면 BP_FAPlayerController 에서 갈아끼울 것.
