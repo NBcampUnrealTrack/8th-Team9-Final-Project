@@ -80,7 +80,7 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 
 	
 	// 세션 비밀번호 아이콘
-	bool bHasPassword;
+	bool bHasPassword = false;
 	Result.Session.SessionSettings.Get(FName(TEXT("HAS_PASSWORD")), bHasPassword);
 	Image_Lock->SetVisibility(
 		bHasPassword == true ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);

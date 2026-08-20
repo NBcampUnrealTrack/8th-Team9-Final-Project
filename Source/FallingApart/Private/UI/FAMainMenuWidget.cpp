@@ -212,8 +212,9 @@ void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchRes
 
 	SessionJoinWidget->SetJoinInProgress(true);
 	OnlineSessionSubsystem->SetPendingNickname(Nickname);
-	OnlineSessionSubsystem->SetPendingPassword(Password);
-	OnlineSessionSubsystem->JoinSession(SessionResult, Password);
+	OnlineSessionSubsystem->VerifyPasswordAndJoin(SessionResult, Password);
+	//VerifyPasswordAndJoin완료 성공시 JoinSession 요청됨.
+	//OnlineSessionSubsystem->JoinSession(SessionResult);
 }
 
 void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
@@ -312,17 +313,15 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 	FString PendingNickname = OnlineSessionSubsystem->GetPendingNickname();
 	// 만약 한글이 깨진다면, 아래 함수로 인코딩 및 서버에서 디코딩 필요. HTTP모듈 필요함.
 	//FString EncodedNickname = FGenericPlatformHttp::UrlEncode(PendingNickname);
-	
-	FString PendingPassword = OnlineSessionSubsystem->GetPendingPassword();
-	//패스워드는 특수문자(특히 ?)가 들어갈수 있으므로 반드시 인코딩
-	FString EncodedPassword = FGenericPlatformHttp::UrlEncode(PendingPassword);
+
+	FString PendingJoinToken = OnlineSessionSubsystem->GetPendingJoinToken();
 	
 	//URL 작성
 	const FString TravelURL = FString::Printf(
-		TEXT("%s?Nickname=%s?Password=%s"),
+		TEXT("%s?Nickname=%s?JoinToken=%s"),
 		*ConnectString,
 		*PendingNickname,
-		*EncodedPassword);
+		*PendingJoinToken);
 	
 	if (APlayerController* PlayerController = GetOwningPlayer())
 	{
