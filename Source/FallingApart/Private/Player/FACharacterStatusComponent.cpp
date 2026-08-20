@@ -10,7 +10,8 @@
 #include "GAS/FAGameplayTags.h"
 #include "TimerManager.h"
 #include "Components/SkeletalMeshComponent.h"
- #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Components/CapsuleComponent.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -55,11 +56,18 @@ void UFACharacterStatusComponent::BeginPlay()
 		
 		const FGameplayTag GhostRuleTag =FAGameplayTags::Get().Rule_Trade_Ghost;
 
+		// Ghost
 		ASC->RegisterGameplayTagEvent(GhostRuleTag,EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this,&ThisClass::HandleGhostRuleChanged);
 
 		// BeginPlay 전에 Z44가 적용된 경우도 즉시 반영한다.
 		HandleGhostRuleChanged(GhostRuleTag,ASC->GetTagCount(GhostRuleTag));
+		
+		const FGameplayTag WallPhaseRuleTag =FAGameplayTags::Get().Rule_Trade_WallPhase;
+		ASC->RegisterGameplayTagEvent(WallPhaseRuleTag,EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this,&ThisClass::HandleWallPhaseRuleChanged);
+		// BeginPlay 전에 Z46이 적용된 경우도 처리한다.
+		HandleWallPhaseRuleChanged(WallPhaseRuleTag,ASC->GetTagCount(WallPhaseRuleTag));
 	}
 	
 	
@@ -78,6 +86,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 		
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
 				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_WallPhase,
+		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
@@ -93,6 +103,35 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC =GetOwnerAbilitySystem();
+
+	UCapsuleComponent* Capsule =OwnerCharacter->GetCapsuleComponent();
+
+	if (!ASC || !Capsule)
+	{
+		return;
+	}
+
+	const bool bShouldPhase =ASC->HasMatchingGameplayTag(
+			FAGameplayTags::Get().Rule_Trade_WallPhase);
+
+	const ECollisionResponse DesiredResponse =bShouldPhase ? ECR_Ignore : ECR_Block;
+
+	if (Capsule->GetCollisionResponseToChannel(FACollision::PhaseWall) != DesiredResponse)
+	{
+		SetWallPhaseActive(bShouldPhase);
+	}
 }
 
 void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount)
@@ -156,52 +195,19 @@ void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag,
   void UFACharacterStatusComponent::SetGhostVisualActive(
       bool bActive)
   {
-      // [Z44 디버그 로그 추가]
-      UE_LOG(
-          LogTemp,
-          Warning,
-          TEXT("[Z44][Visual] Start: Owner=%s, Active=%s"),
-          *GetNameSafe(OwnerCharacter),
-          bActive ? TEXT("true") : TEXT("false"));
-
       if (!OwnerCharacter)
       {
-          UE_LOG(
-              LogTemp,
-              Error,
-              TEXT("[Z44][Visual] Failed: OwnerCharacter is null"));
           return;
       }
 
-      USkeletalMeshComponent* MeshComponent =
-          OwnerCharacter->GetMesh();
-
+      USkeletalMeshComponent* MeshComponent =OwnerCharacter->GetMesh();
       if (!MeshComponent)
       {
-          UE_LOG(
-              LogTemp,
-              Error,
-              TEXT("[Z44][Visual] Failed: MeshComponent is null, Owner=%s"),
-              *GetNameSafe(OwnerCharacter));
           return;
       }
-
-      const int32 SlotCount =
-          MeshComponent->GetNumMaterials();
-
-      UE_LOG(
-          LogTemp,
-          Warning,
-          TEXT("[Z44][Visual] Mesh=%s, SlotCount=%d"),
-          *GetNameSafe(MeshComponent),
-          SlotCount);
-
+      const int32 SlotCount =MeshComponent->GetNumMaterials();
       if (SlotCount <= 0)
       {
-          UE_LOG(
-              LogTemp,
-              Error,
-              TEXT("[Z44][Visual] Failed: No material slots"));
           return;
       }
 
@@ -210,105 +216,75 @@ void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag,
           GhostDynamicMaterials.Reset();
           GhostDynamicMaterials.SetNum(SlotCount);
 
-          for (int32 SlotIndex = 0;
-               SlotIndex < SlotCount;
-               ++SlotIndex)
+          for (int32 SlotIndex = 0;SlotIndex < SlotCount;++SlotIndex)
           {
-              UMaterialInterface* OriginalMaterial =
-                  MeshComponent->GetMaterial(SlotIndex);
+              UMaterialInterface* OriginalMaterial =MeshComponent->GetMaterial(SlotIndex);
 
-              // [Z44 디버그 로그 추가]
-              UE_LOG(
-                  LogTemp,
-                  Warning,
-                  TEXT("[Z44][Visual] Slot=%d, BeforeMaterial=%s"),
-                  SlotIndex,
-                  *GetNameSafe(OriginalMaterial));
-
-              UMaterialInstanceDynamic* DynamicMaterial =
-                  MeshComponent->CreateDynamicMaterialInstance(
-                      SlotIndex);
+              UMaterialInstanceDynamic* DynamicMaterial =MeshComponent->CreateDynamicMaterialInstance(SlotIndex);
 
               if (!DynamicMaterial)
               {
-                  UE_LOG(
-                      LogTemp,
-                      Error,
-                      TEXT("[Z44][Visual] Slot=%d, MID creation failed"),
-                      SlotIndex);
                   continue;
               }
 
-              GhostDynamicMaterials[SlotIndex] =
-                  DynamicMaterial;
+              GhostDynamicMaterials[SlotIndex] =DynamicMaterial;
 
-              DynamicMaterial->SetScalarParameterValue(
-                  TEXT("GhostOpacity"),
-                  GhostActiveOpacity);
-
-              UMaterialInterface* AppliedMaterial =
-                  MeshComponent->GetMaterial(SlotIndex);
-
-              // [Z44 디버그 로그 추가]
-              UE_LOG(LogTemp,Warning,TEXT("[Z44][Visual] Slot=%d, MID=%s, AppliedMaterial=%s, Parameter=GhostOpacity,Value=%.3f"),
-                  SlotIndex,
-                  *GetNameSafe(DynamicMaterial),
-                  *GetNameSafe(AppliedMaterial),
-                  GhostActiveOpacity);
+              DynamicMaterial->SetScalarParameterValue(TEXT("GhostOpacity"),GhostActiveOpacity);
+              UMaterialInterface* AppliedMaterial =MeshComponent->GetMaterial(SlotIndex);
           }
-
-          UE_LOG(
-              LogTemp,
-              Warning,
-              TEXT("[Z44][Visual] Ghost activation completed"));
-
           return;
       }
 
       if (GhostDynamicMaterials.Num() == 0)
       {
-          UE_LOG(
-              LogTemp,
-              Warning,
-              TEXT("[Z44][Visual] Restore skipped: No MID was created"));
-
           return;
       }
 
-      for (int32 SlotIndex = 0;
-           SlotIndex < GhostDynamicMaterials.Num();
-           ++SlotIndex)
+      for (int32 SlotIndex = 0;SlotIndex < GhostDynamicMaterials.Num();++SlotIndex)
       {
-          UMaterialInstanceDynamic* DynamicMaterial =
-              GhostDynamicMaterials[SlotIndex];
+	      UMaterialInstanceDynamic* DynamicMaterial =GhostDynamicMaterials[SlotIndex];
 
-          if (!DynamicMaterial)
-          {
-              UE_LOG(
-                  LogTemp,
-                  Error,
-                  TEXT("[Z44][Visual] Restore failed: Slot=%d MID is null"),
-                  SlotIndex);
-              continue;
-          }
+      	if (!DynamicMaterial)
+      	{
+      		continue;
+      	}
 
-          DynamicMaterial->SetScalarParameterValue(
-              TEXT("GhostOpacity"),
-              1.0f);
-
-          UE_LOG(
-              LogTemp,
-              Warning,
-              TEXT("[Z44][Visual] Restored: Slot=%d, MID=%s, GhostOpacity=1.000"),
-              SlotIndex,
-              *GetNameSafe(DynamicMaterial));
+      	DynamicMaterial->SetScalarParameterValue(TEXT("GhostOpacity"),1.0f);
       }
-
-      UE_LOG(
-          LogTemp,
-          Warning,
-          TEXT("[Z44][Visual] Ghost deactivation completed"));
   }
+
+void UFACharacterStatusComponent::HandleWallPhaseRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+
+	SetWallPhaseActive(NewCount > 0);
+}
+
+void UFACharacterStatusComponent::SetWallPhaseActive(bool bActive)
+{
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	UCapsuleComponent* Capsule =OwnerCharacter->GetCapsuleComponent();
+
+	if (!Capsule)
+	{
+		return;
+	}
+
+	Capsule->SetCollisionResponseToChannel(FACollision::PhaseWall,
+		bActive ? ECR_Ignore : ECR_Block);
+	
+	UE_LOG(LogTemp,Warning,
+	 TEXT("[Z46] Character=%s, Active=%s, PhaseWallResponse=%d"),
+	 *GetNameSafe(OwnerCharacter),
+	 bActive ? TEXT("true") : TEXT("false"),
+	 static_cast<int32>(
+		 Capsule->GetCollisionResponseToChannel(
+			 FACollision::PhaseWall)));
+}
 
 void UFACharacterStatusComponent::ToggleInputFlip()
 {

@@ -80,9 +80,10 @@ protected:
 	 * InfectDuration Attribute(= 저항 0 기준 시간, 기본 5초)에 곱한다. 기본 3.0 이면 최대 15초.
 	 * 저항은 감염을 취소하지 못한다 — 구조자가 도착할 시간을 버는 수단이다.
 	 */
+	/*
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Grab", meta = (ClampMin = "1.0"))
 	float MaxResistTimeMultiplier = 3.0f;
-
+	*/
 	/**
 	 * 감염 진행 누적과 거리 이탈 검사를 함께 도는 서버 틱 주기(초).
 	 * 게이지는 클라이언트가 속도로 외삽하므로 이 값이 곧 게이지의 부드러움은 아니다.
@@ -124,6 +125,14 @@ private:
 
 	/** 저항이 0 일 때의 감염 시간(초). 포획 시작 시 InfectDuration Attribute 에서 받아 둔다. */
 	float BaseInfectDuration = 0.0f;
+	
+	/**
+	 * 최대 저항 시 감염 시간 배율.
+	 *
+	 * 포획 시작 시 MaxResistTimeMultiplier Attribute에서 저장한다.
+	 * 포획 도중 GE가 제거되어도 현재 포획의 시간이 갑자기 바뀌지 않는다.
+	 */
+	float CapturedMaxResistTimeMultiplier = 1.0f;
 
 	/** 지금의 초당 진행 속도. 게이지로 내보낼 값이라 매 틱 갱신한다. */
 	float CurrentInfectRate = 0.0f;

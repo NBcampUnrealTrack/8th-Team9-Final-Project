@@ -12,6 +12,12 @@ class UGameplayEffect;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
 struct FGameplayTag;
 
+namespace FACollision
+{
+	// Config/DefaultEngine.ini의 PhaseWall 채널과 동일해야 한다.
+	constexpr ECollisionChannel PhaseWall =ECC_GameTraceChannel1;
+}
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class FALLINGAPART_API UFACharacterStatusComponent : public UActorComponent
 {
@@ -25,6 +31,8 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	
+	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 	
 private:
 	UFUNCTION()
@@ -41,11 +49,18 @@ private:
 
 	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
 	void SetGhostVisualActive(bool bActive);
+	
+	/** Z46 Gameplay Tag 추가·제거 이벤트를 처리한다. */
+	void HandleWallPhaseRuleChanged(const FGameplayTag Tag,int32 NewCount);
+	/** 캐릭터 캡슐의 PhaseWall 충돌 응답을 변경한다. */
+	void SetWallPhaseActive(bool bActive);
 
 	/** 정상/반전 구간을 5초마다 전환한다. 서버가 상태 태그를 복제한다. */
 	void ToggleInputFlip();
 
 	void SetInputFlipActive(bool bActive);
+	
+	
 	
 	UAbilitySystemComponent* GetOwnerAbilitySystem() const;
 	

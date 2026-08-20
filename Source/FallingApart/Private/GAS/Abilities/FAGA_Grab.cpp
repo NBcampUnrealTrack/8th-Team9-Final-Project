@@ -71,6 +71,9 @@ void UFAGA_Grab::ActivateAbility(
 	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 포획의 진행도가 남아 있으면 안 된다.
 	InfectProgress = 0.0f;
 	bInfectPaused = false;
+	
+	// 실제 포획 성공 시 Attribute 값으로 다시 설정된다.
+	CapturedMaxResistTimeMultiplier = 1.0f;
 
 	bGrabImpactResolved = false;
 	GrabbedVictim.Reset();
@@ -218,6 +221,16 @@ void UFAGA_Grab::ResolveGrabAttempt()
 
 	BaseInfectDuration = InfectDuration;
 	CurrentInfectRate = 1.0f / BaseInfectDuration;
+	
+	float ResistTimeMultiplier =SourceASC->GetNumericAttribute(UFAAttributeSet::GetMaxResistTimeMultiplierAttribute());
+	
+	if (ResistTimeMultiplier < 1.0f)
+	{
+		ResistTimeMultiplier = 3.0f;
+	}
+
+	// 포획 도중 GE 값이 바뀌어도 이번 포획에는 시작 시점 값을 사용한다.
+	CapturedMaxResistTimeMultiplier =ResistTimeMultiplier;
 
 	ZombieChar->GetWorld()->GetTimerManager().SetTimer(
 		GrabTickHandle,
@@ -324,7 +337,8 @@ void UFAGA_Grab::TickGrab()
 	// 저항이 셀수록 감염이 느려진다: 저항 0 이면 BaseInfectDuration, 최대면 × MaxResistTimeMultiplier.
 	// 저항 강도는 여기서 감쇠시킨다 — 손을 놓으면 알아서 0 으로 돌아온다.
 	const float ResistLevel = GrabbedVictim->UpdateResistLevel(GrabTickInterval);
-	const float CurrentDuration = FMath::Max(0.1f, BaseInfectDuration * FMath::Lerp(1.0f, MaxResistTimeMultiplier, ResistLevel));
+	const float CurrentDuration = FMath::Max(0.1f,BaseInfectDuration 
+		*FMath::Lerp(1.0f,CapturedMaxResistTimeMultiplier,ResistLevel));
 
 	CurrentInfectRate = 1.0f / CurrentDuration;
 	InfectProgress += GrabTickInterval * CurrentInfectRate;
