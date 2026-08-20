@@ -6,6 +6,7 @@
 #include "OnlineSessionSettings.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
+#include "Network/FAOnlineBeaconClient.h"
 #include "Online/OnlineSessionNames.h"
 
 DEFINE_LOG_CATEGORY(LogFAOSS);
@@ -14,9 +15,9 @@ namespace
 {
 	const FName ProjectSettingKey(TEXT("SPARTA_PROJECT")); //480 세션구분용
 	const FString ProjectSettingValue(TEXT("FALLING_APART")); //480 세션구분용
-	const FName ServerNameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
-	const FName ServerHasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
-	const FName ServerPasswordSettingKey(TEXT("SERVER_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
+	const FName NameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
+	const FName HasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
+
 
 	EFASessionRequestResult ConvertJoinResult(EOnJoinSessionCompleteResult::Type Result)
 	{
@@ -107,6 +108,7 @@ void UFAOnlineSessionSubsystem::Deinitialize()
 	ClearPendingMatchContext();
 	LastSessionSearch.Reset();
 	LastSessionSettings.Reset();
+	ClearJoinAuthorizationState();
 	Super::Deinitialize();
 }
 
@@ -153,7 +155,7 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	LastSessionSettings->bUsesPresence = true;//내 상태를 플랫폼에 공개할것인지 여부 (친구창에 공개 등)
 	LastSessionSettings->bUseLobbiesIfAvailable = true;// 스팀 API구조 문제로, 반드시 로비 기능을 활성화해야한다고함
 	
-	// STEAM AppID480에서 구분을 위한 고유 키값
+	// STEAM AppID 480에서 구분을 위한 고유 키값
 	LastSessionSettings->Set(ProjectSettingKey, ProjectSettingValue, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
 	// 검색 결과가 처음부터 로비 맵을 나타내도록 기본 맵 패키지명을 광고한다.
@@ -168,14 +170,13 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		FString(TEXT("Lobby")),
 		EOnlineDataAdvertisementType::ViaOnlineService);
 
-	LastSessionSettings->Set(ServerNameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
-	if (!Password.IsEmpty())
-	{
-		//Password IsEmpty여부로 키 유무 처리.
-		LastSessionSettings->Set(ServerHasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
-		LastSessionSettings->Set(ServerPasswordSettingKey, Password, EOnlineDataAdvertisementType::ViaOnlineService);
-		SetHostPassword(Password);
-	}
+	LastSessionSettings->Set(NameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
+
+
+	SetHostPassword(Password);
+	LastSessionSettings->Set(HasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(SETTING_BEACONPORT, DEFAULT_BEACON_PORT, EOnlineDataAdvertisementType::ViaOnlineService);
+
 	
 	OperationState = ESessionOperationState::Creating;
 	if(!SessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings))
@@ -245,7 +246,7 @@ void UFAOnlineSessionSubsystem::FindSession(int32 MaxSearchResults)
 
 }
 
-void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult, const FString& Password)
+void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& SessionResult)
 {
 	if (OperationState != ESessionOperationState::Idle)
 	{
@@ -261,27 +262,6 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 	if (!SessionResult.IsValid())
 	{
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidSessionResult, FString());
-		return;
-	}
-
-	// 비밀번호가 있다면, 클라이언트에서는 1차적으로 비밀번호 입력만을 체크.
-	bool bHasPassword;
-	SessionResult.Session.SessionSettings.Get(ServerHasPasswordSettingKey, bHasPassword);
-	if (bHasPassword && Password.IsEmpty())
-	{
-		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidPassword, FString());
-		return;
-	}
-	
-	/**
-	 *TODO : 클라이언트에서 접속전 패스워드 확인 및 세션설정의 평문 암호 제거.
-	 *OnlineBeacon등을 이용한 검증 방식을 검토
-	 */
-	FString ServerPassword;
-	SessionResult.Session.SessionSettings.Get(ServerPasswordSettingKey, ServerPassword);
-	if (Password.IsEmpty() || ServerPassword != Password)
-	{
-		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidPassword, FString());
 		return;
 	}
 
@@ -569,6 +549,10 @@ void UFAOnlineSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool 
 	}
 	MultiplayerOnCreateSessionComplete.Broadcast(
 		bWasSuccessful ? EFASessionRequestResult::Success : EFASessionRequestResult::RequestFailed);
+	if (bWasSuccessful == false)
+	{
+		ClearJoinAuthorizationState();
+	}
 }
 
 void UFAOnlineSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
@@ -641,10 +625,14 @@ void UFAOnlineSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool
 	{
 		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
 	}
-	// TODO : 세션 재생성 기능 추가
+	
 	MultiplayerOnDestroySessionComplete.Broadcast(bWasSuccessful);
-	ClearHostPassword();
-	ClearPendingMatchContext();
+
+	if (bWasSuccessful)
+	{
+		ClearPendingMatchContext();
+		ClearJoinAuthorizationState();
+	}
 }
 
 void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -769,12 +757,231 @@ void UFAOnlineSessionSubsystem::ClearHostPassword()
 	HostPassword.Empty();
 }
 
-void UFAOnlineSessionSubsystem::SetPendingPassword(const FString& Password)
+FString UFAOnlineSessionSubsystem::IssueJoinToken(const FUniqueNetIdRepl& NetId)
 {
-	PendingPassword = Password;
+	if (!NetId.IsValid())
+		return FString();
+	
+	//토큰 만료 처리는 매 틱이나 주기가 아닌 발급/소모시마다만 처리해도 문제없음.
+	RemoveExpiredJoinToken();
+
+	
+	// MVP 토큰. 상용 보안 수준이면 암호학적 난수 사용을 고려한다.
+	const FString Token =
+		FGuid::NewGuid().ToString(EGuidFormats::Digits);
+
+	FFAJoinAuthorization Authorization;
+	Authorization.PlayerNetId = NetId;
+	Authorization.ExpirationTime = FPlatformTime::Seconds() + 20.0; //토큰 유지기간 = 20초.
+
+	ServerPendingJoinTokens.Add(Token, MoveTemp(Authorization));
+
+	return Token;
+}
+
+bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const FUniqueNetIdRepl& NetId)
+{
+	//토큰 만료 처리는 매 틱이나 주기가 아닌 발급/소모시마다만 처리해도 문제없음.
+	RemoveExpiredJoinToken();
+
+	FFAJoinAuthorization* Authorization =
+		ServerPendingJoinTokens.Find(JoinToken);
+
+	if (!Authorization)
+	{
+		return false;
+	}
+
+	const bool bSamePlayer =
+		Authorization->PlayerNetId == NetId;
+
+	// 성공 여부와 관계없이 재사용을 막는다.
+	ServerPendingJoinTokens.Remove(JoinToken);
+
+	return bSamePlayer;
+}
+
+void UFAOnlineSessionSubsystem::RemoveExpiredJoinToken()
+{
+	const double CurrentTime = FPlatformTime::Seconds();
+
+	for (auto It = ServerPendingJoinTokens.CreateIterator();
+		 It;
+		 ++It)
+	{
+		if (It.Value().ExpirationTime <= CurrentTime)
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void UFAOnlineSessionSubsystem::CleanupActiveOnlineBeacon()
+{
+	if (AFAOnlineBeaconClient* Beacon = ActiveOnlineBeacon.Get())
+	{
+		Beacon->OnVerificationComplete.RemoveAll(this);
+		Beacon->DestroyBeacon();
+	}
+	
+	ActiveOnlineBeacon = nullptr;
+	PendingPassword.Reset();
+}
+
+void UFAOnlineSessionSubsystem::CompleteOnlineVerificationFailure()
+{
+	// InitClient실패 또는 OnFailure 중복 방지.
+	if (OperationState != ESessionOperationState::Authenticating)
+	{
+		return;
+	}
+	
+	// Verification실패에 대한 처리.
+	CleanupActiveOnlineBeacon();
+
+	OperationState = ESessionOperationState::Idle;
+	PendingJoinSearchResult = FOnlineSessionSearchResult();
+	ClientPendingJoinToken.Reset();
+
+	MultiplayerOnJoinSessionComplete.Broadcast(
+		EFASessionRequestResult::RequestFailed,
+		FString());
+}
+
+void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
+	const FOnlineSessionSearchResult& SessionResult,
+	const FString& Password)
+{
+	if (OperationState != ESessionOperationState::Idle)
+	{
+		MultiplayerOnJoinSessionComplete.Broadcast(
+			EFASessionRequestResult::Busy,
+			FString());
+
+		return;
+	}
+
+	FString BeaconConnectString;
+
+	if (!SessionInterface.IsValid() ||
+		!SessionInterface->GetResolvedConnectString(
+			SessionResult,
+			NAME_BeaconPort,
+			BeaconConnectString))
+	{
+		MultiplayerOnJoinSessionComplete.Broadcast(
+			EFASessionRequestResult::CouldNotRetrieveAddress,
+			FString());
+
+		return;
+	}
+
+	PendingJoinSearchResult = SessionResult;
+	OperationState = ESessionOperationState::Authenticating;
+
+	UWorld* World = GetWorld();
+
+	//임시 비컨 객체 생성하여 사용함
+	ActiveOnlineBeacon =
+		World
+		? World->SpawnActor<AFAOnlineBeaconClient>()
+		: nullptr;
+
+	if (!ActiveOnlineBeacon)
+	{
+		CompleteOnlineVerificationFailure();
+		return;
+	}
+
+	ActiveOnlineBeacon->OnVerificationComplete.AddUObject(
+		this,
+		&ThisClass::HandlePasswordVerificationComplete);
+	
+	//비밀번호를 저장해두면 비컨이 연결될때 자동으로 검증 시도 및 콜백에서 결과 반환함.
+	ActiveOnlineBeacon->SetPasswordForVerification(Password);
+
+	FURL BeaconURL(
+		nullptr,
+		*BeaconConnectString,
+		TRAVEL_Absolute);
+
+	if (!ActiveOnlineBeacon->InitClient(BeaconURL))
+	{
+		CompleteOnlineVerificationFailure();
+	}
+}
+
+void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPasswordVerifyResult Result,
+	const FString& JoinToken)
+{
+	// 중복 방지.
+	if (OperationState != ESessionOperationState::Authenticating)
+	{
+		return;
+	}
+	
+	CleanupActiveOnlineBeacon();
+	
+	OperationState = ESessionOperationState::Idle;
+
+	if (Result != EFABeaconPasswordVerifyResult::Success)
+	{
+		const EFASessionRequestResult SessionResult =
+			Result == EFABeaconPasswordVerifyResult::InvalidPassword
+			? EFASessionRequestResult::InvalidPassword
+			: EFASessionRequestResult::RequestFailed;
+
+		MultiplayerOnJoinSessionComplete.Broadcast(
+			SessionResult,
+			FString());
+
+		return;
+	}
+
+	ClientPendingJoinToken = JoinToken;
+
+	// 여기서 처음으로 OnlineSession에 참가한다.
+	JoinSession(PendingJoinSearchResult);
+}
+
+void UFAOnlineSessionSubsystem::SaveLoginUserId(const FUniqueNetIdRepl& UserId)
+{
+	if (AuthenticatedMemberIds.Contains(UserId) == false)
+		AuthenticatedMemberIds.Add(UserId);
+}
+
+bool UFAOnlineSessionSubsystem::IsAuthenticatedUserId(const FUniqueNetIdRepl& UserId) const
+{
+	return AuthenticatedMemberIds.Contains(UserId);
+}
+
+void UFAOnlineSessionSubsystem::RemoveLogoutUserId(const FUniqueNetIdRepl& UserId)
+{
+	if (AuthenticatedMemberIds.Contains(UserId))
+		AuthenticatedMemberIds.Remove(UserId);
+}
+
+void UFAOnlineSessionSubsystem::ClearJoinAuthorizationState()
+{
+	HostPassword.Reset();
+	PendingPassword.Reset();
+	ClientPendingJoinToken.Reset();
+
+	PendingJoinSearchResult =
+		FOnlineSessionSearchResult();
+
+	ServerPendingJoinTokens.Empty();
+	AuthenticatedMemberIds.Empty();
+
+	CleanupActiveOnlineBeacon();
 }
 
 FString& UFAOnlineSessionSubsystem::GetPendingPassword()
 {
 	return PendingPassword;
+}
+
+FString& UFAOnlineSessionSubsystem::GetPendingJoinToken()
+{
+	return ClientPendingJoinToken;
 }
