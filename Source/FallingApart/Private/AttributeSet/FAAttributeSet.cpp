@@ -30,6 +30,8 @@ UFAAttributeSet::UFAAttributeSet()
 	// 10.0 → 5.0. 이제 이 값은 '인질이 전혀 저항하지 않았을 때' 의 감염 시간이다.
 	// 저항(WASD 연타)이 최대면 UFAGA_Grab::MaxResistTimeMultiplier 만큼 늘어난다 — 기본 3배라 15초.
 	InitInfectDuration(5.0f);
+	// 일반 포획은 최대 저항 시 기본 감염 시간의 3배.
+	InitMaxResistTimeMultiplier(3.0f);
 	InitRescueDuration(0.0f);
 	InitContestGauge(50.0f);
 }
@@ -89,6 +91,12 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 		// 상한은 기본값(5)보다 위여야 한다 — 같으면 '감염 시간 증가' 계열 룰이 통째로 무효가 된다.
 		// 여기서 다루는 건 저항 0 기준값이라, 실제 최대 감염 시간은 여기에 저항 배수가 한 번 더 곱해진다.
 		NewValue = FMath::Clamp(NewValue, 0.5f, 15.0f);
+	}
+	else if (Attribute == GetMaxResistTimeMultiplierAttribute())
+	{
+		// 최소 1배: 최대 저항이 감염을 오히려 빠르게 만들면 안 된다.
+		// 상한 10배는 잘못된 GE 설정에 대한 안전장치.
+		NewValue = FMath::Clamp(NewValue, 1.0f, 10.0f);
 	}
 	else if (Attribute == GetRescueDurationAttribute())
 	{
@@ -164,6 +172,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	else if (ChangedAttribute == GetInfectDurationAttribute())
 	{
 		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 15.0f));
+	}  
+	else if (ChangedAttribute ==GetMaxResistTimeMultiplierAttribute())
+	{
+		SetMaxResistTimeMultiplier(FMath::Clamp(GetMaxResistTimeMultiplier(),1.0f,10.0f));
 	}
 	else if (ChangedAttribute == GetRescueDurationAttribute())
 	{
@@ -193,6 +205,7 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RescueDuration, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, ContestGauge, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RuleJumpZVelocity, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,COND_None,REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -252,6 +265,11 @@ void UFAAttributeSet::OnRep_GrabRange(const FGameplayAttributeData& OldValue)
 void UFAAttributeSet::OnRep_InfectDuration(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, InfectDuration, OldValue);
+}
+
+void UFAAttributeSet::OnRep_MaxResistTimeMultiplier(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,OldValue);
 }
 
 void UFAAttributeSet::OnRep_RescueDuration(const FGameplayAttributeData& OldValue)

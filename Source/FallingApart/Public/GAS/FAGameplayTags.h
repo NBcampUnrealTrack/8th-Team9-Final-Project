@@ -157,6 +157,12 @@ public:
 	
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
+	
+	/* Z45 즉살 이빨 . 감염 시간 1초, 최대 저항 5초, 이동속도 -80% */
+	FGameplayTag Rule_Trade_Instant;
+	
+	/** Z46 위상 이동 — PhaseWall 충돌 벽만 통과 */
+	FGameplayTag Rule_Trade_WallPhase;
 
 #pragma endregion
 

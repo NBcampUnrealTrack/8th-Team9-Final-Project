@@ -83,6 +83,8 @@ void FAGameplayTags::AddAllTags()
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 6초"));
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
+	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
+	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
 #pragma endregion
 

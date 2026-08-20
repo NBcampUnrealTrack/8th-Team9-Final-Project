@@ -124,6 +124,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)
+	
+  /**
+   * 최대 저항 상태에서 감염 시간이 늘어나는 배율.
+   *
+   * 기본값 3.0:
+   * InfectDuration이 5초라면 최대 저항에서 15초.
+   */
+  UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_MaxResistTimeMultiplier,Category = "Attribute|Grab")
+	FGameplayAttributeData MaxResistTimeMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, MaxResistTimeMultiplier)
 
 	// 구출 QTE 진입 선딜레이 기본값 0.0초
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RescueDuration, Category = "Attribute|Rescue")
@@ -174,6 +184,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_InfectDuration(const FGameplayAttributeData& OldValue);
+	
+	UFUNCTION()
+	void OnRep_MaxResistTimeMultiplier(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
 	void OnRep_RescueDuration(const FGameplayAttributeData& OldValue);
