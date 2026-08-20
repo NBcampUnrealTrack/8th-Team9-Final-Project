@@ -4,6 +4,8 @@
 #include "Game/FALobbyGameMode.h"
 
 #include "Game/FALobbyGameState.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
+#include "Kismet/GameplayStatics.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
 #include "Player/FALobbyPlayerController.h"
@@ -27,13 +29,24 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	if (!ErrorMessage.IsEmpty())
 		return;
+	if (UniqueId == OnlineSessionSubsystem->GetLocalUniqueNetId())
+		return;
+	
+	//TODO : 오류 메세지 코드로 분류
 	
 	if (bGameStartCommitted)
 	{
 		ErrorMessage = TEXT("게임이 이미 시작하였습니다.");
 		return;
 	}
-	// Options나 입장 Address속성으로 추가작업
+	
+	FString GuestPassword = UGameplayStatics::ParseOption(Options, TEXT("Password"));
+	FString DecodedPassword = FGenericPlatformHttp::UrlDecode(GuestPassword);
+	if (OnlineSessionSubsystem->ValidateHostPassword(DecodedPassword) == false)
+	{
+		ErrorMessage = TEXT("Invalid Password");
+		return;
+	}
 }
 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
@@ -70,6 +83,28 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		CancelGameCountdown();
 
 	EvaluateLobby();
+}
+
+FString AFALobbyGameMode::InitNewPlayer(
+	APlayerController* NewPlayerController,
+	const FUniqueNetIdRepl& UniqueId,
+	const FString& Options, 
+	const FString& Portal)
+{
+	FString ErrorMessage = Super::InitNewPlayer(
+	   NewPlayerController,
+	   UniqueId,
+	   Options,
+	   Portal);
+	if (ErrorMessage.IsEmpty() == false)
+		return ErrorMessage;
+	
+	// UGameplayStatics::ParseOption로 접속 URL의 파라미터 파싱이 가능함.
+	FString NewPlayerNickname = UGameplayStatics::ParseOption(Options, TEXT("Nickname"));
+	NewPlayerNickname = SanitizeNickname(NewPlayerController, NewPlayerNickname);
+	SetPlayerNickname(NewPlayerController, NewPlayerNickname);
+	
+	return FString();
 }
 
 void AFALobbyGameMode::SetPlayerReady(APlayerController* PlayerController, bool bReady)
@@ -384,6 +419,39 @@ void AFALobbyGameMode::RollbackGameStart()
 AFALobbyGameState* AFALobbyGameMode::GetLobbyGameState() const
 {
 	return GetGameState<AFALobbyGameState>();
+}
+
+FString AFALobbyGameMode::SanitizeNickname(APlayerController* NewPlayerController, FString Nickname)
+{
+	TArray<FString> PlayerNicknames;
+	for (auto ExistingPlayerState : GetLobbyGameState()->PlayerArray)
+	{
+		//자신 제외
+		if (NewPlayerController->GetPlayerState<APlayerState>() == ExistingPlayerState)
+			continue;
+		PlayerNicknames.Add(ExistingPlayerState->GetPlayerName());
+	}
+	bool IsSanitized = false;
+	int32 DupeCount = 2;
+	FString SanitizedNickname = Nickname;
+	while (IsSanitized == false)
+	{
+		if (PlayerNicknames.Contains(SanitizedNickname))
+		{
+			SanitizedNickname = Nickname + FString::Printf(TEXT("_%d"), DupeCount);
+			DupeCount++;
+			continue;
+		}
+		
+		IsSanitized = true;
+	}
+	return SanitizedNickname;
+}
+
+void AFALobbyGameMode::SetPlayerNickname(APlayerController* NewPlayerController, FString NewNickname)
+{
+	APlayerState* NewPlayerState = NewPlayerController->GetPlayerState<APlayerState>();
+	NewPlayerState->SetPlayerName(NewNickname);
 }
 
 void AFALobbyGameMode::RequestStartCountDown(APlayerController* RequestingController)
