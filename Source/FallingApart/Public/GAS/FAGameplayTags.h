@@ -154,6 +154,9 @@ public:
 	// Trade
 	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
 	FGameplayTag Rule_Trade_Frenzy;
+	
+	/* Z44 유령. 반투명, 이동속도 -35% */
+	FGameplayTag Rule_Trade_Ghost;
 
 #pragma endregion
 

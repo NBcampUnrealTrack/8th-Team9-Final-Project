@@ -9,6 +9,8 @@
 #include "GameplayEffect.h"
 #include "GAS/FAGameplayTags.h"
 #include "TimerManager.h"
+#include "Components/SkeletalMeshComponent.h"
+ #include "Materials/MaterialInstanceDynamic.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -50,6 +52,14 @@ void UFACharacterStatusComponent::BeginPlay()
 		
 		// BeginPlay 전에 이미 룰이 적용된 경우에도 즉시 포복시킨다.
 		 HandleCrouchOnlyRuleChanged(CrouchOnlyRuleTag,ASC->GetTagCount(CrouchOnlyRuleTag));
+		
+		const FGameplayTag GhostRuleTag =FAGameplayTags::Get().Rule_Trade_Ghost;
+
+		ASC->RegisterGameplayTagEvent(GhostRuleTag,EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this,&ThisClass::HandleGhostRuleChanged);
+
+		// BeginPlay 전에 Z44가 적용된 경우도 즉시 반영한다.
+		HandleGhostRuleChanged(GhostRuleTag,ASC->GetTagCount(GhostRuleTag));
 	}
 	
 	
@@ -65,10 +75,17 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
+				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
+	
+	// 저게서 
+	SetGhostVisualActive(false);
+	GhostDynamicMaterials.Reset();
 
 	if (OwnerCharacter)
 	{
@@ -118,6 +135,180 @@ void UFACharacterStatusComponent::HandleCrouchOnlyRuleChanged(const FGameplayTag
  		OwnerCharacter->UnCrouch();
  	}
  }
+
+void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	// 델리게이트 시그니처를 맞추기 위한 인자다. ??
+	(void)Tag;
+
+	/*
+	 * NewCount > 0:
+	 * Rule.Trade.Ghost 태그 적용 상태
+	 * → 반투명 처리
+	 *
+	 * NewCount == 0:
+	 * 태그 미적용 또는 제거 상태
+	 * → 완전히 보이는 상태로 복구
+	 */
+	SetGhostVisualActive(NewCount > 0);
+}
+
+  void UFACharacterStatusComponent::SetGhostVisualActive(
+      bool bActive)
+  {
+      // [Z44 디버그 로그 추가]
+      UE_LOG(
+          LogTemp,
+          Warning,
+          TEXT("[Z44][Visual] Start: Owner=%s, Active=%s"),
+          *GetNameSafe(OwnerCharacter),
+          bActive ? TEXT("true") : TEXT("false"));
+
+      if (!OwnerCharacter)
+      {
+          UE_LOG(
+              LogTemp,
+              Error,
+              TEXT("[Z44][Visual] Failed: OwnerCharacter is null"));
+          return;
+      }
+
+      USkeletalMeshComponent* MeshComponent =
+          OwnerCharacter->GetMesh();
+
+      if (!MeshComponent)
+      {
+          UE_LOG(
+              LogTemp,
+              Error,
+              TEXT("[Z44][Visual] Failed: MeshComponent is null, Owner=%s"),
+              *GetNameSafe(OwnerCharacter));
+          return;
+      }
+
+      const int32 SlotCount =
+          MeshComponent->GetNumMaterials();
+
+      UE_LOG(
+          LogTemp,
+          Warning,
+          TEXT("[Z44][Visual] Mesh=%s, SlotCount=%d"),
+          *GetNameSafe(MeshComponent),
+          SlotCount);
+
+      if (SlotCount <= 0)
+      {
+          UE_LOG(
+              LogTemp,
+              Error,
+              TEXT("[Z44][Visual] Failed: No material slots"));
+          return;
+      }
+
+      if (bActive)
+      {
+          GhostDynamicMaterials.Reset();
+          GhostDynamicMaterials.SetNum(SlotCount);
+
+          for (int32 SlotIndex = 0;
+               SlotIndex < SlotCount;
+               ++SlotIndex)
+          {
+              UMaterialInterface* OriginalMaterial =
+                  MeshComponent->GetMaterial(SlotIndex);
+
+              // [Z44 디버그 로그 추가]
+              UE_LOG(
+                  LogTemp,
+                  Warning,
+                  TEXT("[Z44][Visual] Slot=%d, BeforeMaterial=%s"),
+                  SlotIndex,
+                  *GetNameSafe(OriginalMaterial));
+
+              UMaterialInstanceDynamic* DynamicMaterial =
+                  MeshComponent->CreateDynamicMaterialInstance(
+                      SlotIndex);
+
+              if (!DynamicMaterial)
+              {
+                  UE_LOG(
+                      LogTemp,
+                      Error,
+                      TEXT("[Z44][Visual] Slot=%d, MID creation failed"),
+                      SlotIndex);
+                  continue;
+              }
+
+              GhostDynamicMaterials[SlotIndex] =
+                  DynamicMaterial;
+
+              DynamicMaterial->SetScalarParameterValue(
+                  TEXT("GhostOpacity"),
+                  GhostActiveOpacity);
+
+              UMaterialInterface* AppliedMaterial =
+                  MeshComponent->GetMaterial(SlotIndex);
+
+              // [Z44 디버그 로그 추가]
+              UE_LOG(LogTemp,Warning,TEXT("[Z44][Visual] Slot=%d, MID=%s, AppliedMaterial=%s, Parameter=GhostOpacity,Value=%.3f"),
+                  SlotIndex,
+                  *GetNameSafe(DynamicMaterial),
+                  *GetNameSafe(AppliedMaterial),
+                  GhostActiveOpacity);
+          }
+
+          UE_LOG(
+              LogTemp,
+              Warning,
+              TEXT("[Z44][Visual] Ghost activation completed"));
+
+          return;
+      }
+
+      if (GhostDynamicMaterials.Num() == 0)
+      {
+          UE_LOG(
+              LogTemp,
+              Warning,
+              TEXT("[Z44][Visual] Restore skipped: No MID was created"));
+
+          return;
+      }
+
+      for (int32 SlotIndex = 0;
+           SlotIndex < GhostDynamicMaterials.Num();
+           ++SlotIndex)
+      {
+          UMaterialInstanceDynamic* DynamicMaterial =
+              GhostDynamicMaterials[SlotIndex];
+
+          if (!DynamicMaterial)
+          {
+              UE_LOG(
+                  LogTemp,
+                  Error,
+                  TEXT("[Z44][Visual] Restore failed: Slot=%d MID is null"),
+                  SlotIndex);
+              continue;
+          }
+
+          DynamicMaterial->SetScalarParameterValue(
+              TEXT("GhostOpacity"),
+              1.0f);
+
+          UE_LOG(
+              LogTemp,
+              Warning,
+              TEXT("[Z44][Visual] Restored: Slot=%d, MID=%s, GhostOpacity=1.000"),
+              SlotIndex,
+              *GetNameSafe(DynamicMaterial));
+      }
+
+      UE_LOG(
+          LogTemp,
+          Warning,
+          TEXT("[Z44][Visual] Ghost deactivation completed"));
+  }
 
 void UFACharacterStatusComponent::ToggleInputFlip()
 {
