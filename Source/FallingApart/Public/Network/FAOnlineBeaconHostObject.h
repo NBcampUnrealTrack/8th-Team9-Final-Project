@@ -9,7 +9,7 @@
 /**
  * 
  */
-UCLASS()
+UCLASS(Transient, NotPlaceable)
 class FALLINGAPART_API AFAOnlineBeaconHostObject : public AOnlineBeaconHostObject
 {
 	GENERATED_BODY()

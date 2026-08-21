@@ -12,21 +12,22 @@ AFAOnlineBeaconClient::AFAOnlineBeaconClient()
 void AFAOnlineBeaconClient::OnConnected()
 {
 	Super::OnConnected();
-	
+
+	UE_LOG(LogFAOSS, Verbose, TEXT("[BeaconAuth] Connected; requesting password verification"));
+
 	// 편의상 연결과 동시에 검증 시도.
 	ServerVerifyPassword(PendingPassword);
 }
 
-void AFAOnlineBeaconClient::OnFailure(EBeaconFailureReason Reason, FStringView ErrorMessage)
+void AFAOnlineBeaconClient::OnFailure()
 {
-	// ??
-	//Super::OnFailure(Reason, ErrorMessage);
-	
-	Super::OnFailure();
-	
-	PendingPassword.Reset();
+	UE_LOG(LogFAOSS, Warning, TEXT("[BeaconAuth] Beacon connection failed"));
 
-	OnVerificationComplete.Broadcast(
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	Super::OnFailure();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+	CompleteVerification(
 		EFABeaconPasswordVerifyResult::BeaconUnavailable,
 		FString());
 }
@@ -42,6 +43,8 @@ void AFAOnlineBeaconClient::ServerVerifyPassword_Implementation(const FString& P
 	constexpr int32 MaxPasswordLength = 64;
 
 	++VerificationAttemptCount;
+	UE_LOG(LogFAOSS, Verbose, TEXT("[BeaconAuth] Server verification attempt %d; NetId=%s"),
+		VerificationAttemptCount, *GetUniqueId().ToDebugString());
 
 	if (VerificationAttemptCount > MaxAttempts)
 	{
@@ -68,6 +71,7 @@ void AFAOnlineBeaconClient::ServerVerifyPassword_Implementation(const FString& P
 
 	if (!SessionSubsystem)
 	{
+		UE_LOG(LogFAOSS, Error, TEXT("[BeaconAuth] Server session subsystem is unavailable"));
 		ClientPasswordVerificationResult(
 			EFABeaconPasswordVerifyResult::InternalError,
 			FString());
@@ -78,6 +82,8 @@ void AFAOnlineBeaconClient::ServerVerifyPassword_Implementation(const FString& P
 	//서브시스템의 비밀번호 검증 사용
 	if (!SessionSubsystem->ValidateHostPassword(Password))
 	{
+		UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Password rejected; NetId=%s"),
+			*GetUniqueId().ToDebugString());
 		ClientPasswordVerificationResult(
 			EFABeaconPasswordVerifyResult::InvalidPassword,
 			FString());
@@ -92,6 +98,8 @@ void AFAOnlineBeaconClient::ServerVerifyPassword_Implementation(const FString& P
 
 	if (JoinToken.IsEmpty())
 	{
+		UE_LOG(LogFAOSS, Error, TEXT("[BeaconAuth] Join token issuance failed; NetId=%s"),
+			*GetUniqueId().ToDebugString());
 		ClientPasswordVerificationResult(
 			EFABeaconPasswordVerifyResult::InternalError,
 			FString());
@@ -105,8 +113,19 @@ void AFAOnlineBeaconClient::ServerVerifyPassword_Implementation(const FString& P
 void AFAOnlineBeaconClient::ClientPasswordVerificationResult_Implementation(EFABeaconPasswordVerifyResult Result,
 	const FString& JoinToken)
 {
-	//임시저장된 비밀번호를 제거하고 콜백에 결과와 토큰을 전달.
-	PendingPassword.Reset();
+	UE_LOG(LogFAOSS, Verbose, TEXT("[BeaconAuth] Client received verification result: %s"),
+		*UEnum::GetValueAsString(Result));
+	CompleteVerification(Result, JoinToken);
+}
 
+void AFAOnlineBeaconClient::CompleteVerification(EFABeaconPasswordVerifyResult Result, const FString& JoinToken)
+{
+	if (bVerificationCompleted)
+	{
+		return;
+	}
+
+	bVerificationCompleted = true;
+	PendingPassword.Reset();
 	OnVerificationComplete.Broadcast(Result, JoinToken);
 }
