@@ -1122,11 +1122,11 @@ void AFACharacter::UpdateVisionEffects()
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
-	// 안개 틴트와 암전 틴트를 하나로 합쳐서 SceneColorTint 한 번에 적용 — 두 효과가 서로 override 값을 덮어쓰지 않게.
-	const float TintTowardsBlack = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
-	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = TintTowardsBlack > 0.0f;
-	FollowCamera->PostProcessSettings.SceneColorTint =
-		FMath::Lerp(FLinearColor::White, FLinearColor::Black, TintTowardsBlack);
+	// 안개와 암전, 화면을 어둡게 만드는 두 효과를 ColorGain 하나로 합쳐서 적용 — 서로 override 값을 덮어쓰지 않게.
+	const float DarkenAmount = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
+	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = false;
+	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f;
+	FollowCamera->PostProcessSettings.ColorGain = FVector4(1.0f, 1.0f, 1.0f, 1.0f - DarkenAmount);
 
 	// 1인칭 강제 (Vision.ForceFPS)
 	if (bForceFirstPerson && !bIsFirstPerson)

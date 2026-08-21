@@ -3,10 +3,13 @@
 
 #include "Game/FALobbyGameMode.h"
 
+#include "OnlineBeaconHost.h"
 #include "Game/FALobbyGameState.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "Kismet/GameplayStatics.h"
+#include "Network/FAOnlineBeaconHostObject.h"
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "Online/OnlineSessionNames.h"
 #include "Player/FACharacter.h"
 #include "Player/FALobbyPlayerController.h"
 #include "Player/FALobbyPlayerState.h"
@@ -27,12 +30,15 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
                                 FString& ErrorMessage)
 {
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	
 	if (!ErrorMessage.IsEmpty())
 		return;
-	if (UniqueId == OnlineSessionSubsystem->GetLocalUniqueNetId())
-		return;
 	
-	//TODO : 오류 메세지 코드로 분류
+	if (!OnlineSessionSubsystem)
+	{
+		ErrorMessage = TEXT("FA_SESSION_UNAVAILABLE");
+		return;
+	}
 	
 	if (bGameStartCommitted)
 	{
@@ -40,13 +46,27 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 		return;
 	}
 	
-	FString GuestPassword = UGameplayStatics::ParseOption(Options, TEXT("Password"));
-	FString DecodedPassword = FGenericPlatformHttp::UrlDecode(GuestPassword);
-	if (OnlineSessionSubsystem->ValidateHostPassword(DecodedPassword) == false)
+	if (UniqueId.IsValid() == false)
 	{
-		ErrorMessage = TEXT("Invalid Password");
 		return;
 	}
+	//서버장
+	if (IsSessionOwner(UniqueId))
+	{
+		return;
+	}
+	//이미 접속한 유저(Lobby->Match->Lobby)이동시
+	if (OnlineSessionSubsystem->IsAuthenticatedUserId(UniqueId))
+	{
+		return;
+	}
+	
+	FString JoinToken = UGameplayStatics::ParseOption(Options, TEXT("JoinToken"));
+	if (JoinToken.IsEmpty() || OnlineSessionSubsystem->ConsumeJoinToken(JoinToken, UniqueId) == false)
+	{
+		ErrorMessage = TEXT("INVALID_JOIN_TOKEN");
+	}
+	OnlineSessionSubsystem->SaveLoginUserId(UniqueId);
 }
 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
@@ -72,6 +92,10 @@ void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 void AFALobbyGameMode::Logout(AController* Exiting)
 {
 	Super::Logout(Exiting);
+	
+	//TODO : 명시적인 플레이어의 퇴장을 구분하도록 수정.
+	//OnlineSessionSubsystem->RemoveLogoutUserId(Exiting->PlayerState->GetUniqueId());
+	
 	// 준비페이즈, 카운트다운페이즈, 이동페이즈에 대한 처리
 	if (bGameStartCommitted)
 	{
@@ -132,19 +156,33 @@ void AFALobbyGameMode::SetPlayerReady(APlayerController* PlayerController, bool 
 void AFALobbyGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-	if (UGameInstance* GameInstance = GetGameInstance())
-	{ 
-		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
-		if (OnlineSessionSubsystem)
-		{
-			// 매치 준비와 로비 복구의 비동기 완료 결과를 각각 처리한다.
-			PreparedForMatchDelegateHandle = OnlineSessionSubsystem->OnSessionPreparedForMatch.AddUObject(
-				this, &ThisClass::HandleSessionPrepared);
-			
-			ReopenedForLobbyDelegateHandle = OnlineSessionSubsystem->OnSessionReopenedForLobby.AddUObject(
-				this, &ThisClass::HandleSessionReopened);
-		}
+	
+	OnlineSessionSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
+	
+	//OSS없을시 
+	if (!OnlineSessionSubsystem)
+	{
+		UE_LOG(LogFAOSS, Error, TEXT("OnlineSessionSubsystem is nullptr"));
+		return;
 	}
+	
+	if (!StartPasswordBeacon())
+	{
+		UE_LOG(LogFAOSS, Error, TEXT("Password onlineBeacon is unavailable"));
+		
+		OnlineSessionSubsystem->DestroySession();
+
+		return;
+	}
+
+	// 매치 준비와 로비 복구의 비동기 완료 결과를 각각 처리한다.
+	PreparedForMatchDelegateHandle = OnlineSessionSubsystem->OnSessionPreparedForMatch.AddUObject(
+		this, &ThisClass::HandleSessionPrepared);
+	
+	ReopenedForLobbyDelegateHandle = OnlineSessionSubsystem->OnSessionReopenedForLobby.AddUObject(
+		this, &ThisClass::HandleSessionReopened);
+
+	
 	if (AFALobbyGameState* LobbyGameState = GetLobbyGameState())
 	{
 		LobbyGameState->SetSelectedMapId(DefaultMapId);
@@ -154,6 +192,7 @@ void AFALobbyGameMode::BeginPlay()
 
 void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	StopPasswordBeacon();
 	if (OnlineSessionSubsystem)
 	{
 		// GameMode 종료 후 지연 콜백이 호출되지 않도록 두 이벤트를 모두 해제한다.
@@ -162,6 +201,11 @@ void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 	GetWorldTimerManager().ClearTimer(GameStartCountdownTimerHandle);
 	Super::EndPlay(EndPlayReason);
+}
+
+bool AFALobbyGameMode::IsSessionOwner(FUniqueNetIdRepl UniqueNetId)
+{
+	return OnlineSessionSubsystem->GetLocalUniqueNetId() == UniqueNetId;
 }
 
 void AFALobbyGameMode::RefreshLobbyState()
@@ -561,4 +605,61 @@ bool AFALobbyGameMode::IsCountdownActive() const
 	//핸들로 작동중 확인
 	bool bIsCountdownActive = GetWorldTimerManager().IsTimerActive(GameStartCountdownTimerHandle);
 	return bIsCountdownActive;
+}
+
+bool AFALobbyGameMode::StartPasswordBeacon()
+{
+	UWorld* World = GetWorld();
+
+	if (!HasAuthority() || !World)
+	{
+		return false;
+	}
+
+	PasswordBeaconHostObject = World->SpawnActor<AFAOnlineBeaconHostObject>();
+
+	PasswordBeaconHost = World->SpawnActor<AOnlineBeaconHost>();
+
+	if (!PasswordBeaconHostObject || !PasswordBeaconHost)
+	{
+		StopPasswordBeacon();
+		return false;
+	}
+
+	PasswordBeaconHost->ListenPort = DEFAULT_BEACON_PORT;
+
+	// 엔진 테스트 코드와 같은 등록 순서다.
+	PasswordBeaconHost->RegisterHost(
+		PasswordBeaconHostObject);
+
+	if (!PasswordBeaconHost->InitHost())
+	{
+		StopPasswordBeacon();
+		return false;
+	}
+
+	// InitHost 이후 실제 요청을 허용한다.
+	PasswordBeaconHost->PauseBeaconRequests(false);
+	return true;
+}
+
+void AFALobbyGameMode::StopPasswordBeacon()
+{
+	if (PasswordBeaconHost && PasswordBeaconHostObject)
+	{
+		PasswordBeaconHost->UnregisterHost(
+			PasswordBeaconHostObject->GetBeaconType());
+	}
+
+	if (PasswordBeaconHost)
+	{
+		PasswordBeaconHost->DestroyBeacon();
+		PasswordBeaconHost = nullptr;
+	}
+
+	if (PasswordBeaconHostObject)
+	{
+		PasswordBeaconHostObject->Destroy();
+		PasswordBeaconHostObject = nullptr;
+	}
 }
