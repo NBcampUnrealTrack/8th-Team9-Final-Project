@@ -32,46 +32,84 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	
 	if (!ErrorMessage.IsEmpty())
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[PreLoginAuth] Rejected by base PreLogin; Address=%s NetId=%s Error=%s"),
+			*Address, *UniqueId.ToDebugString(), *ErrorMessage);
 		return;
+	}
+
+	if (!OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>()
+			: nullptr;
+	}
 	
 	if (!OnlineSessionSubsystem)
 	{
 		ErrorMessage = TEXT("FA_SESSION_UNAVAILABLE");
+		UE_LOG(LogFAOSS, Error, TEXT("[PreLoginAuth] Rejected: session subsystem unavailable; Address=%s"),
+			*Address);
 		return;
 	}
 	
 	if (bGameStartCommitted)
 	{
-		ErrorMessage = TEXT("게임이 이미 시작하였습니다.");
+		ErrorMessage = TEXT("MATCH_ALREADY_STARTED");
+		UE_LOG(LogFAOSS, Warning, TEXT("[PreLoginAuth] Rejected: match already started; NetId=%s"),
+			*UniqueId.ToDebugString());
 		return;
 	}
 	
-	if (UniqueId.IsValid() == false)
+	if (!UniqueId.IsValid())
 	{
+		ErrorMessage = TEXT("INVALID_UNIQUE_NET_ID");
+		UE_LOG(LogFAOSS, Warning, TEXT("[PreLoginAuth] Rejected: invalid NetId; Address=%s"), *Address);
 		return;
 	}
 	//서버장
 	if (IsSessionOwner(UniqueId))
 	{
+		UE_LOG(LogFAOSS, Verbose, TEXT("[PreLoginAuth] Accepted session owner; NetId=%s"),
+			*UniqueId.ToDebugString());
 		return;
 	}
 	//이미 접속한 유저(Lobby->Match->Lobby)이동시
 	if (OnlineSessionSubsystem->IsAuthenticatedUserId(UniqueId))
 	{
+		UE_LOG(LogFAOSS, Verbose, TEXT("[PreLoginAuth] Accepted existing authenticated member; NetId=%s"),
+			*UniqueId.ToDebugString());
 		return;
 	}
 	
-	FString JoinToken = UGameplayStatics::ParseOption(Options, TEXT("JoinToken"));
-	if (JoinToken.IsEmpty() || OnlineSessionSubsystem->ConsumeJoinToken(JoinToken, UniqueId) == false)
+	const FString JoinToken = UGameplayStatics::ParseOption(Options, TEXT("JoinToken"));
+	if (JoinToken.IsEmpty() || !OnlineSessionSubsystem->ConsumeJoinToken(JoinToken, UniqueId))
 	{
 		ErrorMessage = TEXT("INVALID_JOIN_TOKEN");
+		UE_LOG(LogFAOSS, Warning, TEXT("[PreLoginAuth] Rejected invalid/expired token; NetId=%s HasToken=%s"),
+			*UniqueId.ToDebugString(), JoinToken.IsEmpty() ? TEXT("false") : TEXT("true"));
+		return;
 	}
-	OnlineSessionSubsystem->SaveLoginUserId(UniqueId);
+
+	UE_LOG(LogFAOSS, Log, TEXT("[PreLoginAuth] Accepted one-time token; NetId=%s"),
+		*UniqueId.ToDebugString());
 }
 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+
+	if (OnlineSessionSubsystem && NewPlayer && NewPlayer->PlayerState)
+	{
+		const FUniqueNetIdRepl& PlayerNetId = NewPlayer->PlayerState->GetUniqueId();
+		if (PlayerNetId.IsValid())
+		{
+			OnlineSessionSubsystem->SaveLoginUserId(PlayerNetId);
+			UE_LOG(LogFAOSS, Log, TEXT("[PreLoginAuth] PostLogin authenticated member saved; NetId=%s"),
+				*PlayerNetId.ToDebugString());
+		}
+	}
+
 	//접속시 카운트다운 취소.
 	if (IsCountdownActive())
 		CancelGameCountdown();
@@ -91,10 +129,18 @@ void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 
 void AFALobbyGameMode::Logout(AController* Exiting)
 {
+	const FUniqueNetIdRepl ExitingNetId = Exiting && Exiting->PlayerState
+		? Exiting->PlayerState->GetUniqueId()
+		: FUniqueNetIdRepl();
+
 	Super::Logout(Exiting);
 	
-	//TODO : 명시적인 플레이어의 퇴장을 구분하도록 수정.
-	//OnlineSessionSubsystem->RemoveLogoutUserId(Exiting->PlayerState->GetUniqueId());
+	if (OnlineSessionSubsystem && ExitingNetId.IsValid())
+	{
+		OnlineSessionSubsystem->RemoveLogoutUserId(ExitingNetId);
+		UE_LOG(LogFAOSS, Log, TEXT("[PreLoginAuth] Logout removed authenticated member; NetId=%s"),
+			*ExitingNetId.ToDebugString());
+	}
 	
 	// 준비페이즈, 카운트다운페이즈, 이동페이즈에 대한 처리
 	if (bGameStartCommitted)
@@ -124,7 +170,8 @@ FString AFALobbyGameMode::InitNewPlayer(
 		return ErrorMessage;
 	
 	// UGameplayStatics::ParseOption로 접속 URL의 파라미터 파싱이 가능함.
-	FString NewPlayerNickname = UGameplayStatics::ParseOption(Options, TEXT("Nickname"));
+	FString NewPlayerNickname = FGenericPlatformHttp::UrlDecode(
+		UGameplayStatics::ParseOption(Options, TEXT("Nickname")));
 	NewPlayerNickname = SanitizeNickname(NewPlayerController, NewPlayerNickname);
 	SetPlayerNickname(NewPlayerController, NewPlayerNickname);
 	
@@ -174,6 +221,7 @@ void AFALobbyGameMode::BeginPlay()
 
 		return;
 	}
+	UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Password beacon listening on port %d"), DEFAULT_BEACON_PORT);
 
 	// 매치 준비와 로비 복구의 비동기 완료 결과를 각각 처리한다.
 	PreparedForMatchDelegateHandle = OnlineSessionSubsystem->OnSessionPreparedForMatch.AddUObject(
@@ -198,6 +246,8 @@ void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		// GameMode 종료 후 지연 콜백이 호출되지 않도록 두 이벤트를 모두 해제한다.
 		OnlineSessionSubsystem->OnSessionPreparedForMatch.Remove(PreparedForMatchDelegateHandle);
 		OnlineSessionSubsystem->OnSessionReopenedForLobby.Remove(ReopenedForLobbyDelegateHandle);
+		PreparedForMatchDelegateHandle.Reset();
+		ReopenedForLobbyDelegateHandle.Reset();
 	}
 	GetWorldTimerManager().ClearTimer(GameStartCountdownTimerHandle);
 	Super::EndPlay(EndPlayReason);
@@ -205,7 +255,8 @@ void AFALobbyGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool AFALobbyGameMode::IsSessionOwner(FUniqueNetIdRepl UniqueNetId)
 {
-	return OnlineSessionSubsystem->GetLocalUniqueNetId() == UniqueNetId;
+	return OnlineSessionSubsystem && UniqueNetId.IsValid()
+		&& OnlineSessionSubsystem->GetLocalUniqueNetId() == UniqueNetId;
 }
 
 void AFALobbyGameMode::RefreshLobbyState()
@@ -616,6 +667,8 @@ bool AFALobbyGameMode::StartPasswordBeacon()
 		return false;
 	}
 
+	StopPasswordBeacon();
+
 	PasswordBeaconHostObject = World->SpawnActor<AFAOnlineBeaconHostObject>();
 
 	PasswordBeaconHost = World->SpawnActor<AOnlineBeaconHost>();
@@ -645,19 +698,19 @@ bool AFALobbyGameMode::StartPasswordBeacon()
 
 void AFALobbyGameMode::StopPasswordBeacon()
 {
-	if (PasswordBeaconHost && PasswordBeaconHostObject)
+	if (IsValid(PasswordBeaconHost) && IsValid(PasswordBeaconHostObject))
 	{
 		PasswordBeaconHost->UnregisterHost(
 			PasswordBeaconHostObject->GetBeaconType());
 	}
 
-	if (PasswordBeaconHost)
+	if (IsValid(PasswordBeaconHost))
 	{
 		PasswordBeaconHost->DestroyBeacon();
 		PasswordBeaconHost = nullptr;
 	}
 
-	if (PasswordBeaconHostObject)
+	if (IsValid(PasswordBeaconHostObject))
 	{
 		PasswordBeaconHostObject->Destroy();
 		PasswordBeaconHostObject = nullptr;

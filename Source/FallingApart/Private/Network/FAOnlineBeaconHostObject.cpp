@@ -6,9 +6,8 @@
 #include "Network/FAOnlineBeaconClient.h"
 
 AFAOnlineBeaconHostObject::AFAOnlineBeaconHostObject(const FObjectInitializer& OI)
-	:Super(OI)
+	: Super(OI)
 {
 	ClientBeaconActorClass = AFAOnlineBeaconClient::StaticClass();
-	
-	BeaconTypeName = ClientBeaconActorClass->GetName();
+	BeaconTypeName = AFAOnlineBeaconClient::StaticClass()->GetName();
 }
