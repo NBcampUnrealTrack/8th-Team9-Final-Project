@@ -262,6 +262,7 @@ public:
 	void RemoveExpiredJoinToken();
 	void CleanupActiveOnlineBeacon();
 	void CompleteOnlineVerificationFailure();
+	void ClearClientJoinAuthorization();
 	
 	void VerifyPasswordAndJoin(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
 	
@@ -274,15 +275,13 @@ public:
 	//세션 종료, 메인메뉴로 복귀, 서브시스템 종료등 게임 상태 초기화시 호출하여 초기화
 	void ClearJoinAuthorizationState();
 	
-	FString& GetPendingPassword();
-	FString& GetPendingJoinToken();
+	const FString& GetPendingJoinToken() const;
 	
 	
 private:
+	void ScheduleJoinTokenCleanup();
+
 	FString HostPassword; // 호스트가 검사용으로 가지고있을 패스워드
-	FString PendingPassword; // 클라이언트가 접속시 전달할 패스워드
-	
-	
 	FOnlineSessionSearchResult PendingJoinSearchResult; // 클라이언트 접속할 검색결과 
 	
 	FString ClientPendingJoinToken; // (클라)발급받은 토큰 저장
@@ -290,6 +289,7 @@ private:
 	TArray<FUniqueNetIdRepl> AuthenticatedMemberIds;
 	
 	TMap<FString, FFAJoinAuthorization> ServerPendingJoinTokens; // (서버)발급해둔 토큰 관리 리스트
+	FTimerHandle JoinTokenCleanupTimerHandle;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<AFAOnlineBeaconClient> ActiveOnlineBeacon;

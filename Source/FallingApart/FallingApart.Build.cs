@@ -26,7 +26,7 @@ public class FallingApart : ModuleRules
 		// Stop()/GetAudioComponent() 를 직접 불러 등록을 푼다.
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer",
+			"CoreOnline", "OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer",
 			//스팀 연동을 위한 모듈 포함
 			"OnlineSubsystemSteam"
 		});

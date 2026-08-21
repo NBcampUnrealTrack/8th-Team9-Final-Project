@@ -8,6 +8,7 @@
 #include "OnlineSubsystemUtils.h"
 #include "Network/FAOnlineBeaconClient.h"
 #include "Online/OnlineSessionNames.h"
+#include "TimerManager.h"
 
 DEFINE_LOG_CATEGORY(LogFAOSS);
 
@@ -17,6 +18,17 @@ namespace
 	const FString ProjectSettingValue(TEXT("FALLING_APART")); //480 세션구분용
 	const FName NameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
 	const FName HasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
+
+	TAutoConsoleVariable<float> CVarJoinTokenLifetimeSeconds(
+		TEXT("FA.OSS.JoinTokenLifetimeSeconds"),
+		60.0f,
+		TEXT("Lifetime in seconds for one-time password-authenticated lobby join tokens. Server authoritative."),
+		ECVF_Default);
+
+	FString GetTokenLogId(const FString& Token)
+	{
+		return Token.Left(8);
+	}
 
 
 	EFASessionRequestResult ConvertJoinResult(EOnJoinSessionCompleteResult::Type Result)
@@ -176,6 +188,8 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	SetHostPassword(Password);
 	LastSessionSettings->Set(HasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
 	LastSessionSettings->Set(SETTING_BEACONPORT, DEFAULT_BEACON_PORT, EOnlineDataAdvertisementType::ViaOnlineService);
+	UE_LOG(LogFAOSS, Log, TEXT("[SessionCreate] Requesting lobby; HasPassword=%s BeaconPort=%d MaxPlayers=%d"),
+		Password.IsEmpty() ? TEXT("false") : TEXT("true"), DEFAULT_BEACON_PORT, NumPublicConnections);
 
 	
 	OperationState = ESessionOperationState::Creating;
@@ -185,6 +199,8 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		
 		// CreateSession이 실패했다면 콜백 연결을 해제.
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegateHandle);
+		OnCreateSessionCompleteDelegateHandle.Reset();
+		ClearHostPassword();
 		
 		// 생성 실패를 외부에 알리기 위해 Broadcast
 		MultiplayerOnCreateSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed);
@@ -250,17 +266,20 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 {
 	if (OperationState != ESessionOperationState::Idle)
 	{
+		ClearClientJoinAuthorization();
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::Busy, FString());
 		return;
 	}
 
 	if (!SessionInterface.IsValid())
 	{
+		ClearClientJoinAuthorization();
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidSessionInterface, FString());
 		return;
 	}
 	if (!SessionResult.IsValid())
 	{
+		ClearClientJoinAuthorization();
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidSessionResult, FString());
 		return;
 	}
@@ -268,6 +287,7 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 	const ULocalPlayer* LocalPlayer = GetWorld() ? GetWorld()->GetFirstLocalPlayerFromController() : nullptr;
 	if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
 	{
+		ClearClientJoinAuthorization();
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::InvalidLocalPlayer, FString());
 		return;
 	}
@@ -279,6 +299,8 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 		OperationState = ESessionOperationState::Idle;
 		// 콜백해제, 외부에 알림
 		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
+		JoinSessionCompleteDelegateHandle.Reset();
+		ClearClientJoinAuthorization();
 		MultiplayerOnJoinSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed, FString());
 	}
 }
@@ -511,6 +533,11 @@ ESessionOperationState UFAOnlineSessionSubsystem::GetCurrentOperationState() con
 
 FNamedOnlineSession* UFAOnlineSessionSubsystem::GetCurrentSession() const
 {
+	if (!SessionInterface.IsValid())
+	{
+		return nullptr;
+	}
+
 	FNamedOnlineSession* CurrentNamedSession = SessionInterface->GetNamedSession(NAME_GameSession);
 	if (CurrentNamedSession)
 	{
@@ -549,6 +576,14 @@ void UFAOnlineSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool 
 	}
 	MultiplayerOnCreateSessionComplete.Broadcast(
 		bWasSuccessful ? EFASessionRequestResult::Success : EFASessionRequestResult::RequestFailed);
+	if (bWasSuccessful)
+	{
+		UE_LOG(LogFAOSS, Log, TEXT("[SessionCreate] Completed: Success=true"));
+	}
+	else
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[SessionCreate] Completed: Success=false"));
+	}
 	if (bWasSuccessful == false)
 	{
 		ClearJoinAuthorizationState();
@@ -606,6 +641,7 @@ void UFAOnlineSessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoin
 	{
 		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
 	}
+	JoinSessionCompleteDelegateHandle.Reset();
 
 	EFASessionRequestResult SessionResult = ConvertJoinResult(Result);
 	FString ConnectString;
@@ -614,6 +650,13 @@ void UFAOnlineSessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoin
 	{
 		SessionResult = EFASessionRequestResult::CouldNotRetrieveAddress;
 	}
+	if (SessionResult != EFASessionRequestResult::Success)
+	{
+		ClearClientJoinAuthorization();
+	}
+
+	UE_LOG(LogFAOSS, Log, TEXT("[SessionJoin] JoinSession completed: %s; HasConnectString=%s"),
+		*UEnum::GetValueAsString(SessionResult), ConnectString.IsEmpty() ? TEXT("false") : TEXT("true"));
 
 	MultiplayerOnJoinSessionComplete.Broadcast(SessionResult, ConnectString);
 }
@@ -760,35 +803,61 @@ void UFAOnlineSessionSubsystem::ClearHostPassword()
 FString UFAOnlineSessionSubsystem::IssueJoinToken(const FUniqueNetIdRepl& NetId)
 {
 	if (!NetId.IsValid())
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Refused issuance for an invalid NetId"));
 		return FString();
+	}
 	
-	//토큰 만료 처리는 매 틱이나 주기가 아닌 발급/소모시마다만 처리해도 문제없음.
 	RemoveExpiredJoinToken();
 
-	
-	// MVP 토큰. 상용 보안 수준이면 암호학적 난수 사용을 고려한다.
+	// 플레이어당 유효 토큰을 하나만 유지한다. 새 인증은 이전 미사용 토큰을 폐기한다.
+	for (auto It = ServerPendingJoinTokens.CreateIterator(); It; ++It)
+	{
+		if (It.Value().PlayerNetId == NetId)
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	// GUID는 비밀번호 자체를 노출하지 않는 고엔트로피의 1회용 bearer token으로 사용한다.
 	const FString Token =
 		FGuid::NewGuid().ToString(EGuidFormats::Digits);
 
 	FFAJoinAuthorization Authorization;
 	Authorization.PlayerNetId = NetId;
-	Authorization.ExpirationTime = FPlatformTime::Seconds() + 20.0; //토큰 유지기간 = 20초.
+	const double LifetimeSeconds = FMath::Max(
+		1.0,
+		static_cast<double>(CVarJoinTokenLifetimeSeconds.GetValueOnGameThread()));
+	Authorization.ExpirationTime = FPlatformTime::Seconds() + LifetimeSeconds;
 
 	ServerPendingJoinTokens.Add(Token, MoveTemp(Authorization));
+	ScheduleJoinTokenCleanup();
+
+	UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Issued TokenId=%s NetId=%s Lifetime=%.1fs Pending=%d"),
+		*GetTokenLogId(Token), *NetId.ToDebugString(), LifetimeSeconds, ServerPendingJoinTokens.Num());
 
 	return Token;
 }
 
 bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const FUniqueNetIdRepl& NetId)
 {
-	//토큰 만료 처리는 매 틱이나 주기가 아닌 발급/소모시마다만 처리해도 문제없음.
 	RemoveExpiredJoinToken();
+
+	FGuid ParsedToken;
+	if (!NetId.IsValid()
+		|| !FGuid::ParseExact(JoinToken, EGuidFormats::Digits, ParsedToken))
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Rejected malformed token or invalid NetId"));
+		return false;
+	}
 
 	FFAJoinAuthorization* Authorization =
 		ServerPendingJoinTokens.Find(JoinToken);
 
 	if (!Authorization)
 	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Missing or expired TokenId=%s NetId=%s"),
+			*GetTokenLogId(JoinToken), *NetId.ToDebugString());
 		return false;
 	}
 
@@ -797,6 +866,18 @@ bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const
 
 	// 성공 여부와 관계없이 재사용을 막는다.
 	ServerPendingJoinTokens.Remove(JoinToken);
+	ScheduleJoinTokenCleanup();
+
+	if (bSamePlayer)
+	{
+		UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Consumed TokenId=%s NetId=%s Match=true Pending=%d"),
+			*GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
+	}
+	else
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Consumed TokenId=%s NetId=%s Match=false Pending=%d"),
+			*GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
+	}
 
 	return bSamePlayer;
 }
@@ -804,6 +885,7 @@ bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const
 void UFAOnlineSessionSubsystem::RemoveExpiredJoinToken()
 {
 	const double CurrentTime = FPlatformTime::Seconds();
+	int32 RemovedCount = 0;
 
 	for (auto It = ServerPendingJoinTokens.CreateIterator();
 		 It;
@@ -811,9 +893,51 @@ void UFAOnlineSessionSubsystem::RemoveExpiredJoinToken()
 	{
 		if (It.Value().ExpirationTime <= CurrentTime)
 		{
+			UE_LOG(LogFAOSS, Verbose, TEXT("[JoinToken] Expired TokenId=%s NetId=%s"),
+				*GetTokenLogId(It.Key()), *It.Value().PlayerNetId.ToDebugString());
 			It.RemoveCurrent();
+			++RemovedCount;
 		}
 	}
+
+	if (RemovedCount > 0)
+	{
+		UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Removed %d expired token(s); Pending=%d"),
+			RemovedCount, ServerPendingJoinTokens.Num());
+	}
+
+	ScheduleJoinTokenCleanup();
+}
+
+void UFAOnlineSessionSubsystem::ScheduleJoinTokenCleanup()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(JoinTokenCleanupTimerHandle);
+	if (ServerPendingJoinTokens.IsEmpty())
+	{
+		return;
+	}
+
+	double EarliestExpirationTime = TNumericLimits<double>::Max();
+	for (const TPair<FString, FFAJoinAuthorization>& Pair : ServerPendingJoinTokens)
+	{
+		EarliestExpirationTime = FMath::Min(EarliestExpirationTime, Pair.Value.ExpirationTime);
+	}
+
+	const float DelaySeconds = static_cast<float>(FMath::Max(
+		0.01,
+		EarliestExpirationTime - FPlatformTime::Seconds()));
+	World->GetTimerManager().SetTimer(
+		JoinTokenCleanupTimerHandle,
+		this,
+		&ThisClass::RemoveExpiredJoinToken,
+		DelaySeconds,
+		false);
 }
 
 void UFAOnlineSessionSubsystem::CleanupActiveOnlineBeacon()
@@ -825,7 +949,6 @@ void UFAOnlineSessionSubsystem::CleanupActiveOnlineBeacon()
 	}
 	
 	ActiveOnlineBeacon = nullptr;
-	PendingPassword.Reset();
 }
 
 void UFAOnlineSessionSubsystem::CompleteOnlineVerificationFailure()
@@ -840,8 +963,7 @@ void UFAOnlineSessionSubsystem::CompleteOnlineVerificationFailure()
 	CleanupActiveOnlineBeacon();
 
 	OperationState = ESessionOperationState::Idle;
-	PendingJoinSearchResult = FOnlineSessionSearchResult();
-	ClientPendingJoinToken.Reset();
+	ClearClientJoinAuthorization();
 
 	MultiplayerOnJoinSessionComplete.Broadcast(
 		EFASessionRequestResult::RequestFailed,
@@ -861,6 +983,16 @@ void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
 		return;
 	}
 
+	if (!SessionResult.IsValid())
+	{
+		MultiplayerOnJoinSessionComplete.Broadcast(
+			EFASessionRequestResult::InvalidSessionResult,
+			FString());
+		return;
+	}
+
+	ClearClientJoinAuthorization();
+
 	FString BeaconConnectString;
 
 	if (!SessionInterface.IsValid() ||
@@ -875,6 +1007,9 @@ void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
 
 		return;
 	}
+
+	UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Starting password verification; BeaconAddress=%s"),
+		*BeaconConnectString);
 
 	PendingJoinSearchResult = SessionResult;
 	OperationState = ESessionOperationState::Authenticating;
@@ -924,12 +1059,19 @@ void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPass
 	
 	OperationState = ESessionOperationState::Idle;
 
-	if (Result != EFABeaconPasswordVerifyResult::Success)
+	FGuid ParsedJoinToken;
+	const bool bValidSuccessToken = Result == EFABeaconPasswordVerifyResult::Success
+		&& FGuid::ParseExact(JoinToken, EGuidFormats::Digits, ParsedJoinToken);
+	if (!bValidSuccessToken)
 	{
 		const EFASessionRequestResult SessionResult =
 			Result == EFABeaconPasswordVerifyResult::InvalidPassword
 			? EFASessionRequestResult::InvalidPassword
 			: EFASessionRequestResult::RequestFailed;
+
+		UE_LOG(LogFAOSS, Warning, TEXT("[BeaconAuth] Verification failed: %s"),
+			*UEnum::GetValueAsString(Result));
+		ClearClientJoinAuthorization();
 
 		MultiplayerOnJoinSessionComplete.Broadcast(
 			SessionResult,
@@ -939,9 +1081,13 @@ void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPass
 	}
 
 	ClientPendingJoinToken = JoinToken;
+	UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Verification succeeded; TokenId=%s"),
+		*GetTokenLogId(JoinToken));
 
 	// 여기서 처음으로 OnlineSession에 참가한다.
-	JoinSession(PendingJoinSearchResult);
+	const FOnlineSessionSearchResult SearchResult = PendingJoinSearchResult;
+	PendingJoinSearchResult = FOnlineSessionSearchResult();
+	JoinSession(SearchResult);
 }
 
 void UFAOnlineSessionSubsystem::SaveLoginUserId(const FUniqueNetIdRepl& UserId)
@@ -964,24 +1110,25 @@ void UFAOnlineSessionSubsystem::RemoveLogoutUserId(const FUniqueNetIdRepl& UserI
 void UFAOnlineSessionSubsystem::ClearJoinAuthorizationState()
 {
 	HostPassword.Reset();
-	PendingPassword.Reset();
-	ClientPendingJoinToken.Reset();
-
-	PendingJoinSearchResult =
-		FOnlineSessionSearchResult();
+	ClearClientJoinAuthorization();
 
 	ServerPendingJoinTokens.Empty();
 	AuthenticatedMemberIds.Empty();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(JoinTokenCleanupTimerHandle);
+	}
 
 	CleanupActiveOnlineBeacon();
 }
 
-FString& UFAOnlineSessionSubsystem::GetPendingPassword()
+void UFAOnlineSessionSubsystem::ClearClientJoinAuthorization()
 {
-	return PendingPassword;
+	ClientPendingJoinToken.Reset();
+	PendingJoinSearchResult = FOnlineSessionSearchResult();
 }
 
-FString& UFAOnlineSessionSubsystem::GetPendingJoinToken()
+const FString& UFAOnlineSessionSubsystem::GetPendingJoinToken() const
 {
 	return ClientPendingJoinToken;
 }
