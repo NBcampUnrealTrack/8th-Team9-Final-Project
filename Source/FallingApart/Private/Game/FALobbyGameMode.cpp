@@ -320,12 +320,26 @@ void AFALobbyGameMode::EvaluateLobby()
 	bool bCanStart = CanStartGame(PlayerCount, ReadyCount);
 	
 	// Countdown 중 시작 조건이 깨지면 즉시 취소.
+	// 준비 구역에서 한 명이라도 걸어 나오면 이 경로로 들어와 카운트다운이 풀린다.
 	if (!bCanStart && IsCountdownActive())
 	{
 		CancelGameCountdown();
 	}
+	else if (bCanStart
+		&& bAutoStartCountdownWhenAllReady
+		&& !IsCountdownActive()
+		&& !bRollbackInProgress)
+	{
+		// 전원이 준비 구역에 모인 순간이 곧 시작 신호다. 호스트가 따로 누를 버튼이 없다.
+		StartGameCountdown();
 
-	// 전원 Ready여도 자동 시작하지 않고 UI 상태만 갱신.
+		// StartGameCountdown 이 Countdown Phase 스냅샷까지 이미 전파했으므로 중복 갱신을 건너뛴다.
+		if (IsCountdownActive())
+		{
+			return;
+		}
+	}
+
 	RefreshLobbyState();
 }
 
