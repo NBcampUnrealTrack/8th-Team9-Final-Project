@@ -105,6 +105,9 @@ public:
 	/** 사다리를 타고 있는 동안. 이동 모드가 Flying 이라 다른 판정이 이 태그로 등반을 구분한다. */
 	FGameplayTag State_Climbing;
 
+	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
+	FGameplayTag State_Hiding;
+
 	//~ ========================= 어빌리티 태그 =========================
 
 	FGameplayTag Ability_Jump;
