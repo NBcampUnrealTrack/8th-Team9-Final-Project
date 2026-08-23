@@ -20,6 +20,7 @@ void AFAGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AFAGameState, CurrentRound);
 	DOREPLIFETIME(AFAGameState, MaxRound);
 	DOREPLIFETIME(AFAGameState, LastRoundResult);
+	DOREPLIFETIME(AFAGameState, RoundResultSnapshot);
 	DOREPLIFETIME(AFAGameState, RoundStartServerTime);
 	DOREPLIFETIME(AFAGameState, RoundDuration);
 	DOREPLIFETIME(AFAGameState, DraftInterval);
@@ -187,6 +188,16 @@ void AFAGameState::SetMaxRound(int32 InMaxRound)
 	}
 
 	MaxRound = FMath::Max(1, InMaxRound);
+}
+
+void AFAGameState::SetRoundResultSnapshot(const FFARoundResultSnapshot& InSnapshot)
+{
+	if (!ensure(HasAuthority()))
+	{
+		return;
+	}
+
+	RoundResultSnapshot = InSnapshot;
 }
 
 void AFAGameState::SetLastRoundResult(EFARoundResult InResult)

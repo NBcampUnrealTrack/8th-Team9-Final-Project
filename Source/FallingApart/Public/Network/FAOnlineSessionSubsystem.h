@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "OnlineSessionSettings.h"
 
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
@@ -11,6 +12,16 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogFAOSS, Log, All);
 
+class AFAOnlineBeaconClient;
+enum class EFABeaconPasswordVerifyResult : uint8;
+
+struct FFAJoinAuthorization
+{
+	FUniqueNetIdRepl PlayerNetId;
+	double ExpirationTime = 0.f;
+};
+
+
 // 세션 상태 관리용
 UENUM(BlueprintType)
 enum class ESessionOperationState : uint8
@@ -18,12 +29,12 @@ enum class ESessionOperationState : uint8
 	Idle		UMETA(DisplayName="Idle"),
 	Creating	UMETA(DisplayName="Creating"),
 	Searching	UMETA(DisplayName="Searching"),
+	Authenticating UMETA(DisplayName="Authenticating"),
 	Joining		UMETA(DisplayName="Joining"),
 	Updating	UMETA(DisplayName="Updating"),
 	Starting	UMETA(DisplayName="Starting"),
 	Ending		UMETA(DisplayName="Ending"),
 	Destroying	UMETA(DisplayName="Destroying"),
-	
 };
 
 // OSS 요청 관련 메세지 정의
@@ -112,9 +123,8 @@ public:
 	
 	/** 특정 세션에 접속 시도
 	 * @param SessionResult FindSession()를 통해 가져온 접속할 세션정보
-	 * @param Password Oprional, 세션입장에 필요한 비밀번호
 	 */
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
 	
 	void PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount);
 	
@@ -123,7 +133,6 @@ public:
 	 *  클라이언트 : 접속중인 세션에서 이탈*/
 	void DestroySession();
 	
-	/// TODO : 플랫폼에 "게임중" 상태를 알리는 기능, 이후 플레이어의 참가를 막고 경기 상태를 변경하는데 이용함.
 	void StartSession();
 	
 	/// TODO : 플랫폼의 친구에게 참가
@@ -152,6 +161,8 @@ public:
 	FMultiplayerOnStartSessionComplete MultiplayerOnStartSessionComplete;
 	FOnSessionPreparedForMatch OnSessionPreparedForMatch;
 	FOnSessionReopenedForLobby OnSessionReopenedForLobby;
+	
+	FUniqueNetIdRepl GetLocalUniqueNetId();
 
 protected:
 	// 온라인 세션 인터페이스에 등록될 내부 콜백 함수들.
@@ -218,4 +229,70 @@ private:
 	FFAPendingMatchContext PendingMatchContext;
 	
 #pragma endregion MatchContext
+	
+#pragma region Nickname
+public:
+	// 세션 생성/입장 요청 전 닉네임 저장
+	void SetPendingNickname(const FString& Nickname);
+	
+	// 생성/입장 직전에 가져가 URL파라미터에 적용.
+	const FString& GetPendingNickname() const;
+
+private:
+	FString PendingNickname;
+	
+#pragma endregion 
+	
+#pragma region Password
+	
+public:
+	bool ValidateHostPassword(const FString& Password);
+	void SetHostPassword(const FString& Password);
+	void ClearHostPassword();
+	
+	
+	
+	// GUID기반 접속 토큰 할당 및 발급.
+	FString IssueJoinToken(const FUniqueNetIdRepl& NetId);
+	
+	// 토큰 소모.
+	bool ConsumeJoinToken(const FString& JoinToken, const FUniqueNetIdRepl& NetId); 
+	
+	//수명에 따른 토큰 관리
+	void RemoveExpiredJoinToken();
+	void CleanupActiveOnlineBeacon();
+	void CompleteOnlineVerificationFailure();
+	void ClearClientJoinAuthorization();
+	
+	void VerifyPasswordAndJoin(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	
+	void HandlePasswordVerificationComplete(EFABeaconPasswordVerifyResult Result, const FString& JoinToken);
+	
+	void SaveLoginUserId(const FUniqueNetIdRepl& UserId);
+	bool IsAuthenticatedUserId(const FUniqueNetIdRepl& UserId) const;
+	void RemoveLogoutUserId(const FUniqueNetIdRepl& UserId);
+	
+	//세션 종료, 메인메뉴로 복귀, 서브시스템 종료등 게임 상태 초기화시 호출하여 초기화
+	void ClearJoinAuthorizationState();
+	
+	const FString& GetPendingJoinToken() const;
+	
+	
+private:
+	void ScheduleJoinTokenCleanup();
+
+	FString HostPassword; // 호스트가 검사용으로 가지고있을 패스워드
+	FOnlineSessionSearchResult PendingJoinSearchResult; // 클라이언트 접속할 검색결과 
+	
+	FString ClientPendingJoinToken; // (클라)발급받은 토큰 저장
+	
+	TArray<FUniqueNetIdRepl> AuthenticatedMemberIds;
+	
+	TMap<FString, FFAJoinAuthorization> ServerPendingJoinTokens; // (서버)발급해둔 토큰 관리 리스트
+	FTimerHandle JoinTokenCleanupTimerHandle;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<AFAOnlineBeaconClient> ActiveOnlineBeacon;
+	
+#pragma endregion
 };

@@ -164,6 +164,35 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Contest")
 	void OnContestPromptHidden();
 
+	//~ ---------------- 상호작용 프롬프트 ----------------
+	//~ 실제 판정은 UFAInteractionComponent 가 로컬에서 한다. 여기서는 그 값을 읽어 그리기만 한다.
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Interact")
+	bool IsInteractPromptVisible() const { return bInteractPromptVisible; }
+
+	/** "문 열기" 같은 문구. 대상이 없으면 비어 있다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Interact")
+	FText GetInteractPromptText() const { return LastInteractPrompt; }
+
+	/** 길게 누르기 진행도 0~1. 즉시형이면 항상 0. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Interact")
+	float GetInteractHoldProgress() const;
+
+	/** 조준 대상이 생긴 순간. 프롬프트를 띄우라는 신호. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Interact")
+	void OnInteractPromptShown(const FText& PromptText);
+
+	/** 대상은 그대로인데 문구만 바뀐 경우(문 열기 → 문 닫기). */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Interact")
+	void OnInteractPromptTextChanged(const FText& PromptText);
+
+	/** 길게 누르기 게이지 0~1. 값이 실제로 바뀔 때만 온다. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Interact")
+	void OnInteractHoldProgressChanged(float Progress);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Interact")
+	void OnInteractPromptHidden();
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -241,6 +270,12 @@ private:
 	 */
 	void UpdateContestPrompt();
 
+	/** 내 캐릭터의 상호작용 컴포넌트를 읽어 프롬프트를 띄우고 · 갱신하고 · 내린다. */
+	void UpdateInteractPrompt();
+
+	/** 로컬 폰의 상호작용 컴포넌트. 아직 빙의 전이면 nullptr. */
+	class UFAInteractionComponent* GetLocalInteractionComponent() const;
+
 	/** 초침을 울릴 때가 됐는지 누산기로 판정한다. 표시 초와 분리돼 있어야 1초보다 촘촘해질 수 있다. */
 	void UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInProgress, float DeltaTime);
 
@@ -289,4 +324,9 @@ private:
 
 	bool bContestPromptVisible = false;
 	float LastContestGauge = -1.0f;
+
+	//~ 상호작용 프롬프트 — 변화분만 이벤트로 내보내기 위한 직전 값.
+	bool bInteractPromptVisible = false;
+	FText LastInteractPrompt;
+	float LastInteractHoldProgress = -1.0f;
 };

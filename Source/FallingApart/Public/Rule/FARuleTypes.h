@@ -115,3 +115,77 @@ struct FFARuleCardRow : public FTableRowBase
 		return DraftWeight > 0.0f && !RuleEffect.IsNull();
 	}
 };
+
+/**
+ * 룰 계열.
+ * 아이콘 색은 이 값 하나로 결정된다
+ */
+UENUM(BlueprintType)
+enum class EFARuleCategory : uint8
+{
+	None	= 0,
+	/** Rule.Move.* / Rule.Input.* — 몸이 말을 안 듣는 계열 (빨강) */
+	Move	= 1,
+	/** Rule.Vision.* — 화면이 망가지는 계열 (파랑) */
+	Vision	= 2,
+	/** Rule.Audio.* / Rule.Social.* — 정보와 소통 계열 (보라) */
+	Audio	= 3,
+	/** Rule.Rescue.* / Rule.Bite.* — QTE 와 직결되는 계열 (초록) */
+	Rescue	= 4,
+	/** 거래(T) — 이득이 있는 카드 (노랑). 계열 태그보다 우선한다. */
+	Trade	= 5,
+	/** 도박(G) — 불확실성 (무지개·점멸). 계열 태그보다 우선한다. */
+	Gamble	= 6
+};
+
+/**
+ * 룰 1장을 UI 가 쓰기 좋게 펼쳐놓은 사본.
+ *
+ * 서버는 RuleId(=DT RowName) 만 복제하고, 표시 정보는 클라이언트가 DT 에서 직접 찾는다.
+ * HUD 좌하단 4칸(UFARuleSlotsWidget)과 머리 위 아이콘(UFARuleMarkerWidget)이 같은 구조체를 쓴다.
+ */
+USTRUCT(BlueprintType)
+struct FFARuleDisplayInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	FName RuleId;
+
+	/** 8자 이내 제목. DT 에 없는 ID 면 RuleId 가 그대로 들어온다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	FText ShortDesc;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	TSoftObjectPtr<UTexture2D> Icon;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	EFATeam Team = EFATeam::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	EFARuleTier Tier = EFARuleTier::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	EFARuleType Type = EFARuleType::Penalty;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	FGameplayTag RuleTag;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	EFARuleCategory Category = EFARuleCategory::None;
+
+	/** 계열 색. 아이콘이 없을 때는 이 색 하나로 칸을 칠한다 — 멀리서는 색만 보인다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	FLinearColor CategoryColor = FLinearColor::White;
+
+	/** 도박(G) 카드 — 색을 고정하지 말고 무지개로 순환시키라는 신호. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	bool bAnimatedColor = false;
+
+	/** false 면 DT 에 없는 ID(더미 풀 폴백). DisplayName 에 RuleId 가 그대로 들어 있다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	bool bFoundInTable = false;
+};

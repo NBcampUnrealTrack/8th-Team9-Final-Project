@@ -97,6 +97,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Score")
 	void GetRankedPlayerStates(TArray<AFAPlayerState*>& OutRanked) const;
 
+	/**
+	 * 마지막 라운드 결과 스냅샷 (GDD 8.4 결과 화면).
+	 * 라운드 점수는 정산 직후 매치 누적으로 넘어가며 지워지므로, 결과 화면은 PlayerState 가 아니라
+	 * 이 스냅샷을 읽어야 한다. RoundIndex 가 0 이면 아직 한 라운드도 끝나지 않은 것이다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
+	const FFARoundResultSnapshot& GetRoundResultSnapshot() const { return RoundResultSnapshot; }
+
 	/** 타이브레이크 3차까지 완전 동점인가 — 데스매치 발동 판정용 (GDD 5.4) */
 	static bool AreFullyTied(const AFAPlayerState& A, const AFAPlayerState& B);
 
@@ -108,6 +116,9 @@ public:
 	void SetCurrentRound(int32 InRound);
 	void SetMaxRound(int32 InMaxRound);
 	void SetLastRoundResult(EFARoundResult InResult);
+
+	/** 라운드 결과 스냅샷을 채운다. AFAGameMode 가 점수 정산 직후·커밋 직전에 한 번 부른다. */
+	void SetRoundResultSnapshot(const FFARoundResultSnapshot& InSnapshot);
 
 	/** 라운드 실제 시작 시점에 타이머 기준값을 한 번에 설정. */
 	void StartRoundTimer(float ServerStartTime, float InRoundDuration, float InDraftInterval, int32 InMaxDraftsPerRound);
@@ -155,6 +166,10 @@ private:
 
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "FallingApart|Game")
 	EFARoundResult LastRoundResult = EFARoundResult::None;
+
+	/** 마지막 라운드 결과 스냅샷. 라운드가 끝날 때만 바뀌므로 평상시 대역폭은 0 이다. */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "FallingApart|Result")
+	FFARoundResultSnapshot RoundResultSnapshot;
 
 	/** 라운드가 InProgress 로 전환된 서버 월드 시간 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "FallingApart|Game")

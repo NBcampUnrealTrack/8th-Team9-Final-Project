@@ -9,6 +9,7 @@
 class ACharacter;
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
 struct FGameplayTag;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -32,6 +33,15 @@ private:
 	/** Rule.Input.FlipLR의 추가/제거에 맞춰 5초 주기를 시작하거나 정리한다. */
 	void HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
+	//* 포복용
+	void HandleCrouchOnlyRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	
+	/** Rule.Trade.Ghost 태그 추가·제거에 따라 유령 외형을 변경한다. */
+	void HandleGhostRuleChanged(const FGameplayTag Tag,int32 NewCount);
+
+	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
+	void SetGhostVisualActive(bool bActive);
+
 	/** 정상/반전 구간을 5초마다 전환한다. 서버가 상태 태그를 복제한다. */
 	void ToggleInputFlip();
 
@@ -54,5 +64,15 @@ private:
 
 	FTimerHandle InputFlipTimerHandle;
 	bool bInputFlipActive = false;
+	
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Ghost")
+	float GhostActiveOpacity = 0.35f;
+
+	/**
+	 * Z44가 적용될 때 캐릭터 메시 슬롯마다 생성하는
+	 * 동적 머티리얼 인스턴스.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> GhostDynamicMaterials;
 		
 };

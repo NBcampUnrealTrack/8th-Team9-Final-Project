@@ -37,9 +37,9 @@ void AFALobbyPlayerController::BeginPlay()
 	Super::BeginPlay();
 	if (IsLocalController())
 	{
-		FInputModeGameAndUI InputModeData;
+		FInputModeGameOnly InputModeData;
 		SetInputMode(InputModeData);
-		bShowMouseCursor = true;
+		bShowMouseCursor = false;
 		
 		CreateLobbyWidget();
 		BindLobbyState();

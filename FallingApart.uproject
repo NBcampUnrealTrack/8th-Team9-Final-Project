@@ -12,7 +12,8 @@
 				"Engine",
 				"UMG",
 				"GameplayAbilities",
-				"DeveloperSettings"
+				"DeveloperSettings",
+				"OnlineSubsystemUtils"
 			]
 		}
 	],
@@ -34,6 +35,10 @@
 		},
 		{
 			"Name": "GameplayAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "SettingsKit",
 			"Enabled": true
 		}
 	]

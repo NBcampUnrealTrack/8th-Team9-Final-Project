@@ -41,6 +41,18 @@ public:
 	//* 로비 레벨의 경로 입력 선택 */
 	UPROPERTY(EditDefaultsOnly,Category = "FallingApart|Level")
 	TSoftObjectPtr<UWorld> TargetLevelPath;
+
+	/**
+	 * 설정 창 위젯 클래스. 일시정지 메뉴(`UFAPauseMenuWidget`)와 같은 창을 띄운다.
+	 * 비워두면 SettingsKit 플러그인의 C++ 임시 레이아웃이 뜬다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	TSubclassOf<UUserWidget> SettingsWidgetClass;
+
+	/** 메인 메뉴 위에 떠야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Menu")
+	int32 SettingsWidgetZOrder = 120;
+
 protected:
 	// 버튼 이벤트 바인딩
 	virtual void NativeOnInitialized() override;
@@ -50,15 +62,19 @@ protected:
 	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
 	void HandleSessionRefreshRequested();
-	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
 
 	// 세션 서브시스템 완료 콜백
 	void OnCreateSessionComplete(EFASessionRequestResult Result);
 	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 	
 	void OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString);
-	
-	
+	void OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
+	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+	void BindTravelFailureDelegates();
+	void UnbindTravelFailureDelegates();
+	void RestoreJoinUIAfterTravelFailure(const FString& ErrorString);
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> WidgetSwitcher_Page;
 	
@@ -121,4 +137,11 @@ private:
 	// 이점을 고려하여 작성해야함.
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;
+
+	/** 지금 떠 있는 설정 창. 두 번 눌러도 겹쳐 뜨지 않게 들고 있는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> SettingsWidget;
+
+	FDelegateHandle TravelFailureDelegateHandle;
+	FDelegateHandle NetworkFailureDelegateHandle;
 };

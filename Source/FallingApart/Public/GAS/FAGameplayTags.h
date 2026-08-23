@@ -44,30 +44,41 @@ public:
 
 	/** Z07 경련 / H06 발작 — 6초마다 1.5초 정지. Periodic GE 가 State.Stunned 를 1.5초 부여. */
 	FGameplayTag Rule_Move_Seizure;
-	
+
 	/* Z09 공중 마비 /H08 공중 마비 -공중 제어 0  */
 	FGameplayTag Rule_Move_NoAriControl;
-	
+
 	/* Z11 착지 경직 /H09 착지 경직 - 착지 시 1초 정지  */
 	FGameplayTag Rule_Move_LandStun;
-	
-	// ~ ==========================Input Tag ===================
+
+	/* Z13 등반 불가 /H12 등반 불가 - 오르기·넘기 봉인  */
+	FGameplayTag Rule_Move_NoMantle;
+
+	// ~ ========================== Input Tag ===================
 
 	/* Z13 뒤엉킨 신경 / H10 뒤엉킨 신경 -  5초 마다 좌우 입력 반전 */
 	FGameplayTag Rule_Input_FlipLR;
-	
-	
-	
-	
-	// ~ ==========================Vision Tag ===================
-	
+
+	// ~ ========================== Vision Tag ===================
+
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
-	
-	/* Z17 흑백 / H18 흑백 -  시야거리 8m */
-	FGameplayTag Rule_Vision_Desautrate;
-	
-	
+
+	/* Z17 흑백 / H18 흑백 -  로컬 PostProcess 채도 0 */
+	FGameplayTag Rule_Vision_Desaturate;
+
+	/* Z18 안개 / H19 안개 - VisionRange 800uu + PostProcess 안개 */
+	FGameplayTag Rule_Vision_Fog;
+
+	/* Z19 명멸 / H20 암전 - Periodic GE + PostProcess 암전 */
+	FGameplayTag Rule_Vision_Blackout;
+
+	/* Z20 1인칭 강제 / H21 1인칭 강제 - 토글 강제 전환 후 잠금 + FOV -10% */
+	FGameplayTag Rule_Vision_ForceFPS;
+
+	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
+	FGameplayTag Rule_Vision_FlipY;
+
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
 
@@ -87,10 +98,15 @@ public:
 	FGameplayTag State_Grabbing;
 	FGameplayTag State_Grabbed;
 	FGameplayTag State_Contesting;
-	
+
 	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
 	FGameplayTag State_Input_Flipped;
-	
+
+	/** 사다리를 타고 있는 동안. 이동 모드가 Flying 이라 다른 판정이 이 태그로 등반을 구분한다. */
+	FGameplayTag State_Climbing;
+
+	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
+	FGameplayTag State_Hiding;
 
 	//~ ========================= 어빌리티 태그 =========================
 
@@ -113,11 +129,67 @@ public:
 	 */
 	FGameplayTag Data_Rule_Magnitude;
 
+#pragma region Zombie Rule
+
+	// Move
+	/* Z03  썩은 발목 . 이동속도 -30%.  */
+	FGameplayTag Rule_Move_SpeedDown_L;
+
+	/* Z06  역행 . 후진만 가능  */ //전진 강박 존제시 적용 불가능하게 나올것
+	FGameplayTag Rule_Move_BackwardOnly;
+
+	/* Z12  낮은 도약 . 점프높이 -60%  */
+	FGameplayTag Rule_Move_LowJump;
+
+	// Bite
+	/* Z26 무딘 이빨 . 감염 시간 3초 → 5초 */
+	FGameplayTag Rule_Bite_TimeUp;
+
+	/* Z27 짧은 팔 . 포획 사거리 2.0m → 1.2m */
+	FGameplayTag Rule_Bite_RangedDown;
+
+	/* Z28 빗나감 . 포획 실패 시 5초 경직 */
+	FGameplayTag Rule_Bite_FailStun;
+
+	/* Z29 고정 턱 . 포획 중 완전 이동 불가 */
+	FGameplayTag Rule_Bite_RootedGrab;
+
+	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
+	FGameplayTag Rule_Bite_RescueStun;
+
+	// Trade
+	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
+	FGameplayTag Rule_Trade_Frenzy;
+	
+	/* Z44 유령. 반투명, 이동속도 -35% */
+	FGameplayTag Rule_Trade_Ghost;
+
+#pragma endregion
+
+#pragma region Human Rule
+
+	// Move
+	/* H03 탈진 . 전력질주 봉인*/
+	FGameplayTag Rule_Move_NoSprint;
+
+	/* H07 포복 . 웅크린 상태로만 이동*/
+	FGameplayTag Rule_Move_CrouchOnly;
+
+	FGameplayTag Rule_Move_Burden;
+
+	FGameplayTag Rule_Move_SlowTurn;
+
+	// Rescue
+	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
+	FGameplayTag Rule_Rescue_Disabled;
+
+#pragma endregion
+
 private:
 	static FAGameplayTags Instance;
 
-	// 태그 추가 
-	void AddAllTags(); 
+	// 태그 추가
+	void AddAllTags();
 
 	/** UGameplayTagsManager 등록 + 멤버 대입을 한 줄로. */
 	static FGameplayTag AddTag(const TCHAR* TagName, const TCHAR* DevComment);

@@ -7,6 +7,8 @@
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
 #include "AbilitySystemComponent.h"
+#include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
+#include "Animation/AnimMontage.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
@@ -25,6 +27,10 @@ UFAGA_Grab::UFAGA_Grab()
 {
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
+	// 공격자 본인은 입력 즉시 몽타주를 예측 재생하고, 실제 포획 판정은 서버만 수행한다.
+	// 서버에서 재생한 몽타주는 다른 클라이언트의 시뮬레이티드 프록시에 복제된다.
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
+
 	// 어빌리티 태그 등록
 	FGameplayTagContainer AssetTags;
 	AssetTags.AddTag(Tags.Ability_Grab);
@@ -37,7 +43,7 @@ UFAGA_Grab::UFAGA_Grab()
 	ActivationBlockedTags.AddTag(Tags.State_Grabbing);
 	ActivationBlockedTags.AddTag(Tags.State_Grabbed);
 
-	RemainingInfectTime = 0.0f;
+	InfectProgress = 0.0f;
 }
 
 void UFAGA_Grab::ActivateAbility(
@@ -60,21 +66,105 @@ void UFAGA_Grab::ActivateAbility(
 		return;
 	}
 
-	if (!HasAuthority(&ActivationInfo))
+	const bool bIsAuthority = HasAuthority(&ActivationInfo);
+
+	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 포획의 진행도가 남아 있으면 안 된다.
+	InfectProgress = 0.0f;
+	bInfectPaused = false;
+
+	bGrabImpactResolved = false;
+	GrabbedVictim.Reset();
+	GrabberEffectHandle.Invalidate();
+	VictimEffectHandle.Invalidate();
+
+	// 멀티캐스트는 서버에서 한 번만 호출한다. 예측 클라이언트까지 호출하면 소리가 중복된다.
+	if (bIsAuthority)
+	{
+		// 휘두르는 소리는 맞았든 빗나갔든 먼저 난다 — 주변 인간이 반응할 수 있어야 한다.
+		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Attempt);
+	}
+
+	if (!GrabAttemptMontage)
+	{
+		// BP 에 몽타주를 아직 지정하지 않은 동안에도 기존 즉시 판정 동작은 유지한다.
+		if (bIsAuthority)
+		{
+			ResolveGrabAttempt();
+		}
+		return;
+	}
+
+	UAbilityTask_PlayMontageAndWait* MontageTask =
+		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+			this,
+			TEXT("GrabAttemptMontage"),
+			GrabAttemptMontage,
+			1.0f,
+			NAME_None,
+			/*bStopWhenAbilityEnds=*/true);
+
+	if (!MontageTask)
+	{
+		if (bIsAuthority)
+		{
+			ResolveGrabAttempt();
+		}
+		return;
+	}
+
+	MontageTask->OnCancelled.AddDynamic(this, &UFAGA_Grab::HandleGrabAttemptInterrupted);
+	MontageTask->OnInterrupted.AddDynamic(this, &UFAGA_Grab::HandleGrabAttemptInterrupted);
+	MontageTask->ReadyForActivation();
+
+	// 소유 클라이언트는 여기까지 실행하여 몽타주만 예측 재생한다.
+	// 실제 대상 탐색과 포획 판정 타이머는 서버에만 존재해야 한다.
+	if (!bIsAuthority)
 	{
 		return;
 	}
 
-	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 QTE 의 남은 시간이 남아 있으면 안 된다.
-	RemainingInfectTime = 0.0f;
+	// 서버의 월드 타이머를 판정 기준으로 삼는다. Dedicated Server 의 Mesh Tick/Notify 설정과 무관하다.
+	const float ImpactDelay = FMath::Clamp(GrabImpactDelay, 0.0f, GrabAttemptMontage->GetPlayLength());
+	if (ImpactDelay <= 0.0f)
+	{
+		ResolveGrabAttempt();
+		return;
+	}
+
+	ZombieChar->GetWorldTimerManager().SetTimer(
+		GrabImpactTimerHandle,
+		this,
+		&UFAGA_Grab::ResolveGrabAttempt,
+		ImpactDelay,
+		false);
+}
+
+void UFAGA_Grab::ResolveGrabAttempt()
+{
+	// 예측 클라이언트에서 이 함수가 호출되더라도 게임 판정은 절대 실행하지 않는다.
+	if (!HasAuthority(&CurrentActivationInfo))
+	{
+		return;
+	}
+
+	if (bGrabImpactResolved || !IsActive())
+	{
+		return;
+	}
+	bGrabImpactResolved = true;
+
+	AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo());
+	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
+	if (!ZombieChar || !SourceASC)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
 
 	float GrabRange = SourceASC->GetNumericAttribute(UFAAttributeSet::GetGrabRangeAttribute());
 	if (GrabRange <= 0.0f) GrabRange = 200.0f;
-
-	// 휘두르는 소리는 맞았든 빗나갔든 먼저 난다 — 주변 인간이 반응할 수 있어야 한다.
-	ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Attempt);
 
 	float SphereRadius = 50.0f;
 	AFACharacter* TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
@@ -84,56 +174,70 @@ void UFAGA_Grab::ActivateAbility(
 	{
 		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Miss);
 
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		if (SourceASC->HasMatchingGameplayTag(Tags.Rule_Bite_FailStun) && FailStunEffectClass)
+		{
+			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(FailStunEffectClass);
+
+			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 5.f);
+			SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		return;
 	}
 
 	// 포획 성공 처리
 	GrabbedVictim = TargetHuman;
 	UAbilitySystemComponent* TargetASC = TargetHuman->GetAbilitySystemComponent();
-
-	if (TargetASC)
+	if (!TargetASC)
 	{
-		// 성공음은 실제로 붙잡는 처리 안에서 낸다 — 밖에서 내면 아래가 통째로 건너뛰었을 때
-		// 아무 일도 안 일어났는데 소리만 나간다.
-		ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Success);
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
 
-		// Effect 적용
-		if (GrabberGrabbingEffectClass)
-		{
-			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(GrabberGrabbingEffectClass);
-			GrabberEffectHandle = SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		}
+	// 성공음은 실제로 붙잡는 처리 안에서 낸다 — 밖에서 내면 아래가 통째로 건너뛰었을 때
+	// 아무 일도 안 일어났는데 소리만 나간다.
+	ZombieChar->Multicast_PlayFASoundAtLocation(FAGrabAudio::Success);
 
-		if (VictimGrabbedEffectClass)
-		{
-			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(VictimGrabbedEffectClass);
-			VictimEffectHandle = SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-		}
+	// Effect 적용
+	if (GrabberGrabbingEffectClass)
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(GrabberGrabbingEffectClass);
+		GrabberEffectHandle = SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
 
-		float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
-		if (InfectDuration <= 0.0f) InfectDuration = 3.0f;
+	if (VictimGrabbedEffectClass)
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(VictimGrabbedEffectClass);
+		VictimEffectHandle = SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+	}
 
-		ZombieChar->GetWorld()->GetTimerManager().SetTimer(
-			InfectTimerHandle,
-			this,
-			&UFAGA_Grab::OnInfectTimerExpired,
-			InfectDuration,
-			false
-		);
+	float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
+	// Attribute 가 아직 초기화 전이면 쓰는 폴백. UFAAttributeSet 의 기본값과 같이 움직여야 한다.
+	if (InfectDuration <= 0.0f) InfectDuration = 5.0f;
 
-		// 거리 이탈 검사용 타이머
-		ZombieChar->GetWorld()->GetTimerManager().SetTimer(
-			DistanceCheckTimerHandle,
-			this,
-			&UFAGA_Grab::CheckDistanceDuringGrab,
-			0.1f,
-			true
-		);
+	BaseInfectDuration = InfectDuration;
+	CurrentInfectRate = 1.0f / BaseInfectDuration;
 
-		// HUD 감염 게이지 — 이 어빌리티는 ServerOnly 라 화면을 직접 못 그린다.
-		TargetHuman->BeginCaptureState(/*bInIsVictim=*/true, InfectDuration);
-		ZombieChar->BeginCaptureState(/*bInIsVictim=*/false, InfectDuration);
+	ZombieChar->GetWorld()->GetTimerManager().SetTimer(
+		GrabTickHandle,
+		this,
+		&UFAGA_Grab::TickGrab,
+		GrabTickInterval,
+		true
+	);
+
+	// HUD 감염 게이지 상태는 서버 판정 결과를 캐릭터 복제로 각 화면에 전달한다.
+	TargetHuman->BeginCaptureState(/*bInIsVictim=*/true);
+	ZombieChar->BeginCaptureState(/*bInIsVictim=*/false);
+	PushCaptureProgress();
+}
+
+void UFAGA_Grab::HandleGrabAttemptInterrupted()
+{
+	if (!bGrabImpactResolved && IsActive())
+	{
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 	}
 }
 
@@ -165,52 +269,37 @@ UFAGA_Grab* UFAGA_Grab::FindActiveInstance(UAbilitySystemComponent* ASC)
 
 void UFAGA_Grab::PauseInfectTimer()
 {
-	if (UWorld* World = GetWorld())
-	{
-		// 타이머가 안 돌고 있으면 -1 이 온다.
-		RemainingInfectTime = World->GetTimerManager().GetTimerRemaining(InfectTimerHandle);
-		World->GetTimerManager().ClearTimer(InfectTimerHandle);
+	// 틱은 계속 돌려둔다 — 거리 이탈 검사는 QTE 중에도 살아 있어야 한다.
+	bInfectPaused = true;
 
-		// 게이지도 같이 멈춘다 — 안 멈추면 QTE 로 겨루는 동안 감염이 혼자 채워지는 것처럼 보인다.
-		if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
-		{
-			ZombieChar->PauseCaptureState(RemainingInfectTime);
-		}
-		if (GrabbedVictim.IsValid())
-		{
-			GrabbedVictim->PauseCaptureState(RemainingInfectTime);
-		}
-	}
+	// 게이지도 같이 멈춘다 — 안 멈추면 QTE 로 겨루는 동안 감염이 혼자 채워지는 것처럼 보인다.
+	// 속도 0 을 내보내면 클라이언트가 외삽을 멈춰 진행도가 그 자리에 선다.
+	PushCaptureProgress();
 }
 
 void UFAGA_Grab::ResumeInfectTimer()
 {
-	if (UWorld* World = GetWorld())
-	{
-		if (RemainingInfectTime > 0.0f)
-		{
-			World->GetTimerManager().SetTimer(
-				InfectTimerHandle,
-				this,
-				&UFAGA_Grab::OnInfectTimerExpired,
-				RemainingInfectTime,
-				false
-			);
+	// 처음부터 다시 도는 게 아니라 쌓아둔 진행도에서 이어진다.
+	bInfectPaused = false;
 
-			// 처음부터 다시 도는 게 아니라 남은 시간부터 이어진다 — 게이지 기준 시각도 같이 옮긴다.
-			if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
-			{
-				ZombieChar->ResumeCaptureState(RemainingInfectTime);
-			}
-			if (GrabbedVictim.IsValid())
-			{
-				GrabbedVictim->ResumeCaptureState(RemainingInfectTime);
-			}
-		}
+	PushCaptureProgress();
+}
+
+void UFAGA_Grab::PushCaptureProgress()
+{
+	const float Rate = bInfectPaused ? 0.0f : CurrentInfectRate;
+
+	if (AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo()))
+	{
+		ZombieChar->UpdateCaptureProgress(InfectProgress, Rate);
+	}
+	if (GrabbedVictim.IsValid())
+	{
+		GrabbedVictim->UpdateCaptureProgress(InfectProgress, Rate);
 	}
 }
 
-void UFAGA_Grab::CheckDistanceDuringGrab()
+void UFAGA_Grab::TickGrab()
 {
 	AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo());
 	if (!ZombieChar || !GrabbedVictim.IsValid())
@@ -219,14 +308,36 @@ void UFAGA_Grab::CheckDistanceDuringGrab()
 		return;
 	}
 
+	// 거리 판정이 먼저다 — 이미 놓친 포획으로 감염이 한 틱 더 차면 안 된다.
 	float Distance = FVector::Dist(ZombieChar->GetActorLocation(), GrabbedVictim->GetActorLocation());
 	if (Distance > 300.0f)
 	{
 		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+		return;
+	}
+
+	if (bInfectPaused)
+	{
+		return;
+	}
+
+	// 저항이 셀수록 감염이 느려진다: 저항 0 이면 BaseInfectDuration, 최대면 × MaxResistTimeMultiplier.
+	// 저항 강도는 여기서 감쇠시킨다 — 손을 놓으면 알아서 0 으로 돌아온다.
+	const float ResistLevel = GrabbedVictim->UpdateResistLevel(GrabTickInterval);
+	const float CurrentDuration = FMath::Max(0.1f, BaseInfectDuration * FMath::Lerp(1.0f, MaxResistTimeMultiplier, ResistLevel));
+
+	CurrentInfectRate = 1.0f / CurrentDuration;
+	InfectProgress += GrabTickInterval * CurrentInfectRate;
+
+	PushCaptureProgress();
+
+	if (InfectProgress >= 1.0f)
+	{
+		CompleteInfection();
 	}
 }
 
-void UFAGA_Grab::OnInfectTimerExpired()
+void UFAGA_Grab::CompleteInfection()
 {
 	if (GrabbedVictim.IsValid())
 	{
@@ -262,8 +373,8 @@ void UFAGA_Grab::EndAbility(
 {
 	if (UWorld* World = GetWorld())
 	{
-		World->GetTimerManager().ClearTimer(InfectTimerHandle);
-		World->GetTimerManager().ClearTimer(DistanceCheckTimerHandle);
+		World->GetTimerManager().ClearTimer(GrabImpactTimerHandle);
+		World->GetTimerManager().ClearTimer(GrabTickHandle);
 	}
 
 	UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
