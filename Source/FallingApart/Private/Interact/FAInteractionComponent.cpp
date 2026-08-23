@@ -6,6 +6,7 @@
 #include "Engine/OverlapResult.h"
 #include "GAS/FAGameplayTags.h"
 #include "GameFramework/PlayerController.h"
+#include "Interact/FACabinet.h"
 #include "Interact/FAInteractable.h"
 #include "Player/FACharacter.h"
 #include "TimerManager.h"
@@ -202,6 +203,11 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 		return nullptr;
 	}
 
+	if (AFACabinet* HidingCabinet = Character->GetHidingCabinet())
+	{
+		return HidingCabinet;
+	}
+
 	FVector ViewLocation;
 	FVector ViewDirection;
 	GetViewPoint(ViewLocation, ViewDirection);
@@ -360,7 +366,7 @@ void UFAInteractionComponent::OnInteractPressed()
 		return;
 	}
 
-	const float HoldSeconds = IFAInteractable::Execute_GetInteractHoldSeconds(Target);
+	const float HoldSeconds = IFAInteractable::Execute_GetInteractHoldSeconds(Target, GetFACharacter());
 	if (HoldSeconds <= 0.0f)
 	{
 		Server_RequestInteract(Target);
@@ -507,7 +513,7 @@ void UFAInteractionComponent::Server_BeginHold_Implementation(AActor* Target)
 		return;
 	}
 
-	const float HoldSeconds = IFAInteractable::Execute_GetInteractHoldSeconds(Target);
+	const float HoldSeconds = IFAInteractable::Execute_GetInteractHoldSeconds(Target, GetFACharacter());
 	if (HoldSeconds <= 0.0f)
 	{
 		// 클라는 홀드형이라고 봤는데 서버는 즉시형이다 — 서버 쪽 값을 따른다.

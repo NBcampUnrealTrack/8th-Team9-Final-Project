@@ -28,7 +28,7 @@ public:
 	virtual bool CanInteract_Implementation(AFACharacter* Interactor) const override;
 	virtual FText GetInteractPrompt_Implementation(AFACharacter* Interactor) const override;
 	virtual void Interact_Implementation(AFACharacter* Interactor) override;
-	virtual float GetInteractHoldSeconds_Implementation() const override { return InteractHoldSeconds; }
+	virtual float GetInteractHoldSeconds_Implementation(AFACharacter* Interactor) const override { return InteractHoldSeconds; }
 	virtual float GetInteractRange_Implementation() const override { return InteractRange; }
 	virtual FVector GetInteractFocusLocation_Implementation() const override;
 	virtual bool IsInteractionExclusive_Implementation() const override { return bExclusiveInteraction; }
@@ -50,6 +50,11 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/**
+	 * 이 사람의 진영이 bZombieCanUse / bHumanCanUse 를 통과하는가.
+	 */
+	bool IsFactionAllowed(const AFACharacter* Interactor) const;
 
 	/** 점유자가 사라졌는지(사망 · 접속 끊김) 확인해 자동으로 풀어준다. 서버 전용. */
 	void CheckOccupantAlive();

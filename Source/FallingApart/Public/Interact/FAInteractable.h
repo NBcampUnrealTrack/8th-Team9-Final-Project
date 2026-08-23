@@ -45,10 +45,13 @@ public:
 
 	/**
 	 * 길게 누르기 시간(초). 0 이면 누른 순간 즉시 실행.
+	 *
+	 * 상호작용하는 사람에 따라 달라질 수 있다 — 캐비넷은 인간이 숨을 때 즉시,
+	 * 좀비가 열 때는 1초를 붙들게 한다.
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "FallingApart|Interact")
-	float GetInteractHoldSeconds() const;
-	virtual float GetInteractHoldSeconds_Implementation() const { return 0.0f; }
+	float GetInteractHoldSeconds(AFACharacter* Interactor) const;
+	virtual float GetInteractHoldSeconds_Implementation(AFACharacter* Interactor) const { return 0.0f; }
 
 	/** 이 물건만의 탐지 사거리(cm). 0 이면 컴포넌트 기본값(DetectRange)을 쓴다. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "FallingApart|Interact")

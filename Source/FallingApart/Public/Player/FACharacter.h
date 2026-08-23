@@ -25,6 +25,7 @@ class UFACaptureMarkerWidget;
 class UFARuleMarkerWidget;
 class UWidgetComponent;
 class UFAInteractionComponent;
+class AFACabinet;
 class AFALadder;
 
 UCLASS()
@@ -87,6 +88,28 @@ public:
 	 */
 	UFUNCTION(Server, Reliable)
 	void Server_RequestStopClimbing(bool bLaunchOverLedge);
+
+	//~ ---------------- 캐비넷 숨기 ----------------
+
+	/** 지금 숨어 있는 캐비넷. 안 숨었으면 nullptr. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	AFACabinet* GetHidingCabinet() const { return HidingCabinet; }
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	bool IsHiding() const { return HidingCabinet != nullptr; }
+
+	/** 서버 전용. 캐비넷 안에 들어간다 — AFACabinet::Interact 만 호출한다. */
+	void ServerStartHiding(AFACabinet* Cabinet);
+
+	/**
+	 * 서버 전용. 캐비넷에서 나온다. 스스로 나오는 것과 좀비가 열어 배출되는 것이 같은 길이다.
+	 * 점유 해제와 위치 복구가 전부 여기서 일어난다.
+	 */
+	void ServerStopHiding();
+
+	/** 나가겠다는 클라이언트 요청. 점프 키. */
+	UFUNCTION(Server, Reliable)
+	void Server_RequestStopHiding();
 
 	/**
 	 * 주인 화면에서는 재생하지 않는다.
@@ -237,6 +260,19 @@ protected:
 
 	UFUNCTION()
 	void OnRep_ClimbingLadder();
+
+	UFUNCTION()
+	void OnRep_HidingCabinet();
+
+	/**
+	 * 숨은 상태를 실제 표시·충돌·이동으로 옮긴다.
+	 */
+	void ApplyHideState();
+
+	/**
+	 * 숨는 동안 카메라를 캐비넷 위로 올린다. 자기 화면에서만 도는 처리
+	 */
+	void ApplyHideCamera(bool bHiding);
 
 	/**
 	 * 등반 상태를 실제 이동 설정으로 옮긴다
@@ -514,6 +550,25 @@ private:
 	 */
 	UPROPERTY(ReplicatedUsing = OnRep_ClimbingLadder)
 	TObjectPtr<AFALadder> ClimbingLadder;
+
+	/**
+	 * 들어가 있는 캐비넷.
+	 *
+	 * 사다리와 같은 방식
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_HidingCabinet)
+	TObjectPtr<AFACabinet> HidingCabinet;
+
+	/**
+	 * 마지막으로 적용한 숨김 상태.
+	 */
+	bool bHideStateApplied = false;
+
+	/** 카메라 붐을 캐비넷에 매달아 둔 상태인가. 되돌릴 때 한 번만 풀기 위한 값이다. */
+	bool bHideCameraApplied = false;
+
+	/** 붐을 캐비넷으로 옮기기 직전의 상대 트랜스폼. 나올 때 그대로 되돌린다. */
+	FTransform SavedBoomRelativeTransform;
 
 	/** 등반 진입 전 CMC 값. 내릴 때 그대로 되돌린다. */
 	float SavedMaxFlySpeed = 0.0f;

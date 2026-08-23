@@ -55,23 +55,36 @@ bool AFAInteractableActor::CanInteract_Implementation(AFACharacter* Interactor) 
 		return false;
 	}
 
-	if (!bZombieCanUse || !bHumanCanUse)
-	{
-		const UAbilitySystemComponent* ASC = Interactor->GetAbilitySystemComponent();
-		if (!ASC)
-		{
-			return false;
-		}
+	return IsFactionAllowed(Interactor);
+}
 
-		const FAGameplayTags& FATags = FAGameplayTags::Get();
-		if (!bZombieCanUse && ASC->HasMatchingGameplayTag(FATags.State_Zombie))
-		{
-			return false;
-		}
-		if (!bHumanCanUse && ASC->HasMatchingGameplayTag(FATags.State_Human))
-		{
-			return false;
-		}
+bool AFAInteractableActor::IsFactionAllowed(const AFACharacter* Interactor) const
+{
+	if (!Interactor)
+	{
+		return false;
+	}
+
+	// 둘 다 켜져 있으면 볼 것도 없다. ASC 조회를 아끼는 흔한 경로다.
+	if (bZombieCanUse && bHumanCanUse)
+	{
+		return true;
+	}
+
+	const UAbilitySystemComponent* ASC = Interactor->GetAbilitySystemComponent();
+	if (!ASC)
+	{
+		return false;
+	}
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	if (!bZombieCanUse && ASC->HasMatchingGameplayTag(FATags.State_Zombie))
+	{
+		return false;
+	}
+	if (!bHumanCanUse && ASC->HasMatchingGameplayTag(FATags.State_Human))
+	{
+		return false;
 	}
 
 	return true;

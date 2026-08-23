@@ -10,6 +10,7 @@
 #include "GAS/FAGameplayTags.h"
 #include "Interact/FAInteractable.h"
 #include "Interact/FAInteractionComponent.h"
+#include "Interact/FACabinet.h"
 #include "Interact/FALadder.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
@@ -122,6 +123,7 @@ void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
 	// 등반은 남이 봐도 자세가 달라져야 하므로 전원에게 보낸다.
 	DOREPLIFETIME(AFACharacter, ClimbingLadder);
+	DOREPLIFETIME(AFACharacter, HidingCabinet);
 }
 
 //~ ---------------- 포획 감염 게이지 ----------------
@@ -665,6 +667,11 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ServerStopClimbing(/*bLaunchOverLedge=*/false);
 	}
 
+	if (HasAuthority() && HidingCabinet)
+	{
+		ServerStopHiding();
+	}
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -847,6 +854,13 @@ void AFACharacter::SetTeamStateTag(EFATeam NewTeam)
 		FATags.State_Human, NewTeam == EFATeam::Human ? 1 : 0, EGameplayTagReplicationState::TagAndCountToAll);
 	AbilitySystemComponent->SetLooseGameplayTagCount(
 		FATags.State_Zombie, NewTeam == EFATeam::Zombie ? 1 : 0, EGameplayTagReplicationState::TagAndCountToAll);
+
+	// 숨은 채로 진영이 바뀌는 경로(룰 · 디버그 명령).
+	// 좀비가 남을 경우 아무에게도 안 보이고 잡히지도 않는 폰이 그대로 게임에 남는다.
+	if (NewTeam != EFATeam::Human && HidingCabinet)
+	{
+		ServerStopHiding();
+	}
 }
 
 void AFACharacter::ApplyInvulnerability(float Duration)
@@ -898,6 +912,12 @@ void AFACharacter::Tick(float DeltaTime)
 	UpdateRuleMarker(DeltaTime);
 
 	UpdateClimbing(DeltaTime);
+
+	// 캐비넷 액터가 파괴된 경우의 복구.
+	if (!HidingCabinet && bHideStateApplied)
+	{
+		ApplyHideState();
+	}
 
 	UpdateVisionEffects();
 }
@@ -979,6 +999,12 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		HandleResistInput(MovementVector);
 	}
 
+	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.
+	if (IsHiding())
+	{
+		return;
+	}
+
 	// 사다리 위에서는 시선이 아니라 사다리 축이 기준이다 — 카메라를 돌려도 오르내림은 그대로다.
 	if (IsClimbing())
 	{
@@ -1029,6 +1055,13 @@ void AFACharacter::Input_Jump()
 	if (!AbilitySystemComponent) return;
 
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// 캐비넷 안에서 점프는 '나가기' 다. F 를 다시 누르는 것과 같은 결과다.
+	if (IsHiding())
+	{
+		Server_RequestStopHiding();
+		return;
+	}
 
 	// 사다리에 붙어 있으면 점프는 '뛰어내리기' 다. 서버만 상태를 바꿀 수 있으므로 요청만 보낸다.
 	if (IsClimbing())
@@ -1125,6 +1158,12 @@ void AFACharacter::ForceTogglePerspective()
 {
 	bIsFirstPerson = !bIsFirstPerson;
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+
+	// 캐비넷 안에서는 붐이 캐비넷에 매달려 있다.
+	if (IsHiding())
+	{
+		return;
+	}
 
 	if (!GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
 	{
@@ -1495,4 +1534,178 @@ void AFACharacter::UpdateClimbing(float DeltaTime)
 	{
 		ServerStopClimbing(/*bLaunchOverLedge=*/false);
 	}
+}
+
+//~ ---------------- 캐비넷 숨기 ----------------
+
+void AFACharacter::ServerStartHiding(AFACabinet* Cabinet)
+{
+	if (!HasAuthority() || !Cabinet || HidingCabinet == Cabinet)
+	{
+		return;
+	}
+
+	// 사다리에 붙은 채로 캐비넷에 들어갈 수는 없다. 다른 캐비넷에 있었다면 그쪽을 먼저 비운다.
+	if (ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+	if (HidingCabinet)
+	{
+		ServerStopHiding();
+	}
+
+	HidingCabinet = Cabinet;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AddLooseGameplayTag(FAGameplayTags::Get().State_Hiding);
+	}
+
+	// 서버는 OnRep 이 안 불리므로 같은 경로를 직접 탄다.
+	ApplyHideState();
+}
+
+void AFACharacter::ServerStopHiding()
+{
+	if (!HasAuthority() || !HidingCabinet)
+	{
+		return;
+	}
+
+	AFACabinet* Cabinet = HidingCabinet;
+	HidingCabinet = nullptr;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Hiding);
+	}
+
+	// 위치를 먼저 옮기고 나서 충돌을 되살린다. 캐비넷 메시 안에서 켜면 낀 채로 밀려난다.
+	if (IsValid(Cabinet))
+	{
+		SetActorLocation(Cabinet->GetExitLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		SetActorRotation(Cabinet->GetExitRotation());
+	}
+
+	ApplyHideState();
+
+	if (IsValid(Cabinet))
+	{
+		IFAInteractable::Execute_ReleaseInteraction(Cabinet, this);
+	}
+}
+
+void AFACharacter::Server_RequestStopHiding_Implementation()
+{
+	ServerStopHiding();
+}
+
+void AFACharacter::OnRep_HidingCabinet()
+{
+	ApplyHideState();
+}
+
+void AFACharacter::ApplyHideState()
+{
+	const bool bHiding = (HidingCabinet != nullptr);
+	bHideStateApplied = bHiding;
+
+	// 메시와 머리 위 위젯 3종(감염 게이지 · 룰 아이콘 · 발화 아이콘)이 액터 숨김 하나로 같이 사라진다.
+	SetActorHiddenInGame(bHiding);
+	// 문이 열리면 되살아난다.
+	SetActorEnableCollision(!bHiding);
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		if (bHiding)
+		{
+			Movement->StopMovementImmediately();
+			Movement->DisableMovement();
+		}
+		else if (Movement->MovementMode == MOVE_None)
+		{
+			// 나온 자리가 공중일 수 있으므로 Walking 이 아니라 Falling 으로 되돌린다.
+			Movement->SetMovementMode(MOVE_Falling);
+		}
+	}
+
+	// 카메라는 자기 화면에만 있는 것이라 로컬에서만
+	if (IsLocallyControlled())
+	{
+		ApplyHideCamera(bHiding);
+	}
+
+	if (!bHiding)
+	{
+		return;
+	}
+
+	// 남의 화면(시뮬레이티드 프록시)에서는 스냅하지 않는다
+	if (HasAuthority() || IsLocallyControlled())
+	{
+		SetActorLocation(HidingCabinet->GetHideLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		SetActorRotation(HidingCabinet->GetHideRotation());
+	}
+
+	// 들어간 순간에는 밖을 마주 보게 해준다. 컨트롤 회전은 각자의 머신에만 있는 값이라
+	// 서버가 남의 것을 대신 돌려줄 수 없다.
+	if (IsLocallyControlled())
+	{
+		if (AController* OwningController = GetController())
+		{
+			OwningController->SetControlRotation(HidingCabinet->GetHideRotation());
+		}
+	}
+}
+
+void AFACharacter::ApplyHideCamera(bool bHiding)
+{
+	if (!CameraBoom)
+	{
+		return;
+	}
+
+	if (bHiding)
+	{
+		USceneComponent* Anchor = HidingCabinet ? HidingCabinet->GetHideCameraAnchor() : nullptr;
+		if (!Anchor || bHideCameraApplied)
+		{
+			return;
+		}
+
+		SavedBoomRelativeTransform = CameraBoom->GetRelativeTransform();
+		bHideCameraApplied = true;
+
+		// 보간 타이머를 먼저 끈다. 켜둔 채로 옮기면 붐 길이와 오프셋을 도로 끌고 간다.
+		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+
+		CameraBoom->AttachToComponent(Anchor, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+
+		// 붐을 접어 카메라를 캐비넷 위에 그대로 놓는다. 3인칭 거리를 남겨두면
+		// 벽에 등을 붙인 캐비넷에서는 카메라가 벽 안으로 들어간다.
+		CameraBoom->TargetArmLength = 0.0f;
+		CameraBoom->SocketOffset = FVector::ZeroVector;
+		CameraBoom->TargetOffset = FVector::ZeroVector;
+		return;
+	}
+
+	if (!bHideCameraApplied)
+	{
+		return;
+	}
+
+	bHideCameraApplied = false;
+
+	CameraBoom->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+	CameraBoom->SetRelativeTransform(SavedBoomRelativeTransform);
+
+	// 숨어 있는 동안 시점 토글이나 Vision.ForceFPS 로 bIsFirstPerson 이 바뀌었을 수 있다.
+	// 저장해둔 값이 아니라 지금 상태가 요구하는 값으로 되돌린다.
+	CameraBoom->TargetArmLength = bIsFirstPerson ? 0.0f : ThirdPersonArmLength;
+	CameraBoom->SocketOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
+	CameraBoom->TargetOffset = FVector::ZeroVector;
+
+	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.0f);
 }
