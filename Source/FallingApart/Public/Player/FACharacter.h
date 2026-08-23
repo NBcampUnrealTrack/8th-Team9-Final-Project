@@ -24,6 +24,8 @@ class UFACharacterStatusComponent;
 class UFACaptureMarkerWidget;
 class UFARuleMarkerWidget;
 class UWidgetComponent;
+class UFAInteractionComponent;
+class AFALadder;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -57,6 +59,34 @@ public:
 
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
+
+	/** 상호작용 탐지·프롬프트·서버 요청 창구. HUD 가 프롬프트를 여기서 읽는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	UFAInteractionComponent* GetInteractionComponent() const { return InteractionComponent; }
+
+	//~ ---------------- 사다리 등반 ----------------
+
+	/** 지금 타고 있는 사다리. 안 타고 있으면 nullptr. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	AFALadder* GetClimbingLadder() const { return ClimbingLadder; }
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	bool IsClimbing() const { return ClimbingLadder != nullptr; }
+
+	/** 서버 전용. 사다리에 붙는다 — AFALadder::Interact 만 호출한다. */
+	void ServerStartClimbing(AFALadder* Ladder);
+
+	/**
+	 * 서버 전용. 사다리에서 내린다.
+	 * @param bLaunchOverLedge 꼭대기에서 난간 위로 올라설 때 true. 그 자리에서 뛰어내리면 false.
+	 */
+	void ServerStopClimbing(bool bLaunchOverLedge);
+
+	/**
+	 * 내려달라는 클라이언트 요청. 점프 키와 꼭대기 자동 하차 시.
+	 */
+	UFUNCTION(Server, Reliable)
+	void Server_RequestStopClimbing(bool bLaunchOverLedge);
 
 	/**
 	 * 주인 화면에서는 재생하지 않는다.
@@ -139,6 +169,11 @@ protected:
 
 	virtual void OnRep_Controller() override;
 
+	virtual void UnPossessed() override;
+
+	/** 빙의 상태가 바뀔 때마다 상호작용 탐지 틱을 다시 판단하게 한다. */
+	void RefreshInteractionTick();
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/**
@@ -192,6 +227,28 @@ protected:
 
 	/** 서버가 저항 입력 1회를 반영한다. 매크로 연타를 막는 레이트 제한이 여기 있다. */
 	void RegisterResistInput();
+
+	//~ ---------------- 상호작용 ----------------
+
+	void Input_InteractPressed();
+	void Input_InteractReleased();
+
+	//~ ---------------- 등반 ----------------
+
+	UFUNCTION()
+	void OnRep_ClimbingLadder();
+
+	/**
+	 * 등반 상태를 실제 이동 설정으로 옮긴다
+	 * 붙는 순간의 위치·회전 스냅도 여기서
+	 */
+	void ApplyClimbState();
+
+	/** 등반 중 중심선 유지와 끝단 자동 하차. 매 프레임. */
+	void UpdateClimbing(float DeltaTime);
+
+	/** 등반 입력 — Move() 가 사다리 위에서는 여기로 넘긴다. */
+	void ClimbMove(const FVector2D& MovementVector);
 
 	/** GA_Jump 를 통해 점프한다 — 점프 불가 룰(Z01/H01)이 여기서 걸린다. */
 	void Input_Jump();
@@ -278,6 +335,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* PrimaryAction;
+
+	/**
+	 * 상호작용(문 · 사다리).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* InteractAction;
 
 	//~ ---------------- GAS ----------------
 
@@ -440,6 +503,26 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Interact", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFAInteractionComponent> InteractionComponent;
+
+	//~ ---------------- 등반 상태 ----------------
+
+	/**
+	 * 타고 있는 사다리.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_ClimbingLadder)
+	TObjectPtr<AFALadder> ClimbingLadder;
+
+	/** 등반 진입 전 CMC 값. 내릴 때 그대로 되돌린다. */
+	float SavedMaxFlySpeed = 0.0f;
+	float SavedBrakingDecelerationFlying = 0.0f;
+	bool bSavedOrientRotationToMovement = true;
+	bool bHasSavedClimbMovementSettings = false;
+
+	/** 사다리에 붙은 서버 시각. 붙자마자 바닥 판정으로 튕겨나가는 것을 막는 유예에 쓴다. */
+	float ClimbStartTime = 0.0f;
 
 	/**
 	 * ASC 는 PlayerState 가 아니라 캐릭터에 둔다.

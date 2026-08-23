@@ -8,6 +8,9 @@
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
+#include "Interact/FAInteractable.h"
+#include "Interact/FAInteractionComponent.h"
+#include "Interact/FALadder.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/GameStateBase.h"
@@ -40,6 +43,15 @@ namespace FACharacterAudio
 
 	/** QTE 연타 피드백. 누른 본인에게만 나는 2D 소리라 멀티캐스트를 타지 않는다. */
 	static const FName QTEPress(TEXT("QTE_Press"));
+}
+
+namespace FAClimb
+{
+	/** 사다리에 붙은 뒤 끝단 판정을 미루는 시간(초). 이게 없으면 바닥에서 탄 순간 바로 풀린다. */
+	static constexpr float ExitGraceSeconds = 0.35f;
+
+	/** 중심선으로 되돌아오는 속도 계수. 클수록 딱딱 붙고, 작을수록 부드럽게 미끄러져 들어온다. */
+	static constexpr float LateralSnapSpeed = 10.0f;
 }
 
 AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
@@ -80,6 +92,9 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	// 카메라/스프링암 쪽에서 SetAudioListenerOverride 를 호출하면 이 동작이 깨진다.
 	VoiceComponent = CreateDefaultSubobject<UFAVoiceComponent>(TEXT("VoiceComponent"));
 
+	// 상호작용 탐지. 로컬 컨트롤 캐릭터에서만 틱이 돈다(컴포넌트가 BeginPlay 에서 스스로 끈다).
+	InteractionComponent = CreateDefaultSubobject<UFAInteractionComponent>(TEXT("InteractionComponent"));
+
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
@@ -104,6 +119,9 @@ void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	// 포획 중이 아닐 때는 값이 안 움직이므로 평상시 대역폭은 0 이다.
 	DOREPLIFETIME(AFACharacter, CaptureState);
 	DOREPLIFETIME(AFACharacter, ContestState);
+
+	// 등반은 남이 봐도 자세가 달라져야 하므로 전원에게 보낸다.
+	DOREPLIFETIME(AFACharacter, ClimbingLadder);
 }
 
 //~ ---------------- 포획 감염 게이지 ----------------
@@ -586,6 +604,7 @@ void AFACharacter::PossessedBy(AController* NewController)
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshInteractionTick();
 }
 
 void AFACharacter::OnRep_PlayerState()
@@ -594,6 +613,7 @@ void AFACharacter::OnRep_PlayerState()
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshInteractionTick();
 }
 
 void AFACharacter::OnRep_Controller()
@@ -603,6 +623,23 @@ void AFACharacter::OnRep_Controller()
 	if (const AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>())
 	{
 		HandleTeamChanged(FAPlayerState->GetTeam());
+	}
+
+	RefreshInteractionTick();
+}
+
+void AFACharacter::UnPossessed()
+{
+	Super::UnPossessed();
+
+	RefreshInteractionTick();
+}
+
+void AFACharacter::RefreshInteractionTick()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->RefreshTickState();
 	}
 }
 
@@ -619,6 +656,13 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		GrowlLoopComponent->Stop();
 		GrowlLoopComponent = nullptr;
+	}
+
+	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 점유가 남는다.
+	// AFAInteractableActor 의 감시 타이머가 결국 풀어주지만, 여기서 바로 놓는 편이 빠르다.
+	if (HasAuthority() && ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -853,6 +897,8 @@ void AFACharacter::Tick(float DeltaTime)
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
 
+	UpdateClimbing(DeltaTime);
+
 	UpdateVisionEffects();
 }
 
@@ -870,6 +916,16 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AFACharacter::ToggleCrouch);
 		EnhancedInputComponent->BindAction(PerspectiveAction, ETriggerEvent::Started, this, &AFACharacter::TogglePerspective);
 		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &AFACharacter::TriggerPrimary);
+
+		if (!InteractAction)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Interact] InteractAction 이 비어 있다 — BP_FACharacter 의 Class Defaults > Input > Interact Action 에 IA_Interact 를 지정할 것. 상호작용 키가 동작하지 않는다."));
+		}
+
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AFACharacter::Input_InteractPressed);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Completed, this, &AFACharacter::Input_InteractReleased);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Canceled, this, &AFACharacter::Input_InteractReleased);
 	}
 }
 
@@ -923,6 +979,13 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		HandleResistInput(MovementVector);
 	}
 
+	// 사다리 위에서는 시선이 아니라 사다리 축이 기준이다 — 카메라를 돌려도 오르내림은 그대로다.
+	if (IsClimbing())
+	{
+		ClimbMove(MovementVector);
+		return;
+	}
+
 	if (Controller != nullptr)
 	{
 		const FRotator Rotation = Controller->GetControlRotation();
@@ -966,6 +1029,13 @@ void AFACharacter::Input_Jump()
 	if (!AbilitySystemComponent) return;
 
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// 사다리에 붙어 있으면 점프는 '뛰어내리기' 다. 서버만 상태를 바꿀 수 있으므로 요청만 보낸다.
+	if (IsClimbing())
+	{
+		Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		return;
+	}
 
 	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
 	if (IsInRescueContest())
@@ -1218,5 +1288,211 @@ void AFACharacter::TriggerPrimary()
 	else if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human))
 	{
 		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
+	}
+}
+
+//~ ---------------- 상호작용 ----------------
+
+void AFACharacter::Input_InteractPressed()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->OnInteractPressed();
+	}
+}
+
+void AFACharacter::Input_InteractReleased()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->OnInteractReleased();
+	}
+}
+
+//~ ---------------- 사다리 등반 ----------------
+
+void AFACharacter::ServerStartClimbing(AFALadder* Ladder)
+{
+	if (!HasAuthority() || !Ladder || ClimbingLadder == Ladder)
+	{
+		return;
+	}
+
+	// 다른 사다리를 타고 있었다면 먼저 정리한다(점유도 같이 풀린다).
+	if (ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+
+	ClimbingLadder = Ladder;
+	ClimbStartTime = GetServerWorldTime();
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AddLooseGameplayTag(FAGameplayTags::Get().State_Climbing);
+	}
+
+	// 서버는 OnRep 이 안 불리므로 같은 경로를 직접 탄다.
+	ApplyClimbState();
+}
+
+void AFACharacter::ServerStopClimbing(bool bLaunchOverLedge)
+{
+	if (!HasAuthority() || !ClimbingLadder)
+	{
+		return;
+	}
+
+	AFALadder* Ladder = ClimbingLadder;
+	ClimbingLadder = nullptr;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Climbing);
+	}
+
+	ApplyClimbState();
+
+	// ★ 점유 해제를 빼먹으면 그 사다리는 아무도 못 쓰게 된다.
+	if (IsValid(Ladder))
+	{
+		IFAInteractable::Execute_ReleaseInteraction(Ladder, this);
+
+		if (bLaunchOverLedge)
+		{
+			// 난간 위로 올려놓는다. 속도를 주는 방식은 난간 높이·각도에 따라 실패해서
+			// TopExit 마커 자리로 그냥 옮긴다 — 어디로 내려서는지가 배치로 확정된다.
+			SetActorLocation(Ladder->GetTopExitLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	}
+}
+
+void AFACharacter::Server_RequestStopClimbing_Implementation(bool bLaunchOverLedge)
+{
+	ServerStopClimbing(bLaunchOverLedge);
+}
+
+void AFACharacter::OnRep_ClimbingLadder()
+{
+	ApplyClimbState();
+}
+
+void AFACharacter::ApplyClimbState()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	if (ClimbingLadder)
+	{
+		// 원래 값은 한 번만 저장한다 — 등반 중에 다시 저장하면 등반용 값이 '원래 값' 이 돼버린다.
+		if (!bHasSavedClimbMovementSettings)
+		{
+			SavedMaxFlySpeed = Movement->MaxFlySpeed;
+			SavedBrakingDecelerationFlying = Movement->BrakingDecelerationFlying;
+			bSavedOrientRotationToMovement = Movement->bOrientRotationToMovement;
+			bHasSavedClimbMovementSettings = true;
+		}
+
+		Movement->MaxFlySpeed = ClimbingLadder->ClimbSpeed;
+		// Flying 의 제동 기본값은 0 이다. 그대로 두면 키를 놓아도 사다리를 계속 타고 올라간다.
+		Movement->BrakingDecelerationFlying = ClimbingLadder->ClimbSpeed * 8.0f;
+		// 등반 중에는 사다리를 마주 본 채로 고정한다.
+		Movement->bOrientRotationToMovement = false;
+
+		Movement->StopMovementImmediately();
+		Movement->SetMovementMode(MOVE_Flying);
+
+		// 남의 화면(시뮬레이티드 프록시)에서는 스냅하지 않는다 — 복제된 위치와 싸운다.
+		if (HasAuthority() || IsLocallyControlled())
+		{
+			SetActorLocation(ClimbingLadder->GetAttachLocation(GetActorLocation()),
+				/*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+			SetActorRotation(ClimbingLadder->GetClimbFacingRotation());
+		}
+	}
+	else
+	{
+		if (bHasSavedClimbMovementSettings)
+		{
+			Movement->MaxFlySpeed = SavedMaxFlySpeed;
+			Movement->BrakingDecelerationFlying = SavedBrakingDecelerationFlying;
+			Movement->bOrientRotationToMovement = bSavedOrientRotationToMovement;
+			bHasSavedClimbMovementSettings = false;
+		}
+
+		if (Movement->MovementMode == MOVE_Flying)
+		{
+			Movement->SetMovementMode(MOVE_Falling);
+		}
+	}
+}
+
+void AFACharacter::ClimbMove(const FVector2D& MovementVector)
+{
+	if (!ClimbingLadder)
+	{
+		return;
+	}
+
+	// 좌우 입력은 버린다. 사다리 위에서 옆으로 가는 동작은 없다.
+	AddMovementInput(ClimbingLadder->GetClimbUpVector(), MovementVector.Y);
+}
+
+void AFACharacter::UpdateClimbing(float DeltaTime)
+{
+	if (!ClimbingLadder)
+	{
+		// 사다리 액터가 파괴되면 이 참조는 null 로 지워지지만 OnRep 은 오지 않는다.
+		// 되돌리지 않으면 Flying 인 채로 공중에 떠버린다.
+		if (bHasSavedClimbMovementSettings)
+		{
+			ApplyClimbState();
+		}
+		return;
+	}
+
+	const FVector Up = ClimbingLadder->GetClimbUpVector();
+
+	// 중심선 유지 — 등반축 성분은 그대로 두고 옆으로 벌어진 만큼만 되돌린다.
+	if (HasAuthority() || IsLocallyControlled())
+	{
+		const FVector Current = GetActorLocation();
+		FVector Lateral = ClimbingLadder->GetAttachLocation(Current) - Current;
+		Lateral -= Up * FVector::DotProduct(Lateral, Up);
+
+		if (!Lateral.IsNearlyZero(0.5f))
+		{
+			SetActorLocation(Current + Lateral * FMath::Clamp(DeltaTime * FAClimb::LateralSnapSpeed, 0.0f, 1.0f),
+				/*bSweep=*/false);
+		}
+	}
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 붙은 직후에는 판정하지 않는다 — 바닥에서 탄 사람이 그 프레임에 바로 튕겨 내려온다.
+	if (GetServerWorldTime() - ClimbStartTime < FAClimb::ExitGraceSeconds)
+	{
+		return;
+	}
+
+	const float Alpha = ClimbingLadder->GetClimbAlpha(GetActorLocation());
+
+	if (Alpha >= 1.0f)
+	{
+		// 꼭대기 — 난간 위로 올라선다.
+		ServerStopClimbing(/*bLaunchOverLedge=*/true);
+		return;
+	}
+
+	// 바닥 — 내려오는 중일 때만 발을 뗀다. 속도 조건이 없으면 탄 자리에서 바로 풀린다.
+	if (Alpha <= 0.0f && FVector::DotProduct(GetVelocity(), Up) < -1.0f)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
 	}
 }
