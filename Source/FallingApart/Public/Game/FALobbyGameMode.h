@@ -80,6 +80,12 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	int32 RequiredPlayersToStart = 0;
 
+	/**
+	 * 전원이 준비 구역(AFALobbyReadyZone)에 모이는 즉시 카운트다운을 자동으로 건다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
+	bool bAutoStartCountdownWhenAllReady = true;
+
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	TSoftObjectPtr<UWorld> DestinationMap;
 	
