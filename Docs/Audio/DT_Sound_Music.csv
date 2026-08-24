@@ -1,14 +1,14 @@
 Name,Sound,Category,Is 2D,Attenuation,Concurrency,Volume Multiplier,Pitch Multiplier,Pitch Random Range,Retrigger Cooldown,Looping,Stop on Owner Destroy
-BGM_MainMenu,None,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
-BGM_Lobby,None,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
+BGM_MainMenu,/Game/FallingApart/Audio/Cues/BGM/BGM_MainMenu_Cue.BGM_MainMenu_Cue,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
+BGM_Lobby,/Game/FallingApart/Audio/Cues/BGM/BGM_Lobby_Cue.BGM_Lobby_Cue,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
 BGM_Round_Base,/Game/FallingApart/Audio/Cues/BGM/The_Tip-Toe_Caper_2026-08-13T001523_Cue.The_Tip-Toe_Caper_2026-08-13T001523_Cue,Music,TRUE,None,None,0.5,1,0,0,TRUE,FALSE
 BGM_Round_Tension,None,Music,TRUE,None,None,0.5,1,0,0,TRUE,FALSE
-BGM_Round_Final,None,Music,TRUE,None,None,0.55,1,0,0,TRUE,FALSE
+BGM_Round_Final,/Game/FallingApart/Audio/Cues/BGM/BGM_Round_Final_Cue.BGM_Round_Final_Cue,Music,TRUE,None,None,0.55,1,0,0,TRUE,FALSE
 BGM_RoundResult,None,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
-BGM_MatchResult,None,Music,TRUE,None,None,0.65,1,0,0,TRUE,FALSE
-BGM_DeathMatch,None,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
-Sting_Infected,/Game/FallingApart/Audio/Cues/BGM/Sting_Infected_Cue.Sting_Infected_Cue,Music,TRUE,None,None,1,1,0,0,FALSE,TRUE
-Sting_LastHuman,/Game/FallingApart/Audio/Cues/BGM/Sting_LastHuman_Cue.Sting_LastHuman_Cue,Music,TRUE,None,None,1,1,0,0,FALSE,TRUE
+BGM_MatchResult,/Game/FallingApart/Audio/Cues/BGM/BGM_MatchResult_Cue.BGM_MatchResult_Cue,Music,TRUE,None,None,0.65,1,0,0,TRUE,FALSE
+BGM_DeathMatch,/Game/FallingApart/Audio/Cues/BGM/BGM_DeathMatch_Cue.BGM_DeathMatch_Cue,Music,TRUE,None,None,0.6,1,0,0,TRUE,FALSE
+Sting_Infected,/Game/FallingApart/Audio/Cues/BGM/Sting_LastHuman_Cue.Sting_LastHuman_Cue,Music,TRUE,None,None,1,1,0,0,FALSE,TRUE
+Sting_LastHuman,None,Music,TRUE,None,None,1,1,0,0,FALSE,TRUE
 Amb_Bed,/Game/FallingApart/Audio/Cues/Ambience/Amb_Bed_Cue.Amb_Bed_Cue,Ambience,TRUE,None,None,0.3,1,0,0,TRUE,FALSE
 Amb_Pool,/Game/FallingApart/Audio/Cues/Ambience/Amb_Swim_Cue.Amb_Swim_Cue,Ambience,FALSE,None,None,0.5,1,0,0,TRUE,FALSE
 Amb_Locker,/Game/FallingApart/Audio/Cues/Ambience/Amb_Locker_Cue.Amb_Locker_Cue,Ambience,FALSE,None,None,0.45,1,0,0,TRUE,FALSE
