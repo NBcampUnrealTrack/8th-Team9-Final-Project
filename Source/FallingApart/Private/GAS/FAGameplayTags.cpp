@@ -35,7 +35,7 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Vision
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
-	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desautrate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
+	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desaturate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
 	Rule_Vision_Fog       = AddTag(TEXT("Rule.Vision.Fog"),       TEXT("Z18/H19 안개 — VisionRange 800uu + PostProcess 안개."));
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));

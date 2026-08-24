@@ -30,6 +30,8 @@
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
 #include "Settings/FASettingsBridge.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "EngineUtils.h"
 
 
 namespace FACharacterAudio
@@ -598,6 +600,13 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
+	
+	if (IsLocallyControlled() && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -1204,7 +1213,7 @@ void AFACharacter::UpdateVisionEffects()
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 
-	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 비네트 + 회백색 틴트로 흐릿함을 흉내낸다.
+	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 거리 기반 포스트프로세스 안개로 흐릿함을 흉내낸다.
 	// 개인별 로컬 효과라 실제 볼류메트릭 안개 대신 카메라 PostProcess 로 대체한다.
 	float FogAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
@@ -1216,8 +1225,27 @@ void AFACharacter::UpdateVisionEffects()
 		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
 	}
 
-	FollowCamera->PostProcessSettings.bOverride_VignetteIntensity = FogAmount > 0.0f;
-	FollowCamera->PostProcessSettings.VignetteIntensity = FMath::Lerp(0.0f, 3.0f, FogAmount);
+	// 거리 기반 안개 — Custom PP 머티리얼(M_VisionFog)에 매 프레임 값 전달.
+	if (!VisionFogMID && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
+
+	if (VisionFogMID)
+	{
+		const float StartDistance = FMath::Lerp(VisionFogStartDistanceMax, VisionFogStartDistanceMin, FogAmount);
+		const float FullDistance  = FMath::Lerp(VisionFogFullDistanceMax, VisionFogFullDistanceMin, FogAmount);
+
+		VisionFogMID->SetScalarParameterValue(TEXT("FogStartDistance"), StartDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogFullDistance"), FullDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogAmount"), FogAmount);
+
+		// FullDistance 보다 멀리 있는 상대는 로컬 화면에서 아예 안 보이게 컬링한다.
+		// (숨바꼭질 특성상 "멀어지면 형체도 안 보임" 이 목표라 안개만으론 부족 — 안개는 흐릿하게만 만든다)
+		UpdateOpponentDistanceCulling(FullDistance);
+	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
 	// 3초 주기로 0.4초간 완전 암전.
@@ -1255,6 +1283,41 @@ void AFACharacter::UpdateVisionEffects()
 	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 세 효과(흑백·안개·암전) 중 하나라도 켜져 있으면 블렌드.
 	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f;
 	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+}
+
+void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
+{
+	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 수행한다.
+	TimeSinceLastOpponentCullCheck += GetWorld()->GetDeltaSeconds();
+	if (TimeSinceLastOpponentCullCheck < OpponentCullCheckInterval)
+	{
+		return;
+	}
+	TimeSinceLastOpponentCullCheck = 0.0f;
+
+	const FVector MyLocation = GetActorLocation();
+	const float FullDistanceSq = FMath::Square(FullDistance);
+
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+		if (!IsValid(Other) || Other == this || !Other->GetMesh())
+		{
+			continue;
+		}
+
+		// 캐비넷 등 다른 로직이 이미 액터 전체를 숨긴 상태라면 여기서 건드리지 않는다.
+		if (Other->bHideStateApplied)
+		{
+			continue;
+		}
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		const bool bShouldHide = DistSq > FullDistanceSq;
+
+		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
+		Other->GetMesh()->SetHiddenInGame(bShouldHide);
+	}
 }
 
 void AFACharacter::UpdatePerspectiveCamera()
