@@ -48,6 +48,10 @@ public:
 	UFUNCTION(Exec)
 	void FAPlaySound(const FString& SoundId);
 
+	/** FAPlaySound 로 켠 루프(BGM · 앰비언스 · 게이지)를 끈다. 단발 소리에는 쓸 일이 없다. */
+	UFUNCTION(Exec)
+	void FAStopSound();
+
 	/**
 	 * 내 마이크의 노이즈 게이트를 즉시 바꿔본다. 콘솔에 `FAVoiceGate 0.05 0.045` 처럼 입력.
 	 * 인자를 비우면 현재 값만 보여준다.
