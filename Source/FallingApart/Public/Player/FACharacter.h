@@ -303,6 +303,9 @@ protected:
 	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
 	void UpdateVisionEffects();
 
+	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
+	void UpdateOpponentDistanceCulling(float FullDistance);
+
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
 
@@ -347,6 +350,31 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	class UMaterialInterface* VisionFogMaterial = nullptr;
+
+	UPROPERTY(Transient)
+	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
+	
+	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMin = 300.0f;     // FogAmount = 1 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMax = 25000.0f;    // FogAmount = 0 일 때 완전히 안 보이는 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMin = 1200.0f;     // FogAmount = 1 일 때 완전히 안 보이는 거리
+
+	/** 상대 컬링 검사 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float OpponentCullCheckInterval = 0.2f;
+
+	float TimeSinceLastOpponentCullCheck = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
