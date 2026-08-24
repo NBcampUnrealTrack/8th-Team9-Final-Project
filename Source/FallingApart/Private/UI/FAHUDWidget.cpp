@@ -439,6 +439,11 @@ void UFAHUDWidget::UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInPr
 		// 스팅어와 첫 초침이 같은 프레임에 겹치지 않도록 여기서부터 새로 센다.
 		TickAccumulator = 0.0f;
 
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			Audio->EnterFinalCountdown();
+		}
+
 		if (!bSawAboveTickWindow)
 		{
 			bSawAboveTickWindow = true;
