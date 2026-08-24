@@ -18,3 +18,8 @@ Voice_MuteBlocked,None,Voice,TRUE,None,None,0.8,1,0,0.5,FALSE,TRUE
 Voice_BroadcastOn,None,Voice,TRUE,None,None,0.8,1,0,0,FALSE,TRUE
 Voice_LeakWarn,None,Voice,TRUE,None,None,0.7,1,0,1,FALSE,TRUE
 Voice_TalkStart,None,Voice,TRUE,None,None,0.3,1,0,0.3,FALSE,TRUE
+Door_Open,None,Move,FALSE,None,None,0.8,1,0.05,0.15,FALSE,TRUE
+Door_Close,None,Move,FALSE,None,None,0.85,1,0.05,0.15,FALSE,TRUE
+Door_Locked,None,Move,FALSE,None,None,0.75,1,0.04,0.4,FALSE,TRUE
+Cabinet_Open,None,Move,FALSE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE
+Cabinet_Close,None,Move,FALSE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE

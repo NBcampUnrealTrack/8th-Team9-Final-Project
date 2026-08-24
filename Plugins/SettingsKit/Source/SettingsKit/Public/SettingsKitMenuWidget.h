@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -18,6 +18,12 @@ class UVerticalBox;
 class UWidget;
 class UWidgetSwitcher;
 class USKSettingsMenuWidget;
+
+/**
+ * 설정창이 닫히기 시작했다는 신호. 띄운 쪽이 자기 화면을 되돌리거나 소리를 낼 때 쓴다.
+ * 슬라이드 아웃이 시작되는 시점에 온다 — 실제 제거(FinishClose)보다 앞이다.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FSKOnSettingsClosed);
 
 /**
  * 임시 레이아웃의 키 목록 한 행이 "내가 어느 매핑인지" 를 기억하는 통로.
@@ -66,6 +72,10 @@ public:
 	/** 이 매핑의 키 재설정을 시작한다. 다음에 눌리는 키/마우스 버튼을 잡는다. */
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit")
 	void BeginRebind(FName MappingName);
+
+	/** 닫히기 시작할 때 한 번. 띄운 쪽이 구독한다. */
+	UPROPERTY(BlueprintAssignable, Category = "SettingsKit")
+	FSKOnSettingsClosed OnSettingsClosed;
 
 	/** 닫기 연출이 끝난 뒤 실제로 화면에서 제거. 타이머가 자동으로 부르지만 WBP 애니 종료에서 불러도 된다. */
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit")

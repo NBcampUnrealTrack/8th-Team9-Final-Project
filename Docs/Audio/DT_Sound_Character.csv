@@ -2,7 +2,7 @@ Name,Sound,Category,Is 2D,Attenuation,Concurrency,Volume Multiplier,Pitch Multip
 Foot_Human_Walk,/Game/FallingApart/Audio/Cues/SFX/Player/Footstep3_Cue.Footstep3_Cue,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.55,1,0.1,0,FALSE,TRUE
 Foot_Human_Run,/Game/FallingApart/Audio/Cues/SFX/Player/Footstep3_Cue.Footstep3_Cue,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.85,1.05,0.1,0,FALSE,TRUE
 Foot_Human_Crouch,/Game/FallingApart/Audio/Cues/SFX/Player/Footstep3_Cue.Footstep3_Cue,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.3,1,0.1,0,FALSE,TRUE
-Foot_Zombie_Walk,/Game/FallingApart/Resources/Sound/SFX/Player/Footstep3.Footstep3,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.65,0.85,0.12,0,FALSE,TRUE
+Foot_Zombie_Walk,/Game/FallingApart/Audio/Cues/SFX/Player/Footstep3_Cue.Footstep3_Cue,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.65,0.85,0.12,0,FALSE,TRUE
 Foot_Zombie_Run,/Game/FallingApart/Audio/Cues/SFX/Player/Footstep3_Cue.Footstep3_Cue,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.95,0.88,0.12,0,FALSE,TRUE
 Jump_Start,/Game/FallingApart/Audio/Cues/SFX/Player/StartJump_Cue.StartJump_Cue,Move,FALSE,None,None,0.7,1,0.08,0,FALSE,TRUE
 Jump_Land,/Game/FallingApart/Audio/Cues/SFX/Player/JumpLand_Cue.JumpLand_Cue,Move,FALSE,None,None,0.8,1,0.08,0,FALSE,TRUE
@@ -36,3 +36,8 @@ QTE_Final,None,Combat,TRUE,None,None,0.9,1,0,0.5,FALSE,TRUE
 QTE_Win,None,Combat,TRUE,None,None,1,1,0,0,FALSE,TRUE
 QTE_Lose,None,Combat,TRUE,None,None,1,1,0,0,FALSE,TRUE
 QTE_Spectate_Loop,None,Combat,TRUE,None,None,0.7,1,0,0,TRUE,TRUE
+Hide_Enter,None,Move,FALSE,None,None,0.7,1,0.06,0.2,FALSE,TRUE
+Hide_Exit,None,Move,FALSE,None,None,0.7,1.03,0.06,0.2,FALSE,TRUE
+Ladder_Mount,None,Move,FALSE,None,None,0.7,1,0.06,0.2,FALSE,TRUE
+Ladder_Step,None,Move,FALSE,None,/Game/FallingApart/Audio/Concurrency/CONC_Footstep.CONC_Footstep,0.5,1,0.1,0,FALSE,TRUE
+Ladder_Dismount,None,Move,FALSE,None,None,0.7,0.97,0.06,0.2,FALSE,TRUE
