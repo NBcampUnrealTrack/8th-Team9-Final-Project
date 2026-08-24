@@ -1,4 +1,4 @@
-Name,Sound,Category,Is 2D,Attenuation,Concurrency,Volume Multiplier,Pitch Multiplier,Pitch Random Range,Retrigger Cooldown,Looping,Stop on Owner Destroy
+Name,Sound,Category,bIs2D,Attenuation,Concurrency,Volume Multiplier,Pitch Multiplier,Pitch Random Range,Retrigger Cooldown,bLooping,bStopOnOwnerDestroy
 Round_Countdown,/Game/FallingApart/Audio/Cues/SFX/World/Beep_Cue.Beep_Cue,Round,TRUE,None,None,0.9,1,0,0.5,FALSE,TRUE
 Round_Start,/Game/FallingApart/Audio/Cues/SFX/World/BeepSound_Cue.BeepSound_Cue,Round,TRUE,None,None,1,1,0,0,FALSE,TRUE
 Round_Timer_Tick,/Game/FallingApart/Audio/Cues/SFX/UI/Draft_Clock_Cue.Draft_Clock_Cue,Round,TRUE,None,None,0.6,1,0,0,FALSE,TRUE
@@ -18,8 +18,8 @@ Voice_MuteBlocked,/Game/FallingApart/Audio/Cues/SFX/World/Voice_MuteBlocked_Cue.
 Voice_BroadcastOn,/Game/FallingApart/Audio/Cues/SFX/World/Voice_BroadcastOn_Cue.Voice_BroadcastOn_Cue,Voice,TRUE,None,None,0.8,1,0,0,FALSE,TRUE
 Voice_LeakWarn,/Game/FallingApart/Audio/Cues/SFX/World/Voice_LeakWarn_Cue.Voice_LeakWarn_Cue,Voice,TRUE,None,None,0.7,1,0,1,FALSE,TRUE
 Voice_TalkStart,/Game/FallingApart/Audio/Cues/SFX/World/Voice_TalkStart_Cue.Voice_TalkStart_Cue,Voice,TRUE,None,None,0.3,1,0,0.3,FALSE,TRUE
-Door_Open,/Game/FallingApart/Audio/Cues/SFX/World/Door_Open_Cue.Door_Open_Cue,Move,TRUE,None,None,0.8,1,0.05,0.15,FALSE,TRUE
-Door_Close,/Game/FallingApart/Audio/Cues/SFX/World/Door_Close_Cue.Door_Close_Cue,Move,TRUE,None,None,0.85,1,0.05,0.15,FALSE,TRUE
-Door_Locked,/Game/FallingApart/Audio/Cues/SFX/World/Door_Locked_Cue.Door_Locked_Cue,Move,TRUE,None,None,0.75,1,0.04,0.4,FALSE,TRUE
-Cabinet_Open,/Game/FallingApart/Audio/Cues/SFX/World/Cabinet_Open_Cue.Cabinet_Open_Cue,Move,TRUE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE
-Cabinet_Close,/Game/FallingApart/Audio/Cues/SFX/World/Cabinet_Close_Cue.Cabinet_Close_Cue,Move,TRUE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE
+Door_Open,/Game/FallingApart/Audio/Cues/SFX/World/Door_Open_Cue.Door_Open_Cue,Move,FALSE,None,None,0.8,1,0.05,0.15,FALSE,TRUE
+Door_Close,/Game/FallingApart/Audio/Cues/SFX/World/Door_Close_Cue.Door_Close_Cue,Move,FALSE,None,None,0.85,1,0.05,0.15,FALSE,TRUE
+Door_Locked,/Game/FallingApart/Audio/Cues/SFX/World/Door_Locked_Cue.Door_Locked_Cue,Move,FALSE,None,None,0.75,1,0.04,0.4,FALSE,TRUE
+Cabinet_Open,/Game/FallingApart/Audio/Cues/SFX/World/Cabinet_Open_Cue.Cabinet_Open_Cue,Move,FALSE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE
+Cabinet_Close,/Game/FallingApart/Audio/Cues/SFX/World/Cabinet_Close_Cue.Cabinet_Close_Cue,Move,FALSE,None,None,0.8,1.05,0.05,0.15,FALSE,TRUE
