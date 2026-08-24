@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -111,6 +111,10 @@ private:
 	
 	UFUNCTION()
 	void OnSettingButtonClicked();
+
+	/** 설정창이 닫히기 시작할 때. 닫히는 소리를 낸다. */
+	UFUNCTION()
+	void HandleSettingsClosed();
 	
 	UFUNCTION()
 	void OnQuitButtonClicked();

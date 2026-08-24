@@ -39,6 +39,11 @@ AFACabinet::AFACabinet()
 	InteractRange = 200.0f;
 	InteractFocusOffset = FVector(0.0f, 0.0f, 90.0f);
 
+	// 사물함은 문과 다른 소리를 낸다. 잠금 경로를 안 타므로 LockedSoundId 는 비워둔다.
+	OpenSoundId = TEXT("Cabinet_Open");
+	CloseSoundId = TEXT("Cabinet_Close");
+	LockedSoundId = NAME_None;
+
 	OpenPromptText = NSLOCTEXT("FallingApart", "CabinetOpen", "열어보기");
 	ClosePromptText = NSLOCTEXT("FallingApart", "CabinetClose", "닫기");
 	HidePromptText = NSLOCTEXT("FallingApart", "CabinetHide", "숨기");

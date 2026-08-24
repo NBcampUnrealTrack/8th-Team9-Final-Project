@@ -30,6 +30,8 @@
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
 #include "Settings/FASettingsBridge.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "EngineUtils.h"
 
 
 namespace FACharacterAudio
@@ -41,6 +43,20 @@ namespace FACharacterAudio
 	static const FName JumpLand(TEXT("Jump_Land"));
 	static const FName LandHeavy(TEXT("Land_Heavy"));
 	static const FName GrowlZombieLoop(TEXT("Growl_Zombie_Loop"));
+
+	/** 물 — 들어갈 때 한 번, 잠겨 있는 동안 루프, 나올 때 한 번. */
+	static const FName WaterSplashEnter(TEXT("Water_Splash_Enter"));
+	static const FName WaterWadeLoop(TEXT("Water_Wade_Loop"));
+	static const FName WaterExit(TEXT("Water_Exit"));
+
+	/** 캐비넷에 들어가고 나오는 소리. 캐비넷 문 자체의 소리(Cabinet_Open/Close)와는 별개다. */
+	static const FName HideEnter(TEXT("Hide_Enter"));
+	static const FName HideExit(TEXT("Hide_Exit"));
+
+	/** 사다리. 등반 애니메이션이 없어 노티파이를 찍을 데가 없으므로 이동 거리로 낸다. */
+	static const FName LadderMount(TEXT("Ladder_Mount"));
+	static const FName LadderStep(TEXT("Ladder_Step"));
+	static const FName LadderDismount(TEXT("Ladder_Dismount"));
 
 	/** QTE 연타 피드백. 누른 본인에게만 나는 2D 소리라 멀티캐스트를 타지 않는다. */
 	static const FName QTEPress(TEXT("QTE_Press"));
@@ -598,6 +614,13 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
+	
+	if (IsLocallyControlled() && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -659,6 +682,8 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		GrowlLoopComponent->Stop();
 		GrowlLoopComponent = nullptr;
 	}
+
+	UpdateWadeLoop(/*bInWater=*/false);
 
 	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 점유가 남는다.
 	// AFAInteractableActor 의 감시 타이머가 결국 풀어주지만, 여기서 바로 놓는 편이 빠르다.
@@ -755,6 +780,30 @@ void AFACharacter::UpdateGrowlLoop(EFATeam NewTeam)
 	}
 }
 
+void AFACharacter::UpdateWadeLoop(bool bInWater)
+{
+	if (!bInWater)
+	{
+		if (WadeLoopComponent)
+		{
+			WadeLoopComponent->Stop();
+			WadeLoopComponent = nullptr;
+		}
+		return;
+	}
+
+	// 이미 돌고 있으면 그대로 둔다. 다시 걸면 루프가 처음부터 튄다.
+	if (WadeLoopComponent)
+	{
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		WadeLoopComponent = Audio->PlaySoundAttached(FACharacterAudio::WaterWadeLoop, GetRootComponent());
+	}
+}
+
 void AFACharacter::Multicast_PlayFASoundAtLocation_Implementation(FName SoundId, bool bSkipLocalOwner)
 {
 	if (bSkipLocalOwner && IsLocallyControlled())
@@ -780,6 +829,29 @@ void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 P
 
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	const EMovementMode NewMode = Movement ? Movement->MovementMode.GetValue() : MOVE_None;
+
+	// 물 안팎이 먼저다. 물로 뛰어들면 Falling -> Swimming 이라, 아래 착지 분기가 먼저 걸리면
+	// 첨벙 대신 착지음이 난다.
+	const bool bWasSwimming = (PrevMovementMode == MOVE_Swimming);
+	const bool bIsSwimming = (NewMode == MOVE_Swimming);
+
+	if (bIsSwimming != bWasSwimming)
+	{
+		// 물에 들어간 낙하는 착지로 치지 않는다.
+		PeakFallSpeed = 0.0f;
+
+		if (bIsSwimming)
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::WaterSplashEnter, GetActorLocation());
+		}
+		else
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::WaterExit, GetActorLocation());
+		}
+
+		UpdateWadeLoop(bIsSwimming);
+		return;
+	}
 
 	// 땅 -> 공중.
 	if (NewMode == MOVE_Falling && PrevMovementMode != MOVE_Falling)
@@ -1204,7 +1276,7 @@ void AFACharacter::UpdateVisionEffects()
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 
-	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 비네트 + 회백색 틴트로 흐릿함을 흉내낸다.
+	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 거리 기반 포스트프로세스 안개로 흐릿함을 흉내낸다.
 	// 개인별 로컬 효과라 실제 볼류메트릭 안개 대신 카메라 PostProcess 로 대체한다.
 	float FogAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
@@ -1216,8 +1288,27 @@ void AFACharacter::UpdateVisionEffects()
 		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
 	}
 
-	FollowCamera->PostProcessSettings.bOverride_VignetteIntensity = FogAmount > 0.0f;
-	FollowCamera->PostProcessSettings.VignetteIntensity = FMath::Lerp(0.0f, 3.0f, FogAmount);
+	// 거리 기반 안개 — Custom PP 머티리얼(M_VisionFog)에 매 프레임 값 전달.
+	if (!VisionFogMID && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
+
+	if (VisionFogMID)
+	{
+		const float StartDistance = FMath::Lerp(VisionFogStartDistanceMax, VisionFogStartDistanceMin, FogAmount);
+		const float FullDistance  = FMath::Lerp(VisionFogFullDistanceMax, VisionFogFullDistanceMin, FogAmount);
+
+		VisionFogMID->SetScalarParameterValue(TEXT("FogStartDistance"), StartDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogFullDistance"), FullDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogAmount"), FogAmount);
+
+		// FullDistance 보다 멀리 있는 상대는 로컬 화면에서 아예 안 보이게 컬링한다.
+		// (숨바꼭질 특성상 "멀어지면 형체도 안 보임" 이 목표라 안개만으론 부족 — 안개는 흐릿하게만 만든다)
+		UpdateOpponentDistanceCulling(FullDistance);
+	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
 	// 3초 주기로 0.4초간 완전 암전.
@@ -1255,6 +1346,41 @@ void AFACharacter::UpdateVisionEffects()
 	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 세 효과(흑백·안개·암전) 중 하나라도 켜져 있으면 블렌드.
 	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f;
 	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+}
+
+void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
+{
+	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 수행한다.
+	TimeSinceLastOpponentCullCheck += GetWorld()->GetDeltaSeconds();
+	if (TimeSinceLastOpponentCullCheck < OpponentCullCheckInterval)
+	{
+		return;
+	}
+	TimeSinceLastOpponentCullCheck = 0.0f;
+
+	const FVector MyLocation = GetActorLocation();
+	const float FullDistanceSq = FMath::Square(FullDistance);
+
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+		if (!IsValid(Other) || Other == this || !Other->GetMesh())
+		{
+			continue;
+		}
+
+		// 캐비넷 등 다른 로직이 이미 액터 전체를 숨긴 상태라면 여기서 건드리지 않는다.
+		if (Other->bHideStateApplied)
+		{
+			continue;
+		}
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		const bool bShouldHide = DistSq > FullDistanceSq;
+
+		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
+		Other->GetMesh()->SetHiddenInGame(bShouldHide);
+	}
 }
 
 void AFACharacter::UpdatePerspectiveCamera()
@@ -1424,6 +1550,10 @@ void AFACharacter::ApplyClimbState()
 		return;
 	}
 
+	// 저장 플래그가 곧 '직전에 타고 있었는가' 다. 이 함수는 서버·OnRep·사다리 소멸 복구
+	// 세 경로로 들어오므로, 소리는 상태가 실제로 뒤집힌 순간에만 내야 한다.
+	const bool bWasClimbing = bHasSavedClimbMovementSettings;
+
 	if (ClimbingLadder)
 	{
 		// 원래 값은 한 번만 저장한다 — 등반 중에 다시 저장하면 등반용 값이 '원래 값' 이 돼버린다.
@@ -1433,6 +1563,16 @@ void AFACharacter::ApplyClimbState()
 			SavedBrakingDecelerationFlying = Movement->BrakingDecelerationFlying;
 			bSavedOrientRotationToMovement = Movement->bOrientRotationToMovement;
 			bHasSavedClimbMovementSettings = true;
+		}
+
+		if (!bWasClimbing)
+		{
+			ClimbStepAccumulator = 0.0f;
+
+			if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+			{
+				Audio->PlaySoundAtLocation(FACharacterAudio::LadderMount, GetActorLocation());
+			}
 		}
 
 		Movement->MaxFlySpeed = ClimbingLadder->ClimbSpeed;
@@ -1454,6 +1594,14 @@ void AFACharacter::ApplyClimbState()
 	}
 	else
 	{
+		if (bWasClimbing)
+		{
+			if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+			{
+				Audio->PlaySoundAtLocation(FACharacterAudio::LadderDismount, GetActorLocation());
+			}
+		}
+
 		if (bHasSavedClimbMovementSettings)
 		{
 			Movement->MaxFlySpeed = SavedMaxFlySpeed;
@@ -1506,6 +1654,20 @@ void AFACharacter::UpdateClimbing(float DeltaTime)
 		{
 			SetActorLocation(Current + Lateral * FMath::Clamp(DeltaTime * FAClimb::LateralSnapSpeed, 0.0f, 1.0f),
 				/*bSweep=*/false);
+		}
+	}
+
+	// 등반 애니메이션이 없어 노티파이를 찍을 데가 없다. 등반축으로 실제 움직인 거리를 누산해
+	// 한 칸마다 낸다 — 속도가 룰로 눌려도 간격이 거리에 맞춰 저절로 벌어진다.
+	// 권한 분기보다 위에 있어야 남의 화면에서도 들린다(속도는 복제된다).
+	ClimbStepAccumulator += FMath::Abs(FVector::DotProduct(GetVelocity(), Up)) * DeltaTime;
+	if (ClimbStepDistance > 0.0f && ClimbStepAccumulator >= ClimbStepDistance)
+	{
+		ClimbStepAccumulator -= ClimbStepDistance;
+
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::LadderStep, GetActorLocation());
 		}
 	}
 
@@ -1609,6 +1771,20 @@ void AFACharacter::OnRep_HidingCabinet()
 void AFACharacter::ApplyHideState()
 {
 	const bool bHiding = (HidingCabinet != nullptr);
+
+	// 소리는 '바뀐 순간' 에만 낸다 — 이 함수는 서버·OnRep·복구 틱 세 경로로 들어온다.
+	// 캐비넷 문 소리(Cabinet_Open/Close)는 AFADoor 가 따로 내므로 여기서는 사람 쪽만 낸다.
+	if (bHiding != bHideStateApplied)
+	{
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			// 나올 때는 HidingCabinet 이 이미 비어 있다. 그 시점의 액터 위치가 곧 캐비넷 앞이다.
+			const FVector SoundLocation = HidingCabinet ? HidingCabinet->GetActorLocation() : GetActorLocation();
+			Audio->PlaySoundAtLocation(bHiding ? FACharacterAudio::HideEnter : FACharacterAudio::HideExit,
+				SoundLocation);
+		}
+	}
+
 	bHideStateApplied = bHiding;
 
 	// 메시와 머리 위 위젯 3종(감염 게이지 · 룰 아이콘 · 발화 아이콘)이 액터 숨김 하나로 같이 사라진다.

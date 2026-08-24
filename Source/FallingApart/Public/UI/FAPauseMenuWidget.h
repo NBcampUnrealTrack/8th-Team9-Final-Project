@@ -76,6 +76,10 @@ protected:
 	void OnPauseMenuClosed();
 
 private:
+	/** 설정창이 닫히기 시작할 때. 닫히는 소리를 낸다. */
+	UFUNCTION()
+	void HandleSettingsClosed();
+
 	//~ WBP 가 없을 때만 쓰는 임시 레이아웃.
 	void BuildFallbackLayout();
 

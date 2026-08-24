@@ -219,6 +219,9 @@ protected:
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
 
+	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
+	void UpdateWadeLoop(bool bInWater);
+
 	/**
 	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
 	 * PlayerState 와 Pawn 은 복제 도착 순서가 보장되지 않아 빙의 시점과 OnRep 양쪽에서 부른다.
@@ -303,6 +306,9 @@ protected:
 	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
 	void UpdateVisionEffects();
 
+	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
+	void UpdateOpponentDistanceCulling(float FullDistance);
+
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
 
@@ -347,6 +353,31 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	class UMaterialInterface* VisionFogMaterial = nullptr;
+
+	UPROPERTY(Transient)
+	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
+	
+	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMin = 300.0f;     // FogAmount = 1 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMax = 25000.0f;    // FogAmount = 0 일 때 완전히 안 보이는 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMin = 1200.0f;     // FogAmount = 1 일 때 완전히 안 보이는 거리
+
+	/** 상대 컬링 검사 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float OpponentCullCheckInterval = 0.2f;
+
+	float TimeSinceLastOpponentCullCheck = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
@@ -601,6 +632,19 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
+
+	/**
+	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> WadeLoopComponent;
+
+	/** 사다리 발소리 누산기(cm). 등반축으로 실제 움직인 거리다. */
+	float ClimbStepAccumulator = 0.0f;
+
+	/** 사다리를 이만큼(cm) 오르내릴 때마다 Ladder_Step 을 낸다. 0 이면 안 낸다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float ClimbStepDistance = 60.0f;
 
 	/** 진영 알림을 이미 물린 PlayerState. 같은 대상에 두 번 묶지 않기 위한 것. */
 	TWeakObjectPtr<AFAPlayerState> TeamNotifySource;
