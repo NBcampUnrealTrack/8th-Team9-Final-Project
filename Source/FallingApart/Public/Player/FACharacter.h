@@ -219,6 +219,9 @@ protected:
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
 
+	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
+	void UpdateWadeLoop(bool bInWater);
+
 	/**
 	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
 	 * PlayerState 와 Pawn 은 복제 도착 순서가 보장되지 않아 빙의 시점과 OnRep 양쪽에서 부른다.
@@ -629,6 +632,19 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
+
+	/**
+	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> WadeLoopComponent;
+
+	/** 사다리 발소리 누산기(cm). 등반축으로 실제 움직인 거리다. */
+	float ClimbStepAccumulator = 0.0f;
+
+	/** 사다리를 이만큼(cm) 오르내릴 때마다 Ladder_Step 을 낸다. 0 이면 안 낸다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float ClimbStepDistance = 60.0f;
 
 	/** 진영 알림을 이미 물린 PlayerState. 같은 대상에 두 번 묶지 않기 위한 것. */
 	TWeakObjectPtr<AFAPlayerState> TeamNotifySource;

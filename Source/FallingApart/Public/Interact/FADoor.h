@@ -128,15 +128,16 @@ public:
 
 	//~ ---------------- 소리 ----------------
 	//~ DT_Sound_Game 의 RowName. 비워두면 소리를 내지 않는다(행이 없어도 경고가 안 뜬다).
+	//~ 기본값이 표준 행 이름이라 BP 에서 따로 적을 필요는 없다 — 철문·나무문처럼 재질을 나눌 때만 덮어쓴다.
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Audio")
-	FName OpenSoundId = NAME_None;
+	FName OpenSoundId = TEXT("Door_Open");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Audio")
-	FName CloseSoundId = NAME_None;
+	FName CloseSoundId = TEXT("Door_Close");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Audio")
-	FName LockedSoundId = NAME_None;
+	FName LockedSoundId = TEXT("Door_Locked");
 
 protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsOpen, BlueprintReadOnly, Category = "FallingApart|Door")

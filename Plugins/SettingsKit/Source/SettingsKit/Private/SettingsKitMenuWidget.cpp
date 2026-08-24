@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "SettingsKitMenuWidget.h"
 
@@ -907,6 +907,9 @@ void USKSettingsMenuWidget::CloseInternal()
 		return;
 	}
 	bClosing = true;
+
+	// 슬라이드 아웃과 같은 프레임에 알린다 — 닫히는 소리는 연출 시작에 맞아야 한다.
+	OnSettingsClosed.Broadcast();
 
 	if (UWorld* World = GetWorld())
 	{
