@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacter.h"
 #include "Audio/FAAudioSubsystem.h"
@@ -8,6 +8,10 @@
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
+#include "Interact/FAInteractable.h"
+#include "Interact/FAInteractionComponent.h"
+#include "Interact/FACabinet.h"
+#include "Interact/FALadder.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/GameStateBase.h"
@@ -26,6 +30,7 @@
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
 #include "Settings/FASettingsBridge.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
 
 namespace FACharacterAudio
@@ -38,8 +43,31 @@ namespace FACharacterAudio
 	static const FName LandHeavy(TEXT("Land_Heavy"));
 	static const FName GrowlZombieLoop(TEXT("Growl_Zombie_Loop"));
 
+	/** 물 — 들어갈 때 한 번, 잠겨 있는 동안 루프, 나올 때 한 번. */
+	static const FName WaterSplashEnter(TEXT("Water_Splash_Enter"));
+	static const FName WaterWadeLoop(TEXT("Water_Wade_Loop"));
+	static const FName WaterExit(TEXT("Water_Exit"));
+
+	/** 캐비넷에 들어가고 나오는 소리. 캐비넷 문 자체의 소리(Cabinet_Open/Close)와는 별개다. */
+	static const FName HideEnter(TEXT("Hide_Enter"));
+	static const FName HideExit(TEXT("Hide_Exit"));
+
+	/** 사다리. 등반 애니메이션이 없어 노티파이를 찍을 데가 없으므로 이동 거리로 낸다. */
+	static const FName LadderMount(TEXT("Ladder_Mount"));
+	static const FName LadderStep(TEXT("Ladder_Step"));
+	static const FName LadderDismount(TEXT("Ladder_Dismount"));
+
 	/** QTE 연타 피드백. 누른 본인에게만 나는 2D 소리라 멀티캐스트를 타지 않는다. */
 	static const FName QTEPress(TEXT("QTE_Press"));
+}
+
+namespace FAClimb
+{
+	/** 사다리에 붙은 뒤 끝단 판정을 미루는 시간(초). 이게 없으면 바닥에서 탄 순간 바로 풀린다. */
+	static constexpr float ExitGraceSeconds = 0.35f;
+
+	/** 중심선으로 되돌아오는 속도 계수. 클수록 딱딱 붙고, 작을수록 부드럽게 미끄러져 들어온다. */
+	static constexpr float LateralSnapSpeed = 10.0f;
 }
 
 AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
@@ -80,6 +108,9 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	// 카메라/스프링암 쪽에서 SetAudioListenerOverride 를 호출하면 이 동작이 깨진다.
 	VoiceComponent = CreateDefaultSubobject<UFAVoiceComponent>(TEXT("VoiceComponent"));
 
+	// 상호작용 탐지. 로컬 컨트롤 캐릭터에서만 틱이 돈다(컴포넌트가 BeginPlay 에서 스스로 끈다).
+	InteractionComponent = CreateDefaultSubobject<UFAInteractionComponent>(TEXT("InteractionComponent"));
+
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
@@ -104,6 +135,10 @@ void AFACharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	// 포획 중이 아닐 때는 값이 안 움직이므로 평상시 대역폭은 0 이다.
 	DOREPLIFETIME(AFACharacter, CaptureState);
 	DOREPLIFETIME(AFACharacter, ContestState);
+
+	// 등반은 남이 봐도 자세가 달라져야 하므로 전원에게 보낸다.
+	DOREPLIFETIME(AFACharacter, ClimbingLadder);
+	DOREPLIFETIME(AFACharacter, HidingCabinet);
 }
 
 //~ ---------------- 포획 감염 게이지 ----------------
@@ -199,6 +234,13 @@ float AFACharacter::UpdateResistLevel(float DeltaSeconds)
 		return 0.0f;
 	}
 
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Trade_Hide))
+	{
+		ResistLevel = 0.0f;
+		return 0.0f;
+	}
+
 	ResistLevel = FMath::Clamp(ResistLevel - ResistDecayPerSecond * DeltaSeconds, 0.0f, 1.0f);
 
 	return ResistLevel;
@@ -248,6 +290,12 @@ void AFACharacter::RegisterResistInput()
 {
 	// 잡힌 사람만 저항한다. 잡고 있는 좀비 쪽 입력이 섞이면 자기 감염을 자기가 늦추는 꼴이 된다.
 	if (!HasAuthority() || !CaptureState.IsActive() || !CaptureState.bIsVictim)
+	{
+		return;
+	}
+
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Trade_Hide))
 	{
 		return;
 	}
@@ -641,6 +689,13 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
+	
+	if (IsLocallyControlled() && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
 }
 
 void AFACharacter::PossessedBy(AController* NewController)
@@ -649,6 +704,7 @@ void AFACharacter::PossessedBy(AController* NewController)
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshInteractionTick();
 }
 
 void AFACharacter::OnRep_PlayerState()
@@ -657,6 +713,7 @@ void AFACharacter::OnRep_PlayerState()
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshInteractionTick();
 }
 
 void AFACharacter::OnRep_Controller()
@@ -666,6 +723,23 @@ void AFACharacter::OnRep_Controller()
 	if (const AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>())
 	{
 		HandleTeamChanged(FAPlayerState->GetTeam());
+	}
+
+	RefreshInteractionTick();
+}
+
+void AFACharacter::UnPossessed()
+{
+	Super::UnPossessed();
+
+	RefreshInteractionTick();
+}
+
+void AFACharacter::RefreshInteractionTick()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->RefreshTickState();
 	}
 }
 
@@ -682,6 +756,20 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		GrowlLoopComponent->Stop();
 		GrowlLoopComponent = nullptr;
+	}
+
+	UpdateWadeLoop(/*bInWater=*/false);
+
+	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 점유가 남는다.
+	// AFAInteractableActor 의 감시 타이머가 결국 풀어주지만, 여기서 바로 놓는 편이 빠르다.
+	if (HasAuthority() && ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+
+	if (HasAuthority() && HidingCabinet)
+	{
+		ServerStopHiding();
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -767,6 +855,30 @@ void AFACharacter::UpdateGrowlLoop(EFATeam NewTeam)
 	}
 }
 
+void AFACharacter::UpdateWadeLoop(bool bInWater)
+{
+	if (!bInWater)
+	{
+		if (WadeLoopComponent)
+		{
+			WadeLoopComponent->Stop();
+			WadeLoopComponent = nullptr;
+		}
+		return;
+	}
+
+	// 이미 돌고 있으면 그대로 둔다. 다시 걸면 루프가 처음부터 튄다.
+	if (WadeLoopComponent)
+	{
+		return;
+	}
+
+	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+	{
+		WadeLoopComponent = Audio->PlaySoundAttached(FACharacterAudio::WaterWadeLoop, GetRootComponent());
+	}
+}
+
 void AFACharacter::Multicast_PlayFASoundAtLocation_Implementation(FName SoundId, bool bSkipLocalOwner)
 {
 	if (bSkipLocalOwner && IsLocallyControlled())
@@ -792,6 +904,29 @@ void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 P
 
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	const EMovementMode NewMode = Movement ? Movement->MovementMode.GetValue() : MOVE_None;
+
+	// 물 안팎이 먼저다. 물로 뛰어들면 Falling -> Swimming 이라, 아래 착지 분기가 먼저 걸리면
+	// 첨벙 대신 착지음이 난다.
+	const bool bWasSwimming = (PrevMovementMode == MOVE_Swimming);
+	const bool bIsSwimming = (NewMode == MOVE_Swimming);
+
+	if (bIsSwimming != bWasSwimming)
+	{
+		// 물에 들어간 낙하는 착지로 치지 않는다.
+		PeakFallSpeed = 0.0f;
+
+		if (bIsSwimming)
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::WaterSplashEnter, GetActorLocation());
+		}
+		else
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::WaterExit, GetActorLocation());
+		}
+
+		UpdateWadeLoop(bIsSwimming);
+		return;
+	}
 
 	// 땅 -> 공중.
 	if (NewMode == MOVE_Falling && PrevMovementMode != MOVE_Falling)
@@ -873,6 +1008,13 @@ void AFACharacter::SetTeamStateTag(EFATeam NewTeam)
 		FATags.State_Human, NewTeam == EFATeam::Human ? 1 : 0, EGameplayTagReplicationState::TagAndCountToAll);
 	AbilitySystemComponent->SetLooseGameplayTagCount(
 		FATags.State_Zombie, NewTeam == EFATeam::Zombie ? 1 : 0, EGameplayTagReplicationState::TagAndCountToAll);
+
+	// 숨은 채로 진영이 바뀌는 경로(룰 · 디버그 명령).
+	// 좀비가 남을 경우 아무에게도 안 보이고 잡히지도 않는 폰이 그대로 게임에 남는다.
+	if (NewTeam != EFATeam::Human && HidingCabinet)
+	{
+		ServerStopHiding();
+	}
 }
 
 void AFACharacter::ApplyInvulnerability(float Duration)
@@ -923,6 +1065,14 @@ void AFACharacter::Tick(float DeltaTime)
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
 
+	UpdateClimbing(DeltaTime);
+
+	// 캐비넷 액터가 파괴된 경우의 복구.
+	if (!HidingCabinet && bHideStateApplied)
+	{
+		ApplyHideState();
+	}
+
 	UpdateVisionEffects();
 }
 
@@ -940,6 +1090,16 @@ void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AFACharacter::ToggleCrouch);
 		EnhancedInputComponent->BindAction(PerspectiveAction, ETriggerEvent::Started, this, &AFACharacter::TogglePerspective);
 		EnhancedInputComponent->BindAction(PrimaryAction, ETriggerEvent::Triggered, this, &AFACharacter::TriggerPrimary);
+
+		if (!InteractAction)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Interact] InteractAction 이 비어 있다 — BP_FACharacter 의 Class Defaults > Input > Interact Action 에 IA_Interact 를 지정할 것. 상호작용 키가 동작하지 않는다."));
+		}
+
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AFACharacter::Input_InteractPressed);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Completed, this, &AFACharacter::Input_InteractReleased);
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Canceled, this, &AFACharacter::Input_InteractReleased);
 	}
 }
 
@@ -993,6 +1153,19 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		HandleResistInput(MovementVector);
 	}
 
+	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.
+	if (IsHiding())
+	{
+		return;
+	}
+
+	// 사다리 위에서는 시선이 아니라 사다리 축이 기준이다 — 카메라를 돌려도 오르내림은 그대로다.
+	if (IsClimbing())
+	{
+		ClimbMove(MovementVector);
+		return;
+	}
+
 	if (Controller != nullptr)
 	{
 		const FRotator Rotation = Controller->GetControlRotation();
@@ -1036,6 +1209,20 @@ void AFACharacter::Input_Jump()
 	if (!AbilitySystemComponent) return;
 
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// 캐비넷 안에서 점프는 '나가기' 다. F 를 다시 누르는 것과 같은 결과다.
+	if (IsHiding())
+	{
+		Server_RequestStopHiding();
+		return;
+	}
+
+	// 사다리에 붙어 있으면 점프는 '뛰어내리기' 다. 서버만 상태를 바꿀 수 있으므로 요청만 보낸다.
+	if (IsClimbing())
+	{
+		Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		return;
+	}
 
 	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
 	if (IsInRescueContest())
@@ -1126,6 +1313,12 @@ void AFACharacter::ForceTogglePerspective()
 	bIsFirstPerson = !bIsFirstPerson;
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 
+	// 캐비넷 안에서는 붐이 캐비넷에 매달려 있다.
+	if (IsHiding())
+	{
+		return;
+	}
+
 	if (!GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
 	{
 		GetWorldTimerManager().SetTimer(PerspectiveTimerHandle, this, &AFACharacter::UpdatePerspectiveCamera, GetWorld()->GetDeltaSeconds(), true);
@@ -1165,7 +1358,7 @@ void AFACharacter::UpdateVisionEffects()
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
 
-	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 비네트 + 회백색 틴트로 흐릿함을 흉내낸다.
+	// 안개 (Vision.Fog) — VisionRange 가 GE 로 낮아진 만큼 거리 기반 포스트프로세스 안개로 흐릿함을 흉내낸다.
 	// 개인별 로컬 효과라 실제 볼류메트릭 안개 대신 카메라 PostProcess 로 대체한다.
 	float FogAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
@@ -1177,8 +1370,27 @@ void AFACharacter::UpdateVisionEffects()
 		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
 	}
 
-	FollowCamera->PostProcessSettings.bOverride_VignetteIntensity = FogAmount > 0.0f;
-	FollowCamera->PostProcessSettings.VignetteIntensity = FMath::Lerp(0.0f, 3.0f, FogAmount);
+	// 거리 기반 안개 — Custom PP 머티리얼(M_VisionFog)에 매 프레임 값 전달.
+	if (!VisionFogMID && VisionFogMaterial && FollowCamera)
+	{
+		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
+		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
+			FWeightedBlendable(1.0f, VisionFogMID));
+	}
+
+	if (VisionFogMID)
+	{
+		const float StartDistance = FMath::Lerp(VisionFogStartDistanceMax, VisionFogStartDistanceMin, FogAmount);
+		const float FullDistance  = FMath::Lerp(VisionFogFullDistanceMax, VisionFogFullDistanceMin, FogAmount);
+
+		VisionFogMID->SetScalarParameterValue(TEXT("FogStartDistance"), StartDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogFullDistance"), FullDistance);
+		VisionFogMID->SetScalarParameterValue(TEXT("FogAmount"), FogAmount);
+
+		// FullDistance 보다 멀리 있는 상대는 로컬 화면에서 아예 안 보이게 컬링한다.
+		// (숨바꼭질 특성상 "멀어지면 형체도 안 보임" 이 목표라 안개만으론 부족 — 안개는 흐릿하게만 만든다)
+		UpdateOpponentDistanceCulling(FullDistance);
+	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
 	// 3초 주기로 0.4초간 완전 암전.
@@ -1216,6 +1428,41 @@ void AFACharacter::UpdateVisionEffects()
 	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 세 효과(흑백·안개·암전) 중 하나라도 켜져 있으면 블렌드.
 	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f;
 	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+}
+
+void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
+{
+	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 수행한다.
+	TimeSinceLastOpponentCullCheck += GetWorld()->GetDeltaSeconds();
+	if (TimeSinceLastOpponentCullCheck < OpponentCullCheckInterval)
+	{
+		return;
+	}
+	TimeSinceLastOpponentCullCheck = 0.0f;
+
+	const FVector MyLocation = GetActorLocation();
+	const float FullDistanceSq = FMath::Square(FullDistance);
+
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+		if (!IsValid(Other) || Other == this || !Other->GetMesh())
+		{
+			continue;
+		}
+
+		// 캐비넷 등 다른 로직이 이미 액터 전체를 숨긴 상태라면 여기서 건드리지 않는다.
+		if (Other->bHideStateApplied)
+		{
+			continue;
+		}
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		const bool bShouldHide = DistSq > FullDistanceSq;
+
+		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
+		Other->GetMesh()->SetHiddenInGame(bShouldHide);
+	}
 }
 
 void AFACharacter::UpdatePerspectiveCamera()
@@ -1289,4 +1536,434 @@ void AFACharacter::TriggerPrimary()
 	{
 		AbilitySystemComponent->TryActivateAbilitiesByTag(FGameplayTagContainer(FATags.Ability_Rescue));
 	}
+}
+
+//~ ---------------- 상호작용 ----------------
+
+void AFACharacter::Input_InteractPressed()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->OnInteractPressed();
+	}
+}
+
+void AFACharacter::Input_InteractReleased()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->OnInteractReleased();
+	}
+}
+
+//~ ---------------- 사다리 등반 ----------------
+
+void AFACharacter::ServerStartClimbing(AFALadder* Ladder)
+{
+	if (!HasAuthority() || !Ladder || ClimbingLadder == Ladder)
+	{
+		return;
+	}
+
+	// 다른 사다리를 타고 있었다면 먼저 정리한다(점유도 같이 풀린다).
+	if (ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+
+	ClimbingLadder = Ladder;
+	ClimbStartTime = GetServerWorldTime();
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AddLooseGameplayTag(FAGameplayTags::Get().State_Climbing);
+	}
+
+	// 서버는 OnRep 이 안 불리므로 같은 경로를 직접 탄다.
+	ApplyClimbState();
+}
+
+void AFACharacter::ServerStopClimbing(bool bLaunchOverLedge)
+{
+	if (!HasAuthority() || !ClimbingLadder)
+	{
+		return;
+	}
+
+	AFALadder* Ladder = ClimbingLadder;
+	ClimbingLadder = nullptr;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Climbing);
+	}
+
+	ApplyClimbState();
+
+	// ★ 점유 해제를 빼먹으면 그 사다리는 아무도 못 쓰게 된다.
+	if (IsValid(Ladder))
+	{
+		IFAInteractable::Execute_ReleaseInteraction(Ladder, this);
+
+		if (bLaunchOverLedge)
+		{
+			// 난간 위로 올려놓는다. 속도를 주는 방식은 난간 높이·각도에 따라 실패해서
+			// TopExit 마커 자리로 그냥 옮긴다 — 어디로 내려서는지가 배치로 확정된다.
+			SetActorLocation(Ladder->GetTopExitLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	}
+}
+
+void AFACharacter::Server_RequestStopClimbing_Implementation(bool bLaunchOverLedge)
+{
+	ServerStopClimbing(bLaunchOverLedge);
+}
+
+void AFACharacter::OnRep_ClimbingLadder()
+{
+	ApplyClimbState();
+}
+
+void AFACharacter::ApplyClimbState()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// 저장 플래그가 곧 '직전에 타고 있었는가' 다. 이 함수는 서버·OnRep·사다리 소멸 복구
+	// 세 경로로 들어오므로, 소리는 상태가 실제로 뒤집힌 순간에만 내야 한다.
+	const bool bWasClimbing = bHasSavedClimbMovementSettings;
+
+	if (ClimbingLadder)
+	{
+		// 원래 값은 한 번만 저장한다 — 등반 중에 다시 저장하면 등반용 값이 '원래 값' 이 돼버린다.
+		if (!bHasSavedClimbMovementSettings)
+		{
+			SavedMaxFlySpeed = Movement->MaxFlySpeed;
+			SavedBrakingDecelerationFlying = Movement->BrakingDecelerationFlying;
+			bSavedOrientRotationToMovement = Movement->bOrientRotationToMovement;
+			bHasSavedClimbMovementSettings = true;
+		}
+
+		if (!bWasClimbing)
+		{
+			ClimbStepAccumulator = 0.0f;
+
+			if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+			{
+				Audio->PlaySoundAtLocation(FACharacterAudio::LadderMount, GetActorLocation());
+			}
+		}
+
+		Movement->MaxFlySpeed = ClimbingLadder->ClimbSpeed;
+		// Flying 의 제동 기본값은 0 이다. 그대로 두면 키를 놓아도 사다리를 계속 타고 올라간다.
+		Movement->BrakingDecelerationFlying = ClimbingLadder->ClimbSpeed * 8.0f;
+		// 등반 중에는 사다리를 마주 본 채로 고정한다.
+		Movement->bOrientRotationToMovement = false;
+
+		Movement->StopMovementImmediately();
+		Movement->SetMovementMode(MOVE_Flying);
+
+		// 남의 화면(시뮬레이티드 프록시)에서는 스냅하지 않는다 — 복제된 위치와 싸운다.
+		if (HasAuthority() || IsLocallyControlled())
+		{
+			SetActorLocation(ClimbingLadder->GetAttachLocation(GetActorLocation()),
+				/*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+			SetActorRotation(ClimbingLadder->GetClimbFacingRotation());
+		}
+	}
+	else
+	{
+		if (bWasClimbing)
+		{
+			if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+			{
+				Audio->PlaySoundAtLocation(FACharacterAudio::LadderDismount, GetActorLocation());
+			}
+		}
+
+		if (bHasSavedClimbMovementSettings)
+		{
+			Movement->MaxFlySpeed = SavedMaxFlySpeed;
+			Movement->BrakingDecelerationFlying = SavedBrakingDecelerationFlying;
+			Movement->bOrientRotationToMovement = bSavedOrientRotationToMovement;
+			bHasSavedClimbMovementSettings = false;
+		}
+
+		if (Movement->MovementMode == MOVE_Flying)
+		{
+			Movement->SetMovementMode(MOVE_Falling);
+		}
+	}
+}
+
+void AFACharacter::ClimbMove(const FVector2D& MovementVector)
+{
+	if (!ClimbingLadder)
+	{
+		return;
+	}
+
+	// 좌우 입력은 버린다. 사다리 위에서 옆으로 가는 동작은 없다.
+	AddMovementInput(ClimbingLadder->GetClimbUpVector(), MovementVector.Y);
+}
+
+void AFACharacter::UpdateClimbing(float DeltaTime)
+{
+	if (!ClimbingLadder)
+	{
+		// 사다리 액터가 파괴되면 이 참조는 null 로 지워지지만 OnRep 은 오지 않는다.
+		// 되돌리지 않으면 Flying 인 채로 공중에 떠버린다.
+		if (bHasSavedClimbMovementSettings)
+		{
+			ApplyClimbState();
+		}
+		return;
+	}
+
+	const FVector Up = ClimbingLadder->GetClimbUpVector();
+
+	// 중심선 유지 — 등반축 성분은 그대로 두고 옆으로 벌어진 만큼만 되돌린다.
+	if (HasAuthority() || IsLocallyControlled())
+	{
+		const FVector Current = GetActorLocation();
+		FVector Lateral = ClimbingLadder->GetAttachLocation(Current) - Current;
+		Lateral -= Up * FVector::DotProduct(Lateral, Up);
+
+		if (!Lateral.IsNearlyZero(0.5f))
+		{
+			SetActorLocation(Current + Lateral * FMath::Clamp(DeltaTime * FAClimb::LateralSnapSpeed, 0.0f, 1.0f),
+				/*bSweep=*/false);
+		}
+	}
+
+	// 등반 애니메이션이 없어 노티파이를 찍을 데가 없다. 등반축으로 실제 움직인 거리를 누산해
+	// 한 칸마다 낸다 — 속도가 룰로 눌려도 간격이 거리에 맞춰 저절로 벌어진다.
+	// 권한 분기보다 위에 있어야 남의 화면에서도 들린다(속도는 복제된다).
+	ClimbStepAccumulator += FMath::Abs(FVector::DotProduct(GetVelocity(), Up)) * DeltaTime;
+	if (ClimbStepDistance > 0.0f && ClimbStepAccumulator >= ClimbStepDistance)
+	{
+		ClimbStepAccumulator -= ClimbStepDistance;
+
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			Audio->PlaySoundAtLocation(FACharacterAudio::LadderStep, GetActorLocation());
+		}
+	}
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 붙은 직후에는 판정하지 않는다 — 바닥에서 탄 사람이 그 프레임에 바로 튕겨 내려온다.
+	if (GetServerWorldTime() - ClimbStartTime < FAClimb::ExitGraceSeconds)
+	{
+		return;
+	}
+
+	const float Alpha = ClimbingLadder->GetClimbAlpha(GetActorLocation());
+
+	if (Alpha >= 1.0f)
+	{
+		// 꼭대기 — 난간 위로 올라선다.
+		ServerStopClimbing(/*bLaunchOverLedge=*/true);
+		return;
+	}
+
+	// 바닥 — 내려오는 중일 때만 발을 뗀다. 속도 조건이 없으면 탄 자리에서 바로 풀린다.
+	if (Alpha <= 0.0f && FVector::DotProduct(GetVelocity(), Up) < -1.0f)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+}
+
+//~ ---------------- 캐비넷 숨기 ----------------
+
+void AFACharacter::ServerStartHiding(AFACabinet* Cabinet)
+{
+	if (!HasAuthority() || !Cabinet || HidingCabinet == Cabinet)
+	{
+		return;
+	}
+
+	// 사다리에 붙은 채로 캐비넷에 들어갈 수는 없다. 다른 캐비넷에 있었다면 그쪽을 먼저 비운다.
+	if (ClimbingLadder)
+	{
+		ServerStopClimbing(/*bLaunchOverLedge=*/false);
+	}
+	if (HidingCabinet)
+	{
+		ServerStopHiding();
+	}
+
+	HidingCabinet = Cabinet;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AddLooseGameplayTag(FAGameplayTags::Get().State_Hiding);
+	}
+
+	// 서버는 OnRep 이 안 불리므로 같은 경로를 직접 탄다.
+	ApplyHideState();
+}
+
+void AFACharacter::ServerStopHiding()
+{
+	if (!HasAuthority() || !HidingCabinet)
+	{
+		return;
+	}
+
+	AFACabinet* Cabinet = HidingCabinet;
+	HidingCabinet = nullptr;
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Hiding);
+	}
+
+	// 위치를 먼저 옮기고 나서 충돌을 되살린다. 캐비넷 메시 안에서 켜면 낀 채로 밀려난다.
+	if (IsValid(Cabinet))
+	{
+		SetActorLocation(Cabinet->GetExitLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		SetActorRotation(Cabinet->GetExitRotation());
+	}
+
+	ApplyHideState();
+
+	if (IsValid(Cabinet))
+	{
+		IFAInteractable::Execute_ReleaseInteraction(Cabinet, this);
+	}
+}
+
+void AFACharacter::Server_RequestStopHiding_Implementation()
+{
+	ServerStopHiding();
+}
+
+void AFACharacter::OnRep_HidingCabinet()
+{
+	ApplyHideState();
+}
+
+void AFACharacter::ApplyHideState()
+{
+	const bool bHiding = (HidingCabinet != nullptr);
+
+	// 소리는 '바뀐 순간' 에만 낸다 — 이 함수는 서버·OnRep·복구 틱 세 경로로 들어온다.
+	// 캐비넷 문 소리(Cabinet_Open/Close)는 AFADoor 가 따로 내므로 여기서는 사람 쪽만 낸다.
+	if (bHiding != bHideStateApplied)
+	{
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			// 나올 때는 HidingCabinet 이 이미 비어 있다. 그 시점의 액터 위치가 곧 캐비넷 앞이다.
+			const FVector SoundLocation = HidingCabinet ? HidingCabinet->GetActorLocation() : GetActorLocation();
+			Audio->PlaySoundAtLocation(bHiding ? FACharacterAudio::HideEnter : FACharacterAudio::HideExit,
+				SoundLocation);
+		}
+	}
+
+	bHideStateApplied = bHiding;
+
+	// 메시와 머리 위 위젯 3종(감염 게이지 · 룰 아이콘 · 발화 아이콘)이 액터 숨김 하나로 같이 사라진다.
+	SetActorHiddenInGame(bHiding);
+	// 문이 열리면 되살아난다.
+	SetActorEnableCollision(!bHiding);
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		if (bHiding)
+		{
+			Movement->StopMovementImmediately();
+			Movement->DisableMovement();
+		}
+		else if (Movement->MovementMode == MOVE_None)
+		{
+			// 나온 자리가 공중일 수 있으므로 Walking 이 아니라 Falling 으로 되돌린다.
+			Movement->SetMovementMode(MOVE_Falling);
+		}
+	}
+
+	// 카메라는 자기 화면에만 있는 것이라 로컬에서만
+	if (IsLocallyControlled())
+	{
+		ApplyHideCamera(bHiding);
+	}
+
+	if (!bHiding)
+	{
+		return;
+	}
+
+	// 남의 화면(시뮬레이티드 프록시)에서는 스냅하지 않는다
+	if (HasAuthority() || IsLocallyControlled())
+	{
+		SetActorLocation(HidingCabinet->GetHideLocation(), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+		SetActorRotation(HidingCabinet->GetHideRotation());
+	}
+
+	// 들어간 순간에는 밖을 마주 보게 해준다. 컨트롤 회전은 각자의 머신에만 있는 값이라
+	// 서버가 남의 것을 대신 돌려줄 수 없다.
+	if (IsLocallyControlled())
+	{
+		if (AController* OwningController = GetController())
+		{
+			OwningController->SetControlRotation(HidingCabinet->GetHideRotation());
+		}
+	}
+}
+
+void AFACharacter::ApplyHideCamera(bool bHiding)
+{
+	if (!CameraBoom)
+	{
+		return;
+	}
+
+	if (bHiding)
+	{
+		USceneComponent* Anchor = HidingCabinet ? HidingCabinet->GetHideCameraAnchor() : nullptr;
+		if (!Anchor || bHideCameraApplied)
+		{
+			return;
+		}
+
+		SavedBoomRelativeTransform = CameraBoom->GetRelativeTransform();
+		bHideCameraApplied = true;
+
+		// 보간 타이머를 먼저 끈다. 켜둔 채로 옮기면 붐 길이와 오프셋을 도로 끌고 간다.
+		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+
+		CameraBoom->AttachToComponent(Anchor, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+
+		// 붐을 접어 카메라를 캐비넷 위에 그대로 놓는다. 3인칭 거리를 남겨두면
+		// 벽에 등을 붙인 캐비넷에서는 카메라가 벽 안으로 들어간다.
+		CameraBoom->TargetArmLength = 0.0f;
+		CameraBoom->SocketOffset = FVector::ZeroVector;
+		CameraBoom->TargetOffset = FVector::ZeroVector;
+		return;
+	}
+
+	if (!bHideCameraApplied)
+	{
+		return;
+	}
+
+	bHideCameraApplied = false;
+
+	CameraBoom->AttachToComponent(GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+	CameraBoom->SetRelativeTransform(SavedBoomRelativeTransform);
+
+	// 숨어 있는 동안 시점 토글이나 Vision.ForceFPS 로 bIsFirstPerson 이 바뀌었을 수 있다.
+	// 저장해둔 값이 아니라 지금 상태가 요구하는 값으로 되돌린다.
+	CameraBoom->TargetArmLength = bIsFirstPerson ? 0.0f : ThirdPersonArmLength;
+	CameraBoom->SocketOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
+	CameraBoom->TargetOffset = FVector::ZeroVector;
+
+	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.0f);
 }

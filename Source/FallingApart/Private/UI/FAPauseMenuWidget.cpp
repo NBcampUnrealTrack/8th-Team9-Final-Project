@@ -27,6 +27,8 @@ namespace FAPauseMenuUI
 
 	static const FName SoundOpen(TEXT("UI_PauseOpen"));
 	static const FName SoundClose(TEXT("UI_PauseClose"));
+	static const FName PopupOpen(TEXT("UI_PopupOpen"));
+	static const FName PopupClose(TEXT("UI_PopupClose"));
 	static const FName SoundClick(TEXT("UI_Click"));
 	static const FName SoundHover(TEXT("UI_Hover"));
 }
@@ -78,8 +80,20 @@ void UFAPauseMenuWidget::OnSettingsClicked()
 	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
 	if (SettingsWidget)
 	{
+		// 설정창은 자기가 닫히는 시점을 알려준다 — 자기 닫기 버튼 · ESC · 바깥 클릭이 다 이 한 줄로 모인다.
+		if (USKSettingsMenuWidget* SettingsMenu = Cast<USKSettingsMenuWidget>(SettingsWidget))
+		{
+			SettingsMenu->OnSettingsClosed.AddUniqueDynamic(this, &ThisClass::HandleSettingsClosed);
+		}
+
 		SettingsWidget->AddToViewport(SettingsWidgetZOrder);
+		UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::PopupOpen);
 	}
+}
+
+void UFAPauseMenuWidget::HandleSettingsClosed()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::PopupClose);
 }
 
 void UFAPauseMenuWidget::OnQuitClicked()

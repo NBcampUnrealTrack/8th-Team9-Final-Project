@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FAMainMenuWidget.h"
@@ -6,6 +6,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/WidgetSwitcher.h"
+#include "Engine/Engine.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "SettingsKitMenuWidget.h"
@@ -21,6 +22,7 @@ namespace FAMainMenuAudio
 	static const FName Back(TEXT("UI_Back"));
 	static const FName Hover(TEXT("UI_Hover"));
 	static const FName PopupOpen(TEXT("UI_PopupOpen"));
+	static const FName PopupClose(TEXT("UI_PopupClose"));
 	static const FName Success(TEXT("UI_Success"));
 	static const FName Error(TEXT("UI_Error"));
 }
@@ -106,6 +108,8 @@ void UFAMainMenuWidget::NativeConstruct()
 }
 void UFAMainMenuWidget::NativeDestruct()
 {
+	UnbindTravelFailureDelegates();
+
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{ 
 		OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>();
@@ -283,12 +287,15 @@ void UFAMainMenuWidget::OnFindSessionComplete(const TArray<FOnlineSessionSearchR
 
 void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString)
 {
-	if (!OnlineSessionSubsystem)
-		return;
-	
 	if (SessionJoinWidget)
 	{
 		SessionJoinWidget->SetJoinInProgress(false);
+	}
+
+	if (!OnlineSessionSubsystem)
+	{
+		RestoreJoinUIAfterTravelFailure(TEXT("SESSION_SUBSYSTEM_UNAVAILABLE"));
+		return;
 	}
 
 	if (Result != EFASessionRequestResult::Success)
@@ -307,14 +314,20 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 		return;
 	}
 
-	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
-
-	
-	FString PendingNickname = OnlineSessionSubsystem->GetPendingNickname();
-	// 만약 한글이 깨진다면, 아래 함수로 인코딩 및 서버에서 디코딩 필요. HTTP모듈 필요함.
-	//FString EncodedNickname = FGenericPlatformHttp::UrlEncode(PendingNickname);
-
-	FString PendingJoinToken = OnlineSessionSubsystem->GetPendingJoinToken();
+	const FString PendingNickname = FGenericPlatformHttp::UrlEncode(
+		OnlineSessionSubsystem->GetPendingNickname());
+	const FString PendingJoinToken = OnlineSessionSubsystem->GetPendingJoinToken();
+	APlayerController* PlayerController = GetOwningPlayer();
+	if (!PlayerController || ConnectString.IsEmpty() || PendingJoinToken.IsEmpty())
+	{
+		UE_LOG(LogFAOSS, Error,
+			TEXT("[ClientTravelAuth] Refused travel; PlayerController=%s ConnectString=%s JoinToken=%s"),
+			PlayerController ? TEXT("valid") : TEXT("null"),
+			ConnectString.IsEmpty() ? TEXT("empty") : TEXT("valid"),
+			PendingJoinToken.IsEmpty() ? TEXT("empty") : TEXT("valid"));
+		RestoreJoinUIAfterTravelFailure(TEXT("INVALID_TRAVEL_AUTH_STATE"));
+		return;
+	}
 	
 	//URL 작성
 	const FString TravelURL = FString::Printf(
@@ -322,22 +335,84 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 		*ConnectString,
 		*PendingNickname,
 		*PendingJoinToken);
-	
-	if (APlayerController* PlayerController = GetOwningPlayer())
-	{
-		GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::OnNetworkFailure);
-		PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
-	}
+
+	BindTravelFailureDelegates();
+	OnlineSessionSubsystem->ClearClientJoinAuthorization();
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Success);
+	UE_LOG(LogFAOSS, Log, TEXT("[ClientTravelAuth] ClientTravel with one-time JoinToken; TokenId=%s"),
+		*PendingJoinToken.Left(8));
+	PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
 }
 
 void UFAMainMenuWidget::OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
 {
+	UE_LOG(LogFAOSS, Error, TEXT("[ClientTravelAuth] Travel failure: Type=%d Error=%s"),
+		static_cast<int32>(FailureType), *ErrorString);
+	RestoreJoinUIAfterTravelFailure(ErrorString);
 }
 
 void UFAMainMenuWidget::OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType,
                                          const FString& ErrorString)
 {
-	UE_LOG(LogFAOSS, Error, TEXT("Network failure: %s"), *ErrorString);
+	UE_LOG(LogFAOSS, Error, TEXT("[ClientTravelAuth] Network failure: Type=%s Error=%s"),
+		ENetworkFailure::ToString(FailureType), *ErrorString);
+	RestoreJoinUIAfterTravelFailure(ErrorString);
+}
+
+void UFAMainMenuWidget::BindTravelFailureDelegates()
+{
+	UnbindTravelFailureDelegates();
+	if (!GEngine)
+	{
+		return;
+	}
+
+	TravelFailureDelegateHandle = GEngine->OnTravelFailure().AddUObject(this, &ThisClass::OnTravelFailure);
+	NetworkFailureDelegateHandle = GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::OnNetworkFailure);
+}
+
+void UFAMainMenuWidget::UnbindTravelFailureDelegates()
+{
+	if (GEngine)
+	{
+		if (TravelFailureDelegateHandle.IsValid())
+		{
+			GEngine->OnTravelFailure().Remove(TravelFailureDelegateHandle);
+		}
+		if (NetworkFailureDelegateHandle.IsValid())
+		{
+			GEngine->OnNetworkFailure().Remove(NetworkFailureDelegateHandle);
+		}
+	}
+
+	TravelFailureDelegateHandle.Reset();
+	NetworkFailureDelegateHandle.Reset();
+}
+
+void UFAMainMenuWidget::RestoreJoinUIAfterTravelFailure(const FString& ErrorString)
+{
+	UnbindTravelFailureDelegates();
+
+	if (SessionJoinWidget)
+	{
+		SessionJoinWidget->SetJoinInProgress(false);
+		const bool bJoinAuthorizationRejected = ErrorString.Contains(TEXT("INVALID_JOIN_TOKEN"));
+		SessionJoinWidget->ShowStatusMessage(bJoinAuthorizationRejected
+			? LOCTEXT("JoinAuthorizationExpired", "Join authorization expired or was already used. Please try again.")
+			: LOCTEXT("JoinTravelFailed", "Could not connect to the lobby. Please try again."));
+	}
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
+
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->ClearClientJoinAuthorization();
+		if (OnlineSessionSubsystem->GetCurrentOperationState() == ESessionOperationState::Idle
+			&& OnlineSessionSubsystem->GetCurrentSession())
+		{
+			// JoinSession 성공 뒤 ClientTravel/PreLogin이 실패하면 로컬 named session을 제거해야 재시도가 가능하다.
+			OnlineSessionSubsystem->DestroySession();
+		}
+	}
 }
 
 
@@ -370,8 +445,20 @@ void UFAMainMenuWidget::OnSettingButtonClicked()
 	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
 	if (SettingsWidget)
 	{
+		// 설정창은 자기가 닫히는 시점을 알려준다 — 자기 닫기 버튼 · ESC · 바깥 클릭이 다 이 한 줄로 모인다.
+		if (USKSettingsMenuWidget* SettingsMenu = Cast<USKSettingsMenuWidget>(SettingsWidget))
+		{
+			SettingsMenu->OnSettingsClosed.AddUniqueDynamic(this, &ThisClass::HandleSettingsClosed);
+		}
+
 		SettingsWidget->AddToViewport(SettingsWidgetZOrder);
+		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupOpen);
 	}
+}
+
+void UFAMainMenuWidget::HandleSettingsClosed()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupClose);
 }
 
 void UFAMainMenuWidget::OnQuitButtonClicked()

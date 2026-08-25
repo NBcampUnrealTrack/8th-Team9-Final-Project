@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
@@ -104,7 +104,13 @@ public:
 
 	/** 캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태 */
 	FGameplayTag State_Exposed;
+  
+	/** 사다리를 타고 있는 동안. 이동 모드가 Flying 이라 다른 판정이 이 태그로 등반을 구분한다. */
+	FGameplayTag State_Climbing;
 
+	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
+	FGameplayTag State_Hiding;
+  
 	//~ ========================= Trade Tag =========================
 
 	/* H48 예지 / Z48 사냥꾼의 눈 - 상대 진영 전원 위치 표시, 내 위치 노출 */
@@ -130,6 +136,19 @@ public:
 	 * 밸런싱 수치를 애셋 재저장 없이 DT 한 칸만 고쳐서 바꿀 수 있다.
 	 */
 	FGameplayTag Data_Rule_Magnitude;
+	
+	//~ ========================= Gamble 룰 태그 =========================
+
+	/** H50 저주받은 행운 / Z49  룰렛 . 10초마다 이동속도가 -50%~+50% 범위에서 무작위로 변한다. */
+	FGameplayTag Rule_Gamble_Speed;
+	
+	/* Z50 전염 도박 .  감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) */
+	FGameplayTag Rule_Gamble_Plague;
+	
+	/* H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동 */
+	FGameplayTag Rule_Gamble_Blink;
+
+
 
 #pragma region Zombie Rule
 
@@ -168,6 +187,13 @@ public:
 	FGameplayTag Rule_Trade_Frenzy;
 
 	/* Z44 유령 . 반투명, 이동속도 -35% */
+	/* Z45 즉살 이빨 . 감염 시간 1초, 최대 저항 5초, 이동속도 -80% */
+	FGameplayTag Rule_Trade_Instant;
+  
+	/** Z46 위상 이동 . PhaseWall 충돌 벽만 통과 */
+	FGameplayTag Rule_Trade_WallPhase;
+	
+	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
 
 #pragma endregion
@@ -188,6 +214,13 @@ public:
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
+	
+	// Trade
+	FGameplayTag Rule_Trade_Sprinter;
+	FGameplayTag Rule_Trade_Hide;
+	FGameplayTag Rule_Trade_SecondLife;
+	FGameplayTag State_SecondLife_Consumed;
+	FGameplayTag State_Hidden;
 
 	// Trade
 	/* H44 질주 . 이동속도 +40%, 위치 노출 */

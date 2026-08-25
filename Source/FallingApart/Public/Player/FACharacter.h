@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -24,6 +24,9 @@ class UFACharacterStatusComponent;
 class UFACaptureMarkerWidget;
 class UFARuleMarkerWidget;
 class UWidgetComponent;
+class UFAInteractionComponent;
+class AFACabinet;
+class AFALadder;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -57,6 +60,56 @@ public:
 
 	/** 근접 보이스. 감쇠·리스너·발화 아이콘은 전부 컴포넌트 안에서 처리된다. */
 	UFAVoiceComponent* GetVoiceComponent() const { return VoiceComponent; }
+
+	/** 상호작용 탐지·프롬프트·서버 요청 창구. HUD 가 프롬프트를 여기서 읽는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	UFAInteractionComponent* GetInteractionComponent() const { return InteractionComponent; }
+
+	//~ ---------------- 사다리 등반 ----------------
+
+	/** 지금 타고 있는 사다리. 안 타고 있으면 nullptr. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	AFALadder* GetClimbingLadder() const { return ClimbingLadder; }
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	bool IsClimbing() const { return ClimbingLadder != nullptr; }
+
+	/** 서버 전용. 사다리에 붙는다 — AFALadder::Interact 만 호출한다. */
+	void ServerStartClimbing(AFALadder* Ladder);
+
+	/**
+	 * 서버 전용. 사다리에서 내린다.
+	 * @param bLaunchOverLedge 꼭대기에서 난간 위로 올라설 때 true. 그 자리에서 뛰어내리면 false.
+	 */
+	void ServerStopClimbing(bool bLaunchOverLedge);
+
+	/**
+	 * 내려달라는 클라이언트 요청. 점프 키와 꼭대기 자동 하차 시.
+	 */
+	UFUNCTION(Server, Reliable)
+	void Server_RequestStopClimbing(bool bLaunchOverLedge);
+
+	//~ ---------------- 캐비넷 숨기 ----------------
+
+	/** 지금 숨어 있는 캐비넷. 안 숨었으면 nullptr. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	AFACabinet* GetHidingCabinet() const { return HidingCabinet; }
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Interact")
+	bool IsHiding() const { return HidingCabinet != nullptr; }
+
+	/** 서버 전용. 캐비넷 안에 들어간다 — AFACabinet::Interact 만 호출한다. */
+	void ServerStartHiding(AFACabinet* Cabinet);
+
+	/**
+	 * 서버 전용. 캐비넷에서 나온다. 스스로 나오는 것과 좀비가 열어 배출되는 것이 같은 길이다.
+	 * 점유 해제와 위치 복구가 전부 여기서 일어난다.
+	 */
+	void ServerStopHiding();
+
+	/** 나가겠다는 클라이언트 요청. 점프 키. */
+	UFUNCTION(Server, Reliable)
+	void Server_RequestStopHiding();
 
 	/**
 	 * 주인 화면에서는 재생하지 않는다.
@@ -139,6 +192,11 @@ protected:
 
 	virtual void OnRep_Controller() override;
 
+	virtual void UnPossessed() override;
+
+	/** 빙의 상태가 바뀔 때마다 상호작용 탐지 틱을 다시 판단하게 한다. */
+	void RefreshInteractionTick();
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/**
@@ -160,6 +218,9 @@ protected:
 
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
+
+	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
+	void UpdateWadeLoop(bool bInWater);
 
 	/**
 	 * 소유 PlayerState 의 진영 변경 알림을 받아둔다.
@@ -193,6 +254,41 @@ protected:
 	/** 서버가 저항 입력 1회를 반영한다. 매크로 연타를 막는 레이트 제한이 여기 있다. */
 	void RegisterResistInput();
 
+	//~ ---------------- 상호작용 ----------------
+
+	void Input_InteractPressed();
+	void Input_InteractReleased();
+
+	//~ ---------------- 등반 ----------------
+
+	UFUNCTION()
+	void OnRep_ClimbingLadder();
+
+	UFUNCTION()
+	void OnRep_HidingCabinet();
+
+	/**
+	 * 숨은 상태를 실제 표시·충돌·이동으로 옮긴다.
+	 */
+	void ApplyHideState();
+
+	/**
+	 * 숨는 동안 카메라를 캐비넷 위로 올린다. 자기 화면에서만 도는 처리
+	 */
+	void ApplyHideCamera(bool bHiding);
+
+	/**
+	 * 등반 상태를 실제 이동 설정으로 옮긴다
+	 * 붙는 순간의 위치·회전 스냅도 여기서
+	 */
+	void ApplyClimbState();
+
+	/** 등반 중 중심선 유지와 끝단 자동 하차. 매 프레임. */
+	void UpdateClimbing(float DeltaTime);
+
+	/** 등반 입력 — Move() 가 사다리 위에서는 여기로 넘긴다. */
+	void ClimbMove(const FVector2D& MovementVector);
+
 	/** GA_Jump 를 통해 점프한다 — 점프 불가 룰(Z01/H01)이 여기서 걸린다. */
 	void Input_Jump();
 	void Input_StopJumping();
@@ -209,6 +305,9 @@ protected:
 
 	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
 	void UpdateVisionEffects();
+
+	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
+	void UpdateOpponentDistanceCulling(float FullDistance);
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
@@ -261,6 +360,31 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	class UMaterialInterface* VisionFogMaterial = nullptr;
+
+	UPROPERTY(Transient)
+	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
+	
+	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogStartDistanceMin = 300.0f;     // FogAmount = 1 일 때 시작 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMax = 25000.0f;    // FogAmount = 0 일 때 완전히 안 보이는 거리
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float VisionFogFullDistanceMin = 1200.0f;     // FogAmount = 1 일 때 완전히 안 보이는 거리
+
+	/** 상대 컬링 검사 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
+	float OpponentCullCheckInterval = 0.2f;
+
+	float TimeSinceLastOpponentCullCheck = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
@@ -285,6 +409,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* PrimaryAction;
+
+	/**
+	 * 상호작용(문 · 사다리).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* InteractAction;
 
 	//~ ---------------- GAS ----------------
 
@@ -342,7 +472,7 @@ public:
 
 	/** 저항 입력 1회가 올리는 저항 강도(0~1 기준). */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.01", ClampMax = "1.0"))
-	float ResistGainPerInput = 0.2f;
+	float ResistGainPerInput = 0.4f;
 
 	/**
 	 * 저항 강도가 초당 떨어지는 양.
@@ -356,7 +486,7 @@ public:
 	 * 매크로가 초당 수백 번을 보내도 이 이상은 먹지 않는다 — 사람이 낼 수 있는 속도보다 살짝 위로 둔다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.0"))
-	float ResistInputMinInterval = 0.08f;
+	float ResistInputMinInterval = 0.2f;
 
 	//~ ---------------- 머리 위 보유 룰 아이콘  ----------------
 
@@ -448,6 +578,45 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAVoiceComponent> VoiceComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|Interact", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFAInteractionComponent> InteractionComponent;
+
+	//~ ---------------- 등반 상태 ----------------
+
+	/**
+	 * 타고 있는 사다리.
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_ClimbingLadder)
+	TObjectPtr<AFALadder> ClimbingLadder;
+
+	/**
+	 * 들어가 있는 캐비넷.
+	 *
+	 * 사다리와 같은 방식
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_HidingCabinet)
+	TObjectPtr<AFACabinet> HidingCabinet;
+
+	/**
+	 * 마지막으로 적용한 숨김 상태.
+	 */
+	bool bHideStateApplied = false;
+
+	/** 카메라 붐을 캐비넷에 매달아 둔 상태인가. 되돌릴 때 한 번만 풀기 위한 값이다. */
+	bool bHideCameraApplied = false;
+
+	/** 붐을 캐비넷으로 옮기기 직전의 상대 트랜스폼. 나올 때 그대로 되돌린다. */
+	FTransform SavedBoomRelativeTransform;
+
+	/** 등반 진입 전 CMC 값. 내릴 때 그대로 되돌린다. */
+	float SavedMaxFlySpeed = 0.0f;
+	float SavedBrakingDecelerationFlying = 0.0f;
+	bool bSavedOrientRotationToMovement = true;
+	bool bHasSavedClimbMovementSettings = false;
+
+	/** 사다리에 붙은 서버 시각. 붙자마자 바닥 판정으로 튕겨나가는 것을 막는 유예에 쓴다. */
+	float ClimbStartTime = 0.0f;
+
 	/**
 	 * ASC 는 PlayerState 가 아니라 캐릭터에 둔다.
 	 * 이 게임은 라운드 중 리스폰이 없고(감염되면 같은 폰이 좀비가 된다),
@@ -470,6 +639,19 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
+
+	/**
+	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> WadeLoopComponent;
+
+	/** 사다리 발소리 누산기(cm). 등반축으로 실제 움직인 거리다. */
+	float ClimbStepAccumulator = 0.0f;
+
+	/** 사다리를 이만큼(cm) 오르내릴 때마다 Ladder_Step 을 낸다. 0 이면 안 낸다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Audio")
+	float ClimbStepDistance = 60.0f;
 
 	/** 진영 알림을 이미 물린 PlayerState. 같은 대상에 두 번 묶지 않기 위한 것. */
 	TWeakObjectPtr<AFAPlayerState> TeamNotifySource;

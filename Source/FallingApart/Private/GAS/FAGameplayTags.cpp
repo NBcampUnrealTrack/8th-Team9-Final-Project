@@ -1,4 +1,4 @@
-﻿#include "GAS/FAGameplayTags.h"
+#include "GAS/FAGameplayTags.h"
 
 #include "GameplayTagsManager.h"
 
@@ -35,7 +35,7 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Vision
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
-	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desautrate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
+	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desaturate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
 	Rule_Vision_Fog       = AddTag(TEXT("Rule.Vision.Fog"),       TEXT("Z18/H19 안개 — VisionRange 800uu + PostProcess 안개."));
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));
@@ -51,9 +51,11 @@ void FAGameplayTags::AddAllTags()
 	State_Grabbed       = AddTag(TEXT("State.Grabbed"),       TEXT("인간이 포획당한 상태."));
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
-	State_Exposed		= AddTag(TEXT("State.Exposed"),		  TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
-
-	//~ 룰 - Trade
+	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
+	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
+  State_Exposed		    = AddTag(TEXT("State.Exposed"),		    TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
+  
+  //~ 룰 - Trade
 	Rule_Trade_MutualSight = AddTag(TEXT("Rule.Trade.MutualSight"), TEXT("H48/Z48 상호 투시 — 상대 위치 표시 및 내 위치 노출"));
 
 	//~ 어빌리티
@@ -68,6 +70,14 @@ void FAGameplayTags::AddAllTags()
 
 	//~ SetByCaller
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
+
+	//~ 룰 - Gamble
+	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
+	
+	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
+	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
+	
+	
 
 #pragma region Zombie Rule
 
@@ -88,8 +98,10 @@ void FAGameplayTags::AddAllTags()
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
 
 	//~ 룰 - Trade
-	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 6초"));
+	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
+	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
+	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
 #pragma endregion
 
@@ -105,7 +117,12 @@ void FAGameplayTags::AddAllTags()
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
 
 	//~ 룰 - Trade
-	Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
+	Rule_Trade_Hide = AddTag(TEXT("Rule.Trade.Hide"), TEXT("H45 은둔 — 정지 시 2초 후 반투명, 감염 시 구출·저항 불가"));
+	Rule_Trade_SecondLife = AddTag(TEXT("Rule.Trade.SecondLife"), TEXT("H49 불사 — 첫 포획 1회 무효, 이동속도 -30%"));
+  Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
+  
+	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
+	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
 
 #pragma endregion
 }
