@@ -1,4 +1,4 @@
-﻿#include "GAS/FAGameplayTags.h"
+#include "GAS/FAGameplayTags.h"
 
 #include "GameplayTagsManager.h"
 
@@ -67,6 +67,14 @@ void FAGameplayTags::AddAllTags()
 	//~ SetByCaller
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
 
+	//~ 룰 - Gamble
+	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
+	
+	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
+	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
+	
+	
+
 #pragma region Zombie Rule
 
 	//~ 룰 - Move
@@ -83,8 +91,10 @@ void FAGameplayTags::AddAllTags()
 	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
 
 	//~ 룰 - Trade
-	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 6초"));
+	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
+	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
+	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
 #pragma endregion
 
@@ -98,6 +108,13 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Rescue
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
+
+	//~ 룰 - Trade
+	Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
+	Rule_Trade_Hide = AddTag(TEXT("Rule.Trade.Hide"), TEXT("H45 은둔 — 정지 시 2초 후 반투명, 감염 시 구출·저항 불가"));
+	Rule_Trade_SecondLife = AddTag(TEXT("Rule.Trade.SecondLife"), TEXT("H49 불사 — 첫 포획 1회 무효, 이동속도 -30%"));
+	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
+	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
 
 #pragma endregion
 }

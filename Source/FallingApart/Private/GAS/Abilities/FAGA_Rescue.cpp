@@ -72,6 +72,13 @@ void UFAGA_Rescue::ActivateAbility(
 		return;
 	}
 
+	UAbilitySystemComponent* VictimASC = GrabbedAlly->GetAbilitySystemComponent();
+	if (VictimASC && VictimASC->HasMatchingGameplayTag(Tags.Rule_Trade_Hide))
+	{
+		EndAbility(Handle,ActorInfo,ActivationInfo,true,false);
+		return;
+	}
+
 	// 구출 시도가 시작됐다는 신호. 선딜레이가 있으면 이 소리가 그 대기 시간을 메운다.
 	Rescuer->Multicast_PlayFASoundAtLocation(FARescueAudio::Start);
 
@@ -95,6 +102,13 @@ void UFAGA_Rescue::StartRescueContest(AFACharacter* Rescuer, AFACharacter* Grabb
 	if (!Rescuer || !GrabbedAlly)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	UAbilitySystemComponent* VictimASC = GrabbedAlly->GetAbilitySystemComponent();
+	if (!VictimASC || VictimASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Hide))
+	{
+		EndAbility(CurrentSpecHandle,CurrentActorInfo,CurrentActivationInfo,true,false);
 		return;
 	}
 
