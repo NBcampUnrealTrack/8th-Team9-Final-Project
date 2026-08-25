@@ -53,6 +53,10 @@ void FAGameplayTags::AddAllTags()
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
 	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
 	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
+  State_Exposed		    = AddTag(TEXT("State.Exposed"),		    TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
+  
+  //~ 룰 - Trade
+	Rule_Trade_MutualSight = AddTag(TEXT("Rule.Trade.MutualSight"), TEXT("H48/Z48 상호 투시 — 상대 위치 표시 및 내 위치 노출"));
 
 	//~ 어빌리티
 	Ability_Jump = AddTag(TEXT("Ability.Jump"),						TEXT("GA_Jump 식별 태그."));
@@ -90,6 +94,9 @@ void FAGameplayTags::AddAllTags()
 	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
 	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
 
+	//~ 룰 - Social
+	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
+
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
@@ -110,9 +117,10 @@ void FAGameplayTags::AddAllTags()
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
 
 	//~ 룰 - Trade
-	Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
 	Rule_Trade_Hide = AddTag(TEXT("Rule.Trade.Hide"), TEXT("H45 은둔 — 정지 시 2초 후 반투명, 감염 시 구출·저항 불가"));
 	Rule_Trade_SecondLife = AddTag(TEXT("Rule.Trade.SecondLife"), TEXT("H49 불사 — 첫 포획 1회 무효, 이동속도 -30%"));
+  Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
+  
 	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
 	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
 
