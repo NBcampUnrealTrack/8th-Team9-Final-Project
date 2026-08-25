@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacter.h"
 #include "Audio/FAAudioSubsystem.h"
@@ -235,6 +235,13 @@ float AFACharacter::UpdateResistLevel(float DeltaSeconds)
 		return 0.0f;
 	}
 
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Trade_Hide))
+	{
+		ResistLevel = 0.0f;
+		return 0.0f;
+	}
+
 	ResistLevel = FMath::Clamp(ResistLevel - ResistDecayPerSecond * DeltaSeconds, 0.0f, 1.0f);
 
 	return ResistLevel;
@@ -284,6 +291,12 @@ void AFACharacter::RegisterResistInput()
 {
 	// 잡힌 사람만 저항한다. 잡고 있는 좀비 쪽 입력이 섞이면 자기 감염을 자기가 늦추는 꼴이 된다.
 	if (!HasAuthority() || !CaptureState.IsActive() || !CaptureState.bIsVictim)
+	{
+		return;
+	}
+
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Trade_Hide))
 	{
 		return;
 	}

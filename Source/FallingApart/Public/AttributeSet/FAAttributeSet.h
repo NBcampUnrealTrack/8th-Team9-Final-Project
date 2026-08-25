@@ -69,6 +69,11 @@ public:
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_WaterMoveSpeedMultiplier,Category = "Attribute|Movement")
 	FGameplayAttributeData WaterMoveSpeedMultiplier;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,WaterMoveSpeedMultiplier)
+
+	// H50 저주받은 행운이 10초마다 정하는 이동속도 배율. 기본값 1.0.
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing=OnRep_GambleSpeedMultiplier,Category="Attribute|Movement")
+	FGameplayAttributeData GambleSpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,GambleSpeedMultiplier)
 	
 	// 점프 기본값 420.0
 	// GameplayEffect에서 배율 또는 고정값으로 변경
@@ -124,6 +129,16 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)
+	
+  /**
+   * 최대 저항 상태에서 감염 시간이 늘어나는 배율.
+   *
+   * 기본값 3.0:
+   * InfectDuration이 5초라면 최대 저항에서 15초.
+   */
+  UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_MaxResistTimeMultiplier,Category = "Attribute|Grab")
+	FGameplayAttributeData MaxResistTimeMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, MaxResistTimeMultiplier)
 
 	// 구출 QTE 진입 선딜레이 기본값 0.0초
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RescueDuration, Category = "Attribute|Rescue")
@@ -158,6 +173,9 @@ protected:
 	void OnRep_WaterMoveSpeedMultiplier(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
+	void OnRep_GambleSpeedMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
 	void OnRep_Stamina(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
@@ -174,6 +192,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_InfectDuration(const FGameplayAttributeData& OldValue);
+	
+	UFUNCTION()
+	void OnRep_MaxResistTimeMultiplier(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
 	void OnRep_RescueDuration(const FGameplayAttributeData& OldValue);
