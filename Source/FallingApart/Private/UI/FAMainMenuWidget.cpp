@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FAMainMenuWidget.h"
@@ -22,6 +22,7 @@ namespace FAMainMenuAudio
 	static const FName Back(TEXT("UI_Back"));
 	static const FName Hover(TEXT("UI_Hover"));
 	static const FName PopupOpen(TEXT("UI_PopupOpen"));
+	static const FName PopupClose(TEXT("UI_PopupClose"));
 	static const FName Success(TEXT("UI_Success"));
 	static const FName Error(TEXT("UI_Error"));
 }
@@ -444,8 +445,20 @@ void UFAMainMenuWidget::OnSettingButtonClicked()
 	SettingsWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
 	if (SettingsWidget)
 	{
+		// 설정창은 자기가 닫히는 시점을 알려준다 — 자기 닫기 버튼 · ESC · 바깥 클릭이 다 이 한 줄로 모인다.
+		if (USKSettingsMenuWidget* SettingsMenu = Cast<USKSettingsMenuWidget>(SettingsWidget))
+		{
+			SettingsMenu->OnSettingsClosed.AddUniqueDynamic(this, &ThisClass::HandleSettingsClosed);
+		}
+
 		SettingsWidget->AddToViewport(SettingsWidgetZOrder);
+		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupOpen);
 	}
+}
+
+void UFAMainMenuWidget::HandleSettingsClosed()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupClose);
 }
 
 void UFAMainMenuWidget::OnQuitButtonClicked()

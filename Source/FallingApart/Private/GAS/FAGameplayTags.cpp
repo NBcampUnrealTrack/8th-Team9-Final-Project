@@ -35,7 +35,7 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Vision
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
-	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desautrate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
+	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desaturate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
 	Rule_Vision_Fog       = AddTag(TEXT("Rule.Vision.Fog"),       TEXT("Z18/H19 안개 — VisionRange 800uu + PostProcess 안개."));
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));
@@ -51,6 +51,8 @@ void FAGameplayTags::AddAllTags()
 	State_Grabbed       = AddTag(TEXT("State.Grabbed"),       TEXT("인간이 포획당한 상태."));
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
+	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
+	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
 
 	//~ 어빌리티
 	Ability_Jump = AddTag(TEXT("Ability.Jump"),						TEXT("GA_Jump 식별 태그."));
