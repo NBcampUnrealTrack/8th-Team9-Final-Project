@@ -72,7 +72,6 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this,&ThisClass::HandleWallPhaseRuleChanged);
 		// BeginPlay 전에 Z46이 적용된 경우도 처리한다.
 		HandleWallPhaseRuleChanged(WallPhaseRuleTag,ASC->GetTagCount(WallPhaseRuleTag));
-
 		const FGameplayTag HiddenStateTag = FAGameplayTags::Get().State_Hidden;
 		ASC->RegisterGameplayTagEvent(HiddenStateTag,EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this,&ThisClass::HandleHiddenStateChanged);
@@ -121,7 +120,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Speed,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Blink,
 		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}

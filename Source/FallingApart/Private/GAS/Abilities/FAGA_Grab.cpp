@@ -265,7 +265,7 @@ void UFAGA_Grab::ResolveGrabAttempt()
 			TEXT("[Z43] 광폭 감염 시간 적용 | Base=%.1fs | Max=%.1fs"),
 			BaseInfectDuration,BaseInfectDuration * ResistTimeMultiplier);
 	}
-
+	
 	// 포획 도중 GE 값이 바뀌어도 이번 포획에는 시작 시점 값을 사용한다.
 	CapturedMaxResistTimeMultiplier =ResistTimeMultiplier;
 

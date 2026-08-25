@@ -465,7 +465,7 @@ public:
 
 	/** 저항 입력 1회가 올리는 저항 강도(0~1 기준). */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.01", ClampMax = "1.0"))
-	float ResistGainPerInput = 0.2f;
+	float ResistGainPerInput = 0.4f;
 
 	/**
 	 * 저항 강도가 초당 떨어지는 양.
