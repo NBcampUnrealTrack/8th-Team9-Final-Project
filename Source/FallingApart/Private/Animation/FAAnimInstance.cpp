@@ -7,12 +7,14 @@
 #include "GAS/FAGameplayTags.h"
 #include "Player/FACharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Interact/FALadder.h"
 
 void UFAAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
 
 	CacheOwnerReferences();
+	UpdateTraversalAnimationData();
 	UpdateGASStatusOverride();
 }
 
@@ -25,6 +27,7 @@ void UFAAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		CacheOwnerReferences();
 	}
 
+	UpdateTraversalAnimationData();
 	UpdateGASStatusOverride();
 }
 
@@ -44,6 +47,39 @@ void UFAAnimInstance::CacheOwnerReferences()
 void UFAAnimInstance::UpdateGASStatusOverride()
 {
 	StatusOverride = ResolveGASStatusOverride();
+}
+
+void UFAAnimInstance::UpdateTraversalAnimationData()
+{
+	bIsClimbing = false;
+	ClimbSpeed = 0.0f;
+	ClimbPlayRate = 0.0f;
+
+	if (!OwningCharacter)
+	{
+		return;
+	}
+
+	const AFALadder* Ladder = OwningCharacter->GetClimbingLadder();
+	if (!Ladder)
+	{
+		return;
+	}
+
+	bIsClimbing = true;
+
+	// 월드 Z 속도가 아니라 실제 사다리 방향을 기준으로 계산한다.
+	// 따라서 사다리가 약간 기울어져 있어도 위·아래 방향이 정확하다.
+	ClimbSpeed = FVector::DotProduct(
+		OwningCharacter->GetVelocity(),
+		Ladder->GetClimbUpVector());
+
+	const float ReferenceSpeed = FMath::Max(Ladder->ClimbSpeed, 1.0f);
+
+	ClimbPlayRate = FMath::Clamp(
+		ClimbSpeed / ReferenceSpeed,
+		-1.5f,
+		1.5f);
 }
 
 EFAAnimStatusOverride UFAAnimInstance::ResolveGASStatusOverride() const

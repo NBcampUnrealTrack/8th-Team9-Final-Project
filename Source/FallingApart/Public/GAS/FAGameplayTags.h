@@ -222,10 +222,6 @@ public:
 	FGameplayTag State_SecondLife_Consumed;
 	FGameplayTag State_Hidden;
 
-	// Trade
-	/* H44 질주 . 이동속도 +40%, 위치 노출 */
-	FGameplayTag Rule_Trade_Sprinter;
-
 #pragma endregion
 
 private:

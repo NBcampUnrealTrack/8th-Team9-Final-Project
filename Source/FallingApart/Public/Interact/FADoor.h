@@ -8,6 +8,7 @@
 
 class UStaticMeshComponent;
 class USceneComponent;
+class UAnimMontage;
 
 /**
  * 여닫이 문.
@@ -59,6 +60,10 @@ protected:
 
 	/** 복제된 상태를 목표 회전으로 바꾸고 보간을 켠다. 서버·클라 공통 경로. */
 	void ApplyOpenState(bool bPlaySound);
+
+	/** 상호작용한 캐릭터의 문 열기/닫기 몽타주를 모든 클라이언트에서 재생한다. */
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayDoorInteractionMontage(AFACharacter* Interactor, bool bOpening);
 
 	/** 지금 상태에 해당하는 피벗의 목표 상대 회전. */
 	FRotator GetTargetPivotRotation() const;
@@ -114,6 +119,16 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door")
 	bool bStartLocked = false;
+
+	//~ ---------------- 캐릭터 애니메이션 ----------------
+
+	/** 캐릭터가 문을 열 때 재생할 몽타주. 비워두면 재생하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
+	TObjectPtr<UAnimMontage> DoorOpenMontage;
+
+	/** 캐릭터가 문을 닫을 때 재생할 몽타주. 비워두면 재생하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
+	TObjectPtr<UAnimMontage> DoorCloseMontage;
 
 	//~ ---------------- 문구 ----------------
 
