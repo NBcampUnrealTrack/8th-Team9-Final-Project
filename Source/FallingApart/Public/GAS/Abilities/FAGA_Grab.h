@@ -73,6 +73,18 @@ protected:
 	/** 포획 실패 시 적용할 Effect (경직) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> FailStunEffectClass;
+	
+	/**
+  * Z50 확률 판정 실패 시 좀비에게 적용할 GE.
+  *
+  * 이 GE는 에디터에서 다음과 같이 설정한다.
+  *
+  * Duration Policy = Has Duration
+  * Duration = 20.0
+  * Granted Tag = State.Stunned
+  */
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="GAS|Effects|Gamble")
+	TSubclassOf<UGameplayEffect> PlagueFailStunEffectClass;
 
 	/**
 	 * 인질이 최대로 저항했을 때 감염 시간이 몇 배로 늘어나는가.
@@ -80,9 +92,10 @@ protected:
 	 * InfectDuration Attribute(= 저항 0 기준 시간, 기본 5초)에 곱한다. 기본 3.0 이면 최대 15초.
 	 * 저항은 감염을 취소하지 못한다 — 구조자가 도착할 시간을 버는 수단이다.
 	 */
+	/*
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Grab", meta = (ClampMin = "1.0"))
 	float MaxResistTimeMultiplier = 3.0f;
-
+	*/
 	/**
 	 * 감염 진행 누적과 거리 이탈 검사를 함께 도는 서버 틱 주기(초).
 	 * 게이지는 클라이언트가 속도로 외삽하므로 이 값이 곧 게이지의 부드러움은 아니다.
@@ -105,6 +118,9 @@ private:
 
 	/** 진행도가 1 에 닿았다. 진영 전환·점수·연속 드래프트는 게임모드가 맡는다. */
 	void CompleteInfection();
+	
+	// GameMode, 1차 피해자, 감염자는 함수 내부에서 가져온다.
+	void ResolvePlagueGamble();
 
 	/** 지금 진행도와 속도를 좀비·인질 양쪽 게이지로 내보낸다. */
 	void PushCaptureProgress();
@@ -124,6 +140,14 @@ private:
 
 	/** 저항이 0 일 때의 감염 시간(초). 포획 시작 시 InfectDuration Attribute 에서 받아 둔다. */
 	float BaseInfectDuration = 0.0f;
+	
+	/**
+	 * 최대 저항 시 감염 시간 배율.
+	 *
+	 * 포획 시작 시 MaxResistTimeMultiplier Attribute에서 저장한다.
+	 * 포획 도중 GE가 제거되어도 현재 포획의 시간이 갑자기 바뀌지 않는다.
+	 */
+	float CapturedMaxResistTimeMultiplier = 1.0f;
 
 	/** 지금의 초당 진행 속도. 게이지로 내보낼 값이라 매 틱 갱신한다. */
 	float CurrentInfectRate = 0.0f;
