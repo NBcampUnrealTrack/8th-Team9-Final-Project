@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
@@ -129,6 +129,18 @@ public:
 	 */
 	FGameplayTag Data_Rule_Magnitude;
 
+	//~ ========================= Gamble 룰 태그 =========================
+
+	/** H50 저주받은 행운 / Z49  룰렛 . 10초마다 이동속도가 -50%~+50% 범위에서 무작위로 변한다. */
+	FGameplayTag Rule_Gamble_Speed;
+	
+	/* Z50 전염 도박 .  감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) */
+	FGameplayTag Rule_Gamble_Plague;
+	
+	/* H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동 */
+	FGameplayTag Rule_Gamble_Blink;
+
+
 #pragma region Zombie Rule
 
 	// Move
@@ -158,7 +170,7 @@ public:
 	FGameplayTag Rule_Bite_RescueStun;
 
 	// Trade
-	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
+	/* Z43 광폭 . 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초 */
 	FGameplayTag Rule_Trade_Frenzy;
 	
 	/* Z44 유령. 반투명, 이동속도 -35% */
@@ -167,11 +179,15 @@ public:
 	/* Z45 즉살 이빨 . 감염 시간 1초, 최대 저항 5초, 이동속도 -80% */
 	FGameplayTag Rule_Trade_Instant;
 	
-	/** Z46 위상 이동 — PhaseWall 충돌 벽만 통과 */
+	/** Z46 위상 이동 . PhaseWall 충돌 벽만 통과 */
 	FGameplayTag Rule_Trade_WallPhase;
+	
+	
+	
 
 #pragma endregion
 
+	
 #pragma region Human Rule
 
 	// Move
@@ -188,6 +204,15 @@ public:
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
+
+	// Trade
+	FGameplayTag Rule_Trade_Sprinter;
+	FGameplayTag Rule_Trade_Hide;
+	FGameplayTag Rule_Trade_SecondLife;
+	FGameplayTag State_SecondLife_Consumed;
+	FGameplayTag State_Hidden;
+	
+	
 
 #pragma endregion
 

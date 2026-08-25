@@ -15,6 +15,7 @@ UFAAttributeSet::UFAAttributeSet()
 	InitAirControl(0.35f);
 	InitTurnRateScale(1.0f);
 	InitWaterMoveSpeedMultiplier(1.0f);
+	InitGambleSpeedMultiplier(1.0f);
 	InitRuleJumpZVelocity (420.0f);
 
 	// 스태미나
@@ -63,6 +64,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	else if (Attribute ==GetWaterMoveSpeedMultiplierAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,5.0f);
+	}
+	else if (Attribute == GetGambleSpeedMultiplierAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue,0.5f,1.5f);
 	}
 	else if (Attribute == GetStaminaAttribute())
 	{
@@ -142,6 +147,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		SetWaterMoveSpeedMultiplier(FMath::Clamp(GetWaterMoveSpeedMultiplier(),0.0f,5.0f));
 	}
+	else if (ChangedAttribute == GetGambleSpeedMultiplierAttribute())
+	{
+		SetGambleSpeedMultiplier(FMath::Clamp(GetGambleSpeedMultiplier(),0.5f,1.5f));
+	}
 	else if (ChangedAttribute ==GetStaminaAttribute())
 	{
 		SetStamina(FMath::Clamp(GetStamina(),0.0f,GetMaxStamina()));
@@ -197,6 +206,7 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,AirControl,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,TurnRateScale,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,WaterMoveSpeedMultiplier,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,GambleSpeedMultiplier,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,Stamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxStamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,VisionRange,COND_None,REPNOTIFY_Always);
@@ -236,6 +246,11 @@ void UFAAttributeSet::OnRep_TurnRateScale(const FGameplayAttributeData& OldValue
 void UFAAttributeSet::OnRep_WaterMoveSpeedMultiplier(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,WaterMoveSpeedMultiplier,OldValue);
+}
+
+void UFAAttributeSet::OnRep_GambleSpeedMultiplier(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,GambleSpeedMultiplier,OldValue);
 }
 
 void UFAAttributeSet::OnRep_Stamina(const FGameplayAttributeData& OldValue)

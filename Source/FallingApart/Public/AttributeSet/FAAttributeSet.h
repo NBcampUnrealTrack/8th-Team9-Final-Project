@@ -69,6 +69,11 @@ public:
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_WaterMoveSpeedMultiplier,Category = "Attribute|Movement")
 	FGameplayAttributeData WaterMoveSpeedMultiplier;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,WaterMoveSpeedMultiplier)
+
+	// H50 저주받은 행운이 10초마다 정하는 이동속도 배율. 기본값 1.0.
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing=OnRep_GambleSpeedMultiplier,Category="Attribute|Movement")
+	FGameplayAttributeData GambleSpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,GambleSpeedMultiplier)
 	
 	// 점프 기본값 420.0
 	// GameplayEffect에서 배율 또는 고정값으로 변경
@@ -166,6 +171,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_WaterMoveSpeedMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_GambleSpeedMultiplier(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
 	void OnRep_Stamina(const FGameplayAttributeData& OldValue);

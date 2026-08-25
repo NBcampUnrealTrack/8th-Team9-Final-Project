@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -465,7 +465,7 @@ public:
 
 	/** 저항 입력 1회가 올리는 저항 강도(0~1 기준). */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.01", ClampMax = "1.0"))
-	float ResistGainPerInput = 0.4f;
+	float ResistGainPerInput = 0.2f;
 
 	/**
 	 * 저항 강도가 초당 떨어지는 양.
@@ -479,7 +479,7 @@ public:
 	 * 매크로가 초당 수백 번을 보내도 이 이상은 먹지 않는다 — 사람이 낼 수 있는 속도보다 살짝 위로 둔다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Capture", meta = (ClampMin = "0.0"))
-	float ResistInputMinInterval = 0.08f;
+	float ResistInputMinInterval = 0.2f;
 
 	//~ ---------------- 머리 위 보유 룰 아이콘  ----------------
 

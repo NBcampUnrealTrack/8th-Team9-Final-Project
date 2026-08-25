@@ -47,6 +47,29 @@ private:
 	/** Rule.Trade.Ghost 태그 추가·제거에 따라 유령 외형을 변경한다. */
 	void HandleGhostRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
+	void HandleSecondLifeRuleChanged(const FGameplayTag Tag,int32 NewCount);
+	void UpdateHideRule(float DeltaTime);
+	void SetHideActive(bool bActive);
+	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
+	void RefreshGhostVisual();
+
+	/** H50 태그 추가·제거에 따라 무작위 이동속도 주기를 시작하거나 정리한다. */
+	void HandleGambleSpeedRuleChanged(const FGameplayTag Tag,int32 NewCount);
+	/** 현재 H50 배율을 제거하고 새 0.5~1.5배 효과를 적용한다. */
+	void RollGambleSpeed();
+	/** H50 타이머와 현재 속도 효과를 모두 제거한다. */
+	void ClearGambleSpeed();
+	
+	// Rule.Gamble.Blink 추가·제거 이벤트 처리
+	void HandleGambleBlinkRuleChanged(const FGameplayTag Tag,int32 NewCount);
+
+	// 무작위 Human PlayerStart로 순간이동
+	void BlinkToRandomPlayerStart();
+
+	// H43 반복 타이머 정리
+	void ClearGambleBlink();
+
+
 	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
 	void SetGhostVisualActive(bool bActive);
 	
@@ -89,5 +112,32 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> GhostDynamicMaterials;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Hide",meta=(ClampMin="0.0"))
+	float HideDelay = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Hide",meta=(ClampMin="0.0"))
+	float HideStationarySpeedTolerance = 3.0f;
+
+	float HideStationaryElapsed = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.1"))
+	float GambleSpeedInterval = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.0"))
+	float GambleSpeedMinMultiplier = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.0"))
+	float GambleSpeedMaxMultiplier = 1.5f;
+
+	FTimerHandle GambleSpeedTimerHandle;
 		
+	
+	// H43 순간이동 반복 간격.
+	// 룰 획득 후 40초 뒤 첫 순간이동이 발생한다.
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="1.0"))
+	float GambleBlinkInterval = 40.0f;
+
+	// H43 반복 타이머
+	FTimerHandle GambleBlinkTimerHandle;
 };

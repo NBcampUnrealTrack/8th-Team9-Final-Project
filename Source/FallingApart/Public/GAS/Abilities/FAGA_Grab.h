@@ -73,6 +73,18 @@ protected:
 	/** 포획 실패 시 적용할 Effect (경직) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> FailStunEffectClass;
+	
+	/**
+  * Z50 확률 판정 실패 시 좀비에게 적용할 GE.
+  *
+  * 이 GE는 에디터에서 다음과 같이 설정한다.
+  *
+  * Duration Policy = Has Duration
+  * Duration = 20.0
+  * Granted Tag = State.Stunned
+  */
+	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="GAS|Effects|Gamble")
+	TSubclassOf<UGameplayEffect> PlagueFailStunEffectClass;
 
 	/**
 	 * 인질이 최대로 저항했을 때 감염 시간이 몇 배로 늘어나는가.
@@ -106,6 +118,9 @@ private:
 
 	/** 진행도가 1 에 닿았다. 진영 전환·점수·연속 드래프트는 게임모드가 맡는다. */
 	void CompleteInfection();
+	
+	// GameMode, 1차 피해자, 감염자는 함수 내부에서 가져온다.
+	void ResolvePlagueGamble();
 
 	/** 지금 진행도와 속도를 좀비·인질 양쪽 게이지로 내보낸다. */
 	void PushCaptureProgress();

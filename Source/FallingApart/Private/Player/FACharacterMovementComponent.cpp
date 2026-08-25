@@ -83,7 +83,8 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 		return Super::GetMaxSpeed();
 	}
 
-	const float RuleSpeed = FMath::Max(0.0f, Attributes->GetMoveSpeed());
+	const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
+	const float RuleSpeed = FMath::Max(0.0f,Attributes->GetMoveSpeed() * GambleSpeedMultiplier);
 	const float WaterSpeedMultiplier = FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f);
 	switch (MovementMode)
 	{
