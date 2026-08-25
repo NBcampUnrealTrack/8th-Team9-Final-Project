@@ -102,6 +102,14 @@ public:
 	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
 	FGameplayTag State_Input_Flipped;
 
+	/** 캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태 */
+	FGameplayTag State_Exposed;
+
+	//~ ========================= Trade Tag =========================
+
+	/* H48 예지 / Z48 사냥꾼의 눈 - 상대 진영 전원 위치 표시, 내 위치 노출 */
+	FGameplayTag Rule_Trade_MutualSight;
+
 	//~ ========================= 어빌리티 태그 =========================
 
 	FGameplayTag Ability_Jump;
@@ -151,11 +159,15 @@ public:
 	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
 	FGameplayTag Rule_Bite_RescueStun;
 
+	// Social
+	/* Z38 상시 표적 . 내 위치 상시 노출 */
+	FGameplayTag Rule_Social_Exposed;
+
 	// Trade
 	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
 	FGameplayTag Rule_Trade_Frenzy;
-	
-	/* Z44 유령. 반투명, 이동속도 -35% */
+
+	/* Z44 유령 . 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
 
 #pragma endregion
@@ -176,6 +188,10 @@ public:
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
+
+	// Trade
+	/* H44 질주 . 이동속도 +40%, 위치 노출 */
+	FGameplayTag Rule_Trade_Sprinter;
 
 #pragma endregion
 
