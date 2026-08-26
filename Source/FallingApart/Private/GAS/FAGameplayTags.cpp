@@ -103,7 +103,11 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 	
 	//~ 룰 - State
-	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
+	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
+	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
+	State_NoInteract = AddTag(TEXT("State.NoInteract"),TEXT("상호작용 오브젝트 사용이 제한된 상태."));
+	Rule_State_NoStruggle = AddTag(TEXT("Rule.State.NoStruggle"),TEXT("H38 유리 몸 — 일반 포획 저항 불가."));
+	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
 	
 	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
 

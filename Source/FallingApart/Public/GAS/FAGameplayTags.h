@@ -201,6 +201,14 @@ public:
 	// ~ ====== State
 	// * H36 뿌리내림 /  */
 	FGameplayTag Rule_State_Camp;
+
+	/** H37 문맹 — 상호작용 오브젝트 사용 불가 */
+	FGameplayTag Rule_State_NoInteract;
+	FGameplayTag State_NoInteract;
+
+	/** H38 유리 몸 — 일반 포획 저항 입력 무효, 구출 QTE는 정상 */
+	FGameplayTag Rule_State_NoStruggle;
+	FGameplayTag State_NoStruggle;
 	
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;

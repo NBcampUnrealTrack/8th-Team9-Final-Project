@@ -234,8 +234,11 @@ float AFACharacter::UpdateResistLevel(float DeltaSeconds)
 		return 0.0f;
 	}
 
-	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
-		FAGameplayTags::Get().Rule_Trade_Hide))
+	// [H38 유리 몸] 포획 도중 룰이 적용되어도 이전 저항이 남지 않게 서버에서 즉시 0으로 만든다.
+	if (AbilitySystemComponent &&
+		(AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Hide) ||
+		 AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_State_NoStruggle) ||
+		 AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().State_NoStruggle)))
 	{
 		ResistLevel = 0.0f;
 		return 0.0f;
@@ -294,8 +297,11 @@ void AFACharacter::RegisterResistInput()
 		return;
 	}
 
-	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
-		FAGameplayTags::Get().Rule_Trade_Hide))
+	// [H38 유리 몸] 클라이언트가 저항 RPC를 직접 보내도 서버에서 최종 차단한다.
+	if (AbilitySystemComponent &&
+		(AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Hide) ||
+		 AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_State_NoStruggle) ||
+		 AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().State_NoStruggle)))
 	{
 		return;
 	}
@@ -576,8 +582,9 @@ void AFACharacter::RefreshCustomDepth()
 	bool bShouldReveal = false;
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
-	// State Exposed Tag 검사
-	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Exposed))
+	// [H36 뿌리내림] 기존 상시 노출과 같은 X-Ray 아웃라인 경로를 사용한다.
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Exposed) ||
+		AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Camp))
 	{
 		bShouldReveal = true;
 	}
@@ -986,6 +993,11 @@ void AFACharacter::InitializeAbilitySystem()
 		FAGameplayTags::Get().Rule_Trade_MutualSight, EGameplayTagEventType::NewOrRemoved
 	).AddUObject(this, &AFACharacter::OnMutualSightTagChanged);
 
+	// [H36 뿌리내림] State.Camp 복제 시 각 클라이언트의 아웃라인을 즉시 갱신한다.
+	AbilitySystemComponent->RegisterGameplayTagEvent(
+		FAGameplayTags::Get().State_Camp, EGameplayTagEventType::NewOrRemoved
+	).AddUObject(this, &AFACharacter::OnExposedTagChanged);
+
 	if (!HasAuthority() || bAbilitiesGranted)
 	{
 		return;
@@ -1166,7 +1178,14 @@ void AFACharacter::Move(const FInputActionValue& Value)
 	// 이동 입력 자체는 그대로 흘려보낸다. 어차피 State.Grabbed GE 가 속도를 눌러 놓는다.
 	if (CaptureState.IsActive() && CaptureState.bIsVictim)
 	{
-		HandleResistInput(MovementVector);
+		// [H38 유리 몸] 일반 포획 저항 RPC만 막는다. QTE는 Ability.ContestMash 경로라 영향받지 않는다.
+		const bool bNoStruggle = AbilitySystemComponent &&
+			(AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_State_NoStruggle) ||
+			 AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().State_NoStruggle));
+		if (!bNoStruggle)
+		{
+			HandleResistInput(MovementVector);
+		}
 	}
 
 	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.

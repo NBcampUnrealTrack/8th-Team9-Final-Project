@@ -135,7 +135,9 @@ enum class EFARuleCategory : uint8
 	/** 거래(T) — 이득이 있는 카드 (노랑). 계열 태그보다 우선한다. */
 	Trade	= 5,
 	/** 도박(G) — 불확실성 (무지개·점멸). 계열 태그보다 우선한다. */
-	Gamble	= 6
+	Gamble	= 6,
+	/** Rule.State.* — 특정 행동·상태를 제한하는 계열 (주황) */
+	State	= 7
 };
 
 /**
