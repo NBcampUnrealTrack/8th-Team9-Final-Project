@@ -46,23 +46,17 @@ void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
 
 EFATeam AFAPlayerState::GetMainSide() const
 {
-	return (MatchScore.GetZombieTotal() > MatchScore.GetHumanTotal()) ? EFATeam::Zombie : EFATeam::Human;
+	return MatchScore.GetMainSide();
 }
 
 int32 AFAPlayerState::GetMainSideScore() const
 {
-	return FMath::Max(MatchScore.GetHumanTotal(), MatchScore.GetZombieTotal());
+	return MatchScore.GetMainSideScore();
 }
 
 float AFAPlayerState::GetMainSideRatio() const
 {
-	const int32 Total = MatchScore.GetTotal();
-	if (Total <= 0)
-	{
-		return 0.0f;
-	}
-
-	return static_cast<float>(GetMainSideScore()) / static_cast<float>(Total);
+	return MatchScore.GetMainSideRatio();
 }
 
 void AFAPlayerState::SetTeam(EFATeam NewTeam)

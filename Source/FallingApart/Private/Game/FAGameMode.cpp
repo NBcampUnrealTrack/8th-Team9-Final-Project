@@ -358,6 +358,8 @@ void AFAGameMode::BuildRoundResultSnapshot(EFARoundResult Result, const TArray<A
 		Row.PlayerName = FAPlayerState->GetPlayerName();
 		Row.PlayerState = const_cast<AFAPlayerState*>(FAPlayerState);
 		Row.Score = FAPlayerState->GetRoundScore();
+		Row.Score.StartingSideScore = Row.Score.ComputeRoundStartingSideScore();
+
 		Row.SurvivalTime = FAPlayerState->GetRoundScore().SurvivalTime;
 		Row.bSurvived = FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound();
 		Row.TeamAtRoundEnd = FAPlayerState->GetTeam();
@@ -365,14 +367,11 @@ void AFAGameMode::BuildRoundResultSnapshot(EFARoundResult Result, const TArray<A
 		Snapshot.Rows.Add(Row);
 	}
 
-	// GDD 8.4 는 '생존 시간 순위' 다. 동률이면 이번 라운드 점수로 가른다.
+	// 라운드 순위도 최종 순위표와 같은 규칙
+	// 1차 총점 → 2차 진영 기여도 → 3차 생존 시간 → 동점이면 공동 순위.
 	Snapshot.Rows.Sort([](const FFARoundResultRow& A, const FFARoundResultRow& B)
 		{
-			if (!FMath::IsNearlyEqual(A.SurvivalTime, B.SurvivalTime, 0.01f))
-			{
-				return A.SurvivalTime > B.SurvivalTime;
-			}
-			return A.Score.GetTotal() > B.Score.GetTotal();
+			return FFAPlayerScore::CompareByRankRules(A.Score, B.Score);
 		});
 
 	FAGameState->SetRoundResultSnapshot(Snapshot);
