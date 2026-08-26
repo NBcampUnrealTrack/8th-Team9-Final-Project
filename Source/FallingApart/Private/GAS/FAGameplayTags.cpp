@@ -92,7 +92,6 @@ void FAGameplayTags::AddAllTags()
 	Rule_Bite_FailStun = AddTag(TEXT("Rule.Bite.FailStun"), TEXT("Z28 빗나감 — 포획 실패 시 5초 경직"));
 	Rule_Bite_RootedGrab = AddTag(TEXT("Rule.Bite.RootedGrab"), TEXT("Z29 고정 턱 — 포획 중 완전 이동 불가"));
 	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
-	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
 
 	//~ 룰 - Social
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
