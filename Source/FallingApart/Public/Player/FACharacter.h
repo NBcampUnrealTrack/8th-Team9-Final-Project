@@ -306,6 +306,13 @@ protected:
 	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
 	void UpdateVisionEffects();
 
+	/**
+	 * bShouldBeActive 에 맞춰 MID 를 FollowCamera 의 WeightedBlendables 배열에 넣거나 뺀다.
+	 * 각 비전 이펙트(Fog·NarrowFOV)가 자기 자신의 세기(0)일 때는 완전히 배열에서 빠져야,
+	 * 다른 이펙트가 PostProcessBlendWeight 를 켰을 때 얘도 같이 묻어 나오는 일이 없다.
+	 */
+	void SetVisionBlendableActive(UMaterialInstanceDynamic* MID, bool bShouldBeActive) const;
+
 	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
 	void UpdateOpponentDistanceCulling(float FullDistance);
 
@@ -385,6 +392,23 @@ public:
 	float OpponentCullCheckInterval = 0.2f;
 
 	float TimeSinceLastOpponentCullCheck = 0.0f;
+
+	//~ ---------------- 시야각 축소 연출 (Vision.NarrowFOV) ----------------
+	//~ 실제 카메라 FOV는 더 이상 건드리지 않는다 — 화면 테두리를 검게 좁히는 별도 PP 머티리얼로 대체.
+	//~ Vision.Fog(VisionFogMID)와는 완전히 분리된 블렌더블 슬롯 · 파라미터를 쓴다.
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Narrow")
+	class UMaterialInterface* VisionNarrowFOVMaterial = nullptr;
+
+	UPROPERTY(Transient)
+	class UMaterialInstanceDynamic* VisionNarrowFOVMID = nullptr;
+
+	/**
+	 * FOV 축소 비율(NarrowAmount)에 곱하는 배율. 1.0보다 크면 실제 FOV가 덜 줄어도 화면 마스크는 더 세게 닫힌다.
+	 * GE가 FOV를 살짝만 줄이는데도 "거의 다 가려지게" 하고 싶으면 이 값을 키운다. (예: 2.0 ~ 3.0)
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Narrow", meta = (ClampMin = "1.0"))
+	float NarrowAmountIntensity = 2.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
@@ -674,6 +698,12 @@ private:
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
 	FTimerHandle PerspectiveTimerHandle;
+
+	/**
+	 * 카메라 원래 FOV. BeginPlay 에서 한 번만 캐싱한다.
+	 * Vision.NarrowFOV 가 더 이상 실제 FOV를 바꾸지 않으므로, "얼마나 좁아졌는가" 비율을 계산하는 기준값으로만 쓴다.
+	 */
+	float DefaultCameraFOV = 90.0f;
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
