@@ -8,6 +8,7 @@
 #include "Components/WidgetSwitcher.h"
 #include "Engine/Engine.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "LoadingScreenSubsystem.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "SettingsKitMenuWidget.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
@@ -245,8 +246,13 @@ void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
 					TEXT("%s?listen?Nickname=%s"),
 					*LevelPath,
 					*PendingNickname);
-			
-			
+			// 레벨을 여는 동안 메인 메뉴가 그대로 보이면 멈춘 것처럼 느껴진다.
+			if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+			{
+				LoadingScreen->ShowWithTitle(
+					NSLOCTEXT("FAMainMenu", "OpeningLobby", "방을 여는 중..."));
+			}
+
 			World->ServerTravel(TravelURL);
 		}
 		return;

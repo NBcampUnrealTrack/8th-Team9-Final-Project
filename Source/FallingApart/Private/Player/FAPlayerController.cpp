@@ -12,6 +12,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "LoadingScreenSubsystem.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Network/FAOnlineSessionSubsystem.h"
@@ -534,6 +535,13 @@ void AFAPlayerController::TravelToMainMenu()
 	}
 
 	MapPath = FPackageName::ObjectPathToPackageName(MapPath);
+
+	// 세션 정리까지 끝난 뒤라 게임 화면은 이미 의미가 없다. 메뉴가 뜰 때까지 덮는다.
+	if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+	{
+		LoadingScreen->ShowWithTitle(
+			NSLOCTEXT("FAPauseMenu", "ReturningToMainMenu", "메인 메뉴로 돌아가는 중..."));
+	}
 
 	ClientTravel(MapPath, TRAVEL_Absolute);
 }

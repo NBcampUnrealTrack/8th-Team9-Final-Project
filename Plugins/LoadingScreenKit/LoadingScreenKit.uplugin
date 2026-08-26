@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Loading Screen Kit",
+	"Description": "심리스 트래블에서도 살아남는 로딩 화면. 위젯을 뷰포트 오버레이에 직접 걸어 월드가 통째로 갈려도 지워지지 않는다. MoviePlayer 와 달리 블로킹 로드 구간이 아니어도 뜬다. 폴더째 복사하면 다른 프로젝트에서도 그대로 쓸 수 있다.",
+	"Category": "UI",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "LoadingScreenKit",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

@@ -30,7 +30,9 @@ public:
 	
 	void SetReadyInteractionEnabled(bool bEnable);
 	
-	//TODO : 레벨 변경간에 레벨 지정 및 로딩화면 Async Loading Screen플러그인 또는 Persistent Level 확인해보기
+	/**
+	 * 매치 레벨로 넘어가는 동안 화면을 덮는다. 실제 로딩 화면은 LoadingScreenKit 플러그인이 들고 있다.
+	 */
 	void ShowLoadingScreen();
 	
 	void InitializeLobby();

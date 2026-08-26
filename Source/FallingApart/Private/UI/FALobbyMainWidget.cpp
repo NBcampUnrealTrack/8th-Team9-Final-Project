@@ -4,6 +4,7 @@
 #include "UI/FALobbyMainWidget.h"
 
 #include "Audio/FAAudioSubsystem.h"
+#include "LoadingScreenSubsystem.h"
 #include "Components/Button.h"
 #include "Components/ListView.h"
 #include "Components/TextBlock.h"
@@ -37,7 +38,11 @@ void UFALobbyMainWidget::SetReadyInteractionEnabled(bool bEnable)
 
 void UFALobbyMainWidget::ShowLoadingScreen()
 {
-	// 로딩창 추가 하는 방법 알아보기
+	if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+	{
+		LoadingScreen->ShowWithTitle(
+			NSLOCTEXT("FALobby", "TravelingToMatch", "게임에 입장하는 중..."));
+	}
 }
 
 void UFALobbyMainWidget::NativeOnInitialized()

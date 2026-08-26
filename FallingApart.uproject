@@ -40,6 +40,10 @@
 		{
 			"Name": "SettingsKit",
 			"Enabled": true
+		},
+		{
+			"Name": "LoadingScreenKit",
+			"Enabled": true
 		}
 	]
 }
