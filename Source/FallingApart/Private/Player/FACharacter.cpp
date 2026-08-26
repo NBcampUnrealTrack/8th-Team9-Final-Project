@@ -690,11 +690,22 @@ void AFACharacter::BeginPlay()
 	SetupCaptureMarker();
 	SetupRuleMarker();
 	
+	if (FollowCamera)
+	{
+		// Vision.NarrowFOV 계산의 기준값. 이후로는 이 값을 실제 FOV로 되돌리지 않는다 — 카메라 FOV는 고정.
+		DefaultCameraFOV = FollowCamera->FieldOfView;
+	}
+
 	if (IsLocallyControlled() && VisionFogMaterial && FollowCamera)
 	{
+		// 배열에는 아직 안 넣는다 — UpdateVisionEffects 가 FogAmount > 0 일 때만 끼워 넣는다.
 		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
-		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
-			FWeightedBlendable(1.0f, VisionFogMID));
+	}
+
+	if (IsLocallyControlled() && VisionNarrowFOVMaterial && FollowCamera)
+	{
+		// Fog와 별개의 MID. UpdateVisionEffects 가 NarrowAmount > 0 일 때만 끼워 넣는다.
+		VisionNarrowFOVMID = UMaterialInstanceDynamic::Create(VisionNarrowFOVMaterial, this);
 	}
 }
 
@@ -1325,6 +1336,27 @@ void AFACharacter::ForceTogglePerspective()
 	}
 }
 
+void AFACharacter::SetVisionBlendableActive(UMaterialInstanceDynamic* MID, bool bShouldBeActive) const
+{
+	if (!MID || !FollowCamera)
+	{
+		return;
+	}
+
+	TArray<FWeightedBlendable>& Blendables = FollowCamera->PostProcessSettings.WeightedBlendables.Array;
+	const int32 ExistingIndex = Blendables.IndexOfByPredicate(
+		[MID](const FWeightedBlendable& Blendable) { return Blendable.Object == MID; });
+
+	if (bShouldBeActive && ExistingIndex == INDEX_NONE)
+	{
+		Blendables.Add(FWeightedBlendable(1.0f, MID));
+	}
+	else if (!bShouldBeActive && ExistingIndex != INDEX_NONE)
+	{
+		Blendables.RemoveAt(ExistingIndex);
+	}
+}
+
 void AFACharacter::UpdateVisionEffects()
 {
 	// 카메라 PostProcess 는 이 카메라를 실제로 보고 있는 클라이언트에서만 의미가 있다.
@@ -1339,17 +1371,36 @@ void AFACharacter::UpdateVisionEffects()
 	const bool bDesaturate = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Desaturate);
 	const bool bBlackout = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Blackout);
 
-	// 시야각 축소 (Vision.NarrowFOV) — Attribute 는 이미 있으니 그대로 반영한다.
-	// 1인칭 강제 시 FOV -10% 추가 적용.
+	// 시야각 축소 (Vision.NarrowFOV) — 카메라 실제 FOV는 더 이상 건드리지 않는다.
+	// 대신 화면 테두리를 검게 좁혀 "시야가 좁아진 것"처럼 보이게 하는 별도 PP 머티리얼(M_VisionNarrowFOV)을 쓴다.
+	// ※ Vision.Fog 는 VisionFogMID 라는 별도 블렌더블에서 자기 파라미터만 갱신하므로 여기서는 절대 건드리지 않는다.
+	float NarrowAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
 	{
 		float TargetFOV = Attributes->GetFieldOfView();
-		if (bForceFirstPerson)
-		{
-			TargetFOV *= 0.9f;
-		}
-		FollowCamera->SetFieldOfView(TargetFOV);
+		// (예전 실제 카메라 FOV를 줄이던 시절의 "1인칭 강제 시 -10%" 보정은 제거했다.
+		// 지금은 이 값이 화면 암전 마스크(NarrowAmount) 계산에만 쓰이는데, ForceFPS만으로도
+		// NarrowAmount가 0이 아니게 되어 Vision.NarrowFOV 룰이 없어도 테두리가 옅게 켜지는 부작용이 있었다.
+		// NarrowAmount는 이제 순수하게 FieldOfView 어트리뷰트(=Vision.NarrowFOV 룰)에만 반응한다.
+
+		// 기준 FOV 대비 얼마나 좁아졌는지를 0~1 비율로 환산 — 이 비율이 곧 화면 테두리 암전 강도.
+		// NarrowAmountIntensity 로 증폭 — GE가 FOV를 조금만 줄여도 마스크는 훨씬 세게 닫히게 만든다.
+		const float RawRatio = 1.0f - (TargetFOV / DefaultCameraFOV);
+		NarrowAmount = FMath::Clamp(RawRatio * NarrowAmountIntensity, 0.0f, 1.0f);
 	}
+
+	if (!VisionNarrowFOVMID && VisionNarrowFOVMaterial && FollowCamera)
+	{
+		VisionNarrowFOVMID = UMaterialInstanceDynamic::Create(VisionNarrowFOVMaterial, this);
+	}
+
+	if (VisionNarrowFOVMID)
+	{
+		VisionNarrowFOVMID->SetScalarParameterValue(TEXT("NarrowAmount"), NarrowAmount);
+	}
+	// NarrowAmount == 0 이면 이 MID는 배열에서 완전히 빠진다 — Fog 등 다른 이펙트가
+	// PostProcessBlendWeight 를 켜도 얘가 같이 묻어 나올 일이 없다.
+	SetVisionBlendableActive(VisionNarrowFOVMID, NarrowAmount > 0.0f);
 
 	// 흑백 (Vision.Desaturate) — Attribute 없이 태그 유무로만 켜고 끈다.
 	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bDesaturate;
@@ -1374,8 +1425,6 @@ void AFACharacter::UpdateVisionEffects()
 	if (!VisionFogMID && VisionFogMaterial && FollowCamera)
 	{
 		VisionFogMID = UMaterialInstanceDynamic::Create(VisionFogMaterial, this);
-		FollowCamera->PostProcessSettings.WeightedBlendables.Array.Add(
-			FWeightedBlendable(1.0f, VisionFogMID));
 	}
 
 	if (VisionFogMID)
@@ -1387,9 +1436,17 @@ void AFACharacter::UpdateVisionEffects()
 		VisionFogMID->SetScalarParameterValue(TEXT("FogFullDistance"), FullDistance);
 		VisionFogMID->SetScalarParameterValue(TEXT("FogAmount"), FogAmount);
 
+		// FogAmount == 0 이면 이 MID는 배열에서 완전히 빠진다 — Start/Full 값이 뭐든(예: 1500/1500처럼
+		// 서로 같아 컷오프가 생기는 값이어도) NarrowFOV 등 다른 이펙트 때문에 같이 렌더링되지 않는다.
+		SetVisionBlendableActive(VisionFogMID, FogAmount > 0.0f);
+
 		// FullDistance 보다 멀리 있는 상대는 로컬 화면에서 아예 안 보이게 컬링한다.
 		// (숨바꼭질 특성상 "멀어지면 형체도 안 보임" 이 목표라 안개만으론 부족 — 안개는 흐릿하게만 만든다)
-		UpdateOpponentDistanceCulling(FullDistance);
+		// Fog가 꺼져 있을 때(FogAmount==0)는 컬링도 같이 꺼야, NarrowFOV만 걸렸을 때 상대가 사라지는 부작용이 없다.
+		// 주의: 0을 넘기면 FullDistanceSq가 0이 되어 오히려 전원이 컬링되는 정반대 버그가 나므로,
+		// "컬링 안 함"은 반드시 아주 큰 거리값으로 표현한다.
+		constexpr float NoCullingDistance = 1000000.0f; // 어떤 맵보다도 확실히 큰 값.
+		UpdateOpponentDistanceCulling(FogAmount > 0.0f ? FullDistance : NoCullingDistance);
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
@@ -1425,8 +1482,8 @@ void AFACharacter::UpdateVisionEffects()
 		}
 	}
 
-	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 세 효과(흑백·안개·암전) 중 하나라도 켜져 있으면 블렌드.
-	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f;
+	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 네 효과(흑백·안개·암전·시야축소) 중 하나라도 켜져 있으면 블렌드.
+	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f || NarrowAmount > 0.0f;
 	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
 }
 
