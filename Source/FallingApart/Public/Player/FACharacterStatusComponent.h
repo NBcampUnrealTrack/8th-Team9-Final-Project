@@ -50,6 +50,10 @@ private:
 	void HandleSecondLifeRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void UpdateHideRule(float DeltaTime);
 	void SetHideActive(bool bActive);
+	
+	void UpdateCampRule(float DeltaTime);
+	void SetCampActive(bool bActive);
+	
 	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
 	void RefreshGhostVisual();
 
@@ -120,6 +124,14 @@ private:
 	float HideStationarySpeedTolerance = 3.0f;
 
 	float HideStationaryElapsed = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
+	float CampDelay = 4.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
+	float CampStationarySpeedTolerance = 3.0f;
+	
+	float CampStationaryElapsed = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.1"))
 	float GambleSpeedInterval = 10.0f;
