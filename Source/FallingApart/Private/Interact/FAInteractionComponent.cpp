@@ -156,7 +156,10 @@ bool UFAInteractionComponent::CanCharacterInteract() const
 	if (const UAbilitySystemComponent* ASC = Character->GetAbilitySystemComponent())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
-		if (ASC->HasMatchingGameplayTag(Tags.State_Stunned))
+		// [H37 문맹] 로컬 탐지·입력과 서버 재검증이 모두 이 공통 조건을 사용한다.
+		if (ASC->HasMatchingGameplayTag(Tags.State_Stunned) ||
+			ASC->HasMatchingGameplayTag(Tags.Rule_State_NoInteract) ||
+			ASC->HasMatchingGameplayTag(Tags.State_NoInteract))
 		{
 			return false;
 		}

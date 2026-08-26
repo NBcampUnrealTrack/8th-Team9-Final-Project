@@ -40,7 +40,8 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));
 	Rule_Vision_FlipY     = AddTag(TEXT("Rule.Vision.FlipY"),     TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
-
+	
+	
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
 	State_Zombie        = AddTag(TEXT("State.Zombie"),        TEXT("현재 좀비."));
@@ -73,7 +74,6 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Gamble
 	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
-
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
 	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
 
@@ -101,6 +101,15 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
+	
+	//~ 룰 - State
+	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
+	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
+	State_NoInteract = AddTag(TEXT("State.NoInteract"),TEXT("상호작용 오브젝트 사용이 제한된 상태."));
+	Rule_State_NoStruggle = AddTag(TEXT("Rule.State.NoStruggle"),TEXT("H38 유리 몸 — 일반 포획 저항 불가."));
+	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
+	
+	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
 
 #pragma endregion
 

@@ -78,6 +78,8 @@ public:
 
 	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
 	FGameplayTag Rule_Vision_FlipY;
+	
+	
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -195,6 +197,21 @@ public:
 
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
+	
+	// ~ ====== State
+	// * H36 뿌리내림 /  */
+	FGameplayTag Rule_State_Camp;
+
+	/** H37 문맹 — 상호작용 오브젝트 사용 불가 */
+	FGameplayTag Rule_State_NoInteract;
+	FGameplayTag State_NoInteract;
+
+	/** H38 유리 몸 — 일반 포획 저항 입력 무효, 구출 QTE는 정상 */
+	FGameplayTag Rule_State_NoStruggle;
+	FGameplayTag State_NoStruggle;
+	
+	// 4초 정지 조건을 충족한 상태
+	FGameplayTag State_Camp;
 
 #pragma endregion
 
