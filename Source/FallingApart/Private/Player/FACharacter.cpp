@@ -33,7 +33,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
 
-
 namespace FACharacterAudio
 {
 	// 표의 RowName 과 같아야 한다 (DT_Sound_Character).
@@ -548,6 +547,69 @@ void AFACharacter::UpdateRuleMarkerOcclusion()
 	bRuleMarkerOccluded = World->LineTraceSingleByChannel(Hit, ViewLocation, MarkerLocation, ECC_Visibility, Params);
 }
 
+void AFACharacter::OnExposedTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
+{
+	// 노출 상태가 변했으니 렌더링을 갱신
+	RefreshCustomDepth();
+}
+
+void AFACharacter::OnMutualSightTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
+{
+	// 투시 룰을 획득/상실했을 때, 로컬이라면 맵 전체 캐릭터의 렌더링을 갱신
+	if (IsLocallyControlled())
+	{
+		for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+		{
+			if (*It)
+			{
+				(*It)->RefreshCustomDepth();
+			}
+		}
+	}
+}
+
+void AFACharacter::RefreshCustomDepth()
+{
+	USkeletalMeshComponent* CharacterMesh = GetMesh();
+	if (!CharacterMesh || !AbilitySystemComponent) return;
+
+	bool bShouldReveal = false;
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	// State Exposed Tag 검사
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Exposed))
+	{
+		bShouldReveal = true;
+	}
+	else
+	{
+		const UWorld* World = GetWorld();
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		AFACharacter* LocalCharacter = PC ? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
+
+		if (LocalCharacter && LocalCharacter != this && LocalCharacter->GetFAAbilitySystemComponent())
+		{
+			if (LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Trade_MutualSight))
+			{
+				// 진영 비교
+				const bool bLocalIsHuman = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human);
+				const bool bThisIsZombie = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie);
+
+				const bool bLocalIsZombie = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Zombie);
+				const bool bThisIsHuman = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human);
+
+				if ((bLocalIsHuman && bThisIsZombie) || (bLocalIsZombie && bThisIsHuman))
+				{
+					bShouldReveal = true; // 다른 진영이므로 내 화면에 렌더링 갱신
+				}
+			}
+		}
+	}
+
+	CharacterMesh->SetRenderCustomDepth(bShouldReveal);
+	CharacterMesh->SetCustomDepthStencilValue(bShouldReveal ? 1 : 0);
+}
+
 void AFACharacter::UpdateRuleMarker(float DeltaTime)
 {
 	if (!RuleMarker)
@@ -905,6 +967,13 @@ void AFACharacter::InitializeAbilitySystem()
 	}
 
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	AbilitySystemComponent->RegisterGameplayTagEvent(
+		FAGameplayTags::Get().State_Exposed, EGameplayTagEventType::NewOrRemoved
+	).AddUObject(this, &AFACharacter::OnExposedTagChanged);
+
+	AbilitySystemComponent->RegisterGameplayTagEvent(
+		FAGameplayTags::Get().Rule_Trade_MutualSight, EGameplayTagEventType::NewOrRemoved
+	).AddUObject(this, &AFACharacter::OnMutualSightTagChanged);
 
 	if (!HasAuthority() || bAbilitiesGranted)
 	{
