@@ -296,13 +296,13 @@ protected:
 	void ToggleCrouch();
 	void UpdateCrouchCamera();
 	void TogglePerspective();
-	
+
 	/** 플레이어 입력(TogglePerspective)과 Vision.ForceFPS 룰 양쪽이 이걸 호출한다. */
 	void ForceTogglePerspective();
-	
+
 	void UpdatePerspectiveCamera();
 	void UpdateCameraCollision(float DeltaTime);
-	
+
 	/** 룰 Attribute·태그를 읽어 카메라 FOV·PostProcess 를 갱신한다. 로컬 컨트롤 캐릭터에서만 의미가 있다. */
 	void UpdateVisionEffects();
 
@@ -346,6 +346,13 @@ protected:
 
 	/** 시야 가림 트레이스 1회. 결과는 bRuleMarkerOccluded 에 캐시된다. */
 	void UpdateRuleMarkerOcclusion();
+
+	/** State.Exposed 태그 변경 시 X-Ray 렌더링 스위치 조작 */
+	void OnExposedTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
+	void OnMutualSightTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
+
+	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
+	void RefreshCustomDepth();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -425,7 +432,7 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|GAS")
 	TSubclassOf<UGameplayEffect> InvulnerabilityEffect;
-	
+
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
 
@@ -615,7 +622,7 @@ private:
 	 * 이 게임은 라운드 중 리스폰이 없고(감염되면 같은 폰이 좀비가 된다),
 	 * 룰 효과의 소비자가 전부 캐릭터(CMC·카메라·PostProcess)라 아바타 옆에 두는 편이 참조가 짧다.
 	 */
-	//UFAAbilitySystemComponent 언리얼 형태의 포인터 
+	//UFAAbilitySystemComponent 언리얼 형태의 포인터
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FallingApart|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFAAbilitySystemComponent> AbilitySystemComponent;
 
@@ -667,7 +674,7 @@ private:
 	bool bIsFirstPerson;
 	FTimerHandle CrouchTimerHandle;
 	FTimerHandle PerspectiveTimerHandle;
-	
+
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
 };
