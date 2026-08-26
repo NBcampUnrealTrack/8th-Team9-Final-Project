@@ -161,6 +161,7 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (OwnerCharacter->HasAuthority())
 	{
 		UpdateHideRule(DeltaTime);
+		UpdateCampRule(DeltaTime);
 	}
 
 	const bool bShouldPhase =ASC->HasMatchingGameplayTag(
@@ -501,6 +502,82 @@ void UFACharacterStatusComponent::SetHideActive(bool bActive)
 	}
 }
 
+void UFACharacterStatusComponent::UpdateCampRule(float DeltaTime)
+{
+	if (!OwnerCharacter ||!OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC =GetOwnerAbilitySystem();
+
+	if (!ASC)
+	{
+		return;
+	}
+
+	const FAGameplayTags& Tags =FAGameplayTags::Get();
+
+	// H36 카드가 없으면 누적 시간과 노출 상태를 초기화한다.
+	if (!ASC->HasMatchingGameplayTag(Tags.Rule_State_Camp))
+	{
+		CampStationaryElapsed = 0.0f;
+		SetCampActive(false);
+		return;
+	}
+
+	const UCharacterMovementComponent* Movement =OwnerCharacter->GetCharacterMovement();
+
+	const bool bGrounded =Movement && !Movement->IsFalling();
+
+	const bool bStationary = OwnerCharacter->GetVelocity().SizeSquared2D()
+			<= FMath::Square(CampStationarySpeedTolerance);
+
+	// 이동하거나 공중에 있으면 시간을 초기화하고 노출을 해제한다.
+	if (!bGrounded || !bStationary)
+	{
+		CampStationaryElapsed = 0.0f;
+		SetCampActive(false);
+		return;
+	}
+
+	CampStationaryElapsed += DeltaTime;
+
+	// 4초 이상 정지했을 때 State.Camp를 적용한다.
+	SetCampActive(CampStationaryElapsed >= CampDelay);
+}
+
+void UFACharacterStatusComponent::SetCampActive(bool bActive)
+{
+	if (!OwnerCharacter ||!OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC =GetOwnerAbilitySystem();
+
+	if (!ASC)
+	{
+		return;
+	}
+
+	const FGameplayTag CampTag =FAGameplayTags::Get().State_Camp;
+
+	// 이미 원하는 상태라면 중복 처리하지 않는다.
+	if (ASC->HasMatchingGameplayTag(CampTag) == bActive)
+	{
+		return;
+	}
+
+	if (bActive)
+	{
+		ASC->AddLooseGameplayTag(CampTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+	}
+	else
+	{
+		ASC->RemoveLooseGameplayTag(CampTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+	}
+}
 void UFACharacterStatusComponent::HandleHiddenStateChanged(const FGameplayTag Tag, int32 NewCount)
 {
 	(void)Tag;

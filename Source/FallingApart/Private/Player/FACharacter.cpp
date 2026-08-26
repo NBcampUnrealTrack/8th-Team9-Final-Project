@@ -488,6 +488,11 @@ bool AFACharacter::ShouldShowRuleMarker() const
 		return false;
 	}
 
+	if (AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().State_Camp))
+	{
+		return true;
+	}
+
 	if (bHideRuleMarkerWhenOccluded && bRuleMarkerOccluded)
 	{
 		return false;

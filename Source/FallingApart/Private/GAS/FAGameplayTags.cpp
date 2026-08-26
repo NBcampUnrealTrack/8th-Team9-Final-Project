@@ -40,7 +40,8 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));
 	Rule_Vision_FlipY     = AddTag(TEXT("Rule.Vision.FlipY"),     TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
-
+	
+	
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
 	State_Zombie        = AddTag(TEXT("State.Zombie"),        TEXT("현재 좀비."));
@@ -53,6 +54,8 @@ void FAGameplayTags::AddAllTags()
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
 	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
 	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
+
+	// TODO(H36): 뿌리내림 관련 공용 상태 태그 등록 위치
 
 	//~ 어빌리티
 	Ability_Jump = AddTag(TEXT("Ability.Jump"),						TEXT("GA_Jump 식별 태그."));
@@ -69,7 +72,6 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Gamble
 	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
-	
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
 	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
 	
@@ -95,6 +97,11 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
+	
+	//~ 룰 - State
+	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
+	
+	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
 
 #pragma endregion
 
