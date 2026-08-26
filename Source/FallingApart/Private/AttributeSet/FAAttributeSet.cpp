@@ -172,7 +172,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	}
 	else if (ChangedAttribute ==GetFieldOfViewAttribute())
 	{
-		SetVisionRange(FMath::Clamp(GetFieldOfView(),0.0f,6000.0f));
+		SetFieldOfView(FMath::Clamp(GetFieldOfView(),0.0f,90.0f));
 	}
 	else if (ChangedAttribute == GetGrabRangeAttribute())
 	{
