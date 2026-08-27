@@ -46,6 +46,12 @@ struct FFADraftCardInfo
 	UPROPERTY(BlueprintReadOnly, Category = "Draft")
 	TSoftObjectPtr<UTexture2D> Icon;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Draft")
+	TSoftObjectPtr<UTexture2D> BackgroundImage;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Draft")
+	TSoftObjectPtr<UTexture2D> CardBackgroundImage;
+	
 	/** false 면 DT 에 없는 ID(더미 풀 폴백). 카드에는 RuleId 가 그대로 찍힌다. */
 	UPROPERTY(BlueprintReadOnly, Category = "Draft")
 	bool bFoundInTable = false;
@@ -164,9 +170,12 @@ protected:
 	/** "[1] RuleId · T2 · Human" — 한글 폰트가 깨져도 무엇을 뽑았는지 알 수 있게. */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
 	TObjectPtr<UTextBlock> Txt_Card0Meta;
-
+	
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
-	TObjectPtr<UImage> Img_Card0Icon;
+	TObjectPtr<UImage> Img_Slot0Background;
+	
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Slot0Icon;
 
 	//~ 카드 1.
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
@@ -183,9 +192,12 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
 	TObjectPtr<UTextBlock> Txt_Card1Meta;
-
+	
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
-	TObjectPtr<UImage> Img_Card1Icon;
+	TObjectPtr<UImage> Img_Slot1Background;
+	
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Slot1Icon;
 
 	//~ 카드 2.
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
@@ -202,16 +214,19 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
 	TObjectPtr<UTextBlock> Txt_Card2Meta;
-
+	
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
-	TObjectPtr<UImage> Img_Card2Icon;
+	TObjectPtr<UImage> Img_Slot2Background;
+	
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Draft")
+	TObjectPtr<UImage> Img_Slot2Icon;
 
 	/**
 	 * 카드 버튼 배경을 티어 색으로 칠할지. WBP 에서 버튼 스타일을 직접 잡았다면 꺼둘 것.
 	 * 임시 레이아웃에서는 항상 칠한다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Draft")
-	bool bTintCardButtonsByTier = true;
+	bool bTintCardButtonsByTier = false;
 
 private:
 	void Close(bool bConfirmed, int32 SelectedIndex);
@@ -227,9 +242,6 @@ private:
 	void RefreshCards();
 	void RefreshTimerText(int32 WholeSeconds);
 	void BindCardButtons();
-
-	/** WBP 가 없을 때만 쓰는 임시 레이아웃. */
-	void BuildFallbackLayout();
 
 	UFUNCTION()
 	void HandleCard0Clicked();
@@ -267,7 +279,7 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UButton>> CardButtons;
-
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextBlock>> CardNameTexts;
 
@@ -278,7 +290,10 @@ private:
 	TArray<TObjectPtr<UTextBlock>> CardMetaTexts;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UImage>> CardIcons;
+	TArray<TObjectPtr<UImage>> SlotBackgrounds;
+	
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UImage>> SlotIcons;
 
 	/** 임시 레이아웃으로 조립한 상태인가 — 티어 색 · 카드 숨김을 무조건 적용해도 되는지 판단용. */
 	bool bUsingFallbackLayout = false;
