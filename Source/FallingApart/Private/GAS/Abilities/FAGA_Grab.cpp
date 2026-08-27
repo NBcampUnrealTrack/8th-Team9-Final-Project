@@ -4,14 +4,18 @@
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Game/FAGameMode.h"
+#include "Interact/FALadder.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
 #include "AbilitySystemComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Animation/AnimMontage.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 
 namespace FAGrabAudio
 {
@@ -71,6 +75,9 @@ void UFAGA_Grab::ActivateAbility(
 	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 포획의 진행도가 남아 있으면 안 된다.
 	InfectProgress = 0.0f;
 	bInfectPaused = false;
+
+	// 실제 포획 성공 시 Attribute 값으로 다시 설정된다.
+	CapturedMaxResistTimeMultiplier = 1.0f;
 
 	bGrabImpactResolved = false;
 	GrabbedVictim.Reset();
@@ -167,7 +174,17 @@ void UFAGA_Grab::ResolveGrabAttempt()
 	if (GrabRange <= 0.0f) GrabRange = 200.0f;
 
 	float SphereRadius = 50.0f;
-	AFACharacter* TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
+
+	// 사다리에 붙어 있으면 정면이 벽이라 스윕이 절대 사람을 못 문다 — 사다리 위·아래를 먼저 본다.
+	// 못 찾으면 평소 판정으로 떨어진다(사다리 옆에 선 사람은 그쪽으로 걸린다).
+	AFACharacter* TargetHuman = ZombieChar->IsClimbing()
+		? FindTargetOnLadder(ZombieChar, GrabRange, Tags.State_Human)
+		: nullptr;
+
+	if (!TargetHuman)
+	{
+		TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
+	}
 
 	// 대상이 없거나 이미 다른 좀비에게 잡힌 상태인 경우
 	if (!TargetHuman || TargetHuman->GetAbilitySystemComponent()->HasMatchingGameplayTag(Tags.State_Grabbed))
@@ -186,14 +203,38 @@ void UFAGA_Grab::ResolveGrabAttempt()
 		return;
 	}
 
-	// 포획 성공 처리
-	GrabbedVictim = TargetHuman;
 	UAbilitySystemComponent* TargetASC = TargetHuman->GetAbilitySystemComponent();
 	if (!TargetASC)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
 	}
+
+	const bool bHasSecondLife = TargetASC->HasMatchingGameplayTag(Tags.Rule_Trade_SecondLife);
+	const bool bSecondLifeConsumed = TargetASC->HasMatchingGameplayTag(Tags.State_SecondLife_Consumed);
+
+	UE_LOG(LogTemp,Warning,
+		TEXT("[H49] 포획 판정 | Grabber=%s | Target=%s | HasSecondLife=%s | Consumed=%s"),
+		*GetNameSafe(ZombieChar),*GetNameSafe(TargetHuman),
+		bHasSecondLife ? TEXT("True") : TEXT("False"),
+		bSecondLifeConsumed ? TEXT("True") : TEXT("False"));
+
+	if (bHasSecondLife && !bSecondLifeConsumed)
+	{
+		TargetASC->AddLooseGameplayTag(Tags.State_SecondLife_Consumed,1,
+			EGameplayTagReplicationState::TagAndCountToAll);
+
+		UE_LOG(LogTemp,Warning,
+			TEXT("[H49] 첫 포획 무효 | Target=%s | ConsumedCount=%d"),
+			*GetNameSafe(TargetHuman),
+			TargetASC->GetTagCount(Tags.State_SecondLife_Consumed));
+
+		EndAbility(CurrentSpecHandle,CurrentActorInfo,CurrentActivationInfo,true,false);
+		return;
+	}
+
+	// 포획 성공 처리
+	GrabbedVictim = TargetHuman;
 
 	// 성공음은 실제로 붙잡는 처리 안에서 낸다 — 밖에서 내면 아래가 통째로 건너뛰었을 때
 	// 아무 일도 안 일어났는데 소리만 나간다.
@@ -212,12 +253,38 @@ void UFAGA_Grab::ResolveGrabAttempt()
 		VictimEffectHandle = SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 	}
 
-	float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
-	// Attribute 가 아직 초기화 전이면 쓰는 폴백. UFAAttributeSet 의 기본값과 같이 움직여야 한다.
-	if (InfectDuration <= 0.0f) InfectDuration = 5.0f;
+	// H39 카드는 인간 진영 룰이므로 TargetASC(인간)의 속성을 읽어온다.
+	float InfectDuration = TargetASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
+	if (InfectDuration <= 0.01f) // H39 - 감염 소요 시간이 0초라면 줄다리기(QTE) 없이 즉시 감염
+	{
+		CompleteInfection();
+		return;
+	}
 
 	BaseInfectDuration = InfectDuration;
 	CurrentInfectRate = 1.0f / BaseInfectDuration;
+
+	float ResistTimeMultiplier =SourceASC->GetNumericAttribute(UFAAttributeSet::GetMaxResistTimeMultiplierAttribute());
+
+	if (ResistTimeMultiplier < 1.0f)
+	{
+		ResistTimeMultiplier = 3.0f;
+	}
+
+	// Z43 광폭: 저항 0에서 10초, 최대 저항에서 20초.
+	if (SourceASC->HasMatchingGameplayTag(Tags.Rule_Trade_Frenzy))
+	{
+		BaseInfectDuration = 10.0f;
+		ResistTimeMultiplier = 2.0f;
+		CurrentInfectRate = 1.0f / BaseInfectDuration;
+
+		UE_LOG(LogTemp,Log,
+			TEXT("[Z43] 광폭 감염 시간 적용 | Base=%.1fs | Max=%.1fs"),
+			BaseInfectDuration,BaseInfectDuration * ResistTimeMultiplier);
+	}
+
+	// 포획 도중 GE 값이 바뀌어도 이번 포획에는 시작 시점 값을 사용한다.
+	CapturedMaxResistTimeMultiplier =ResistTimeMultiplier;
 
 	ZombieChar->GetWorld()->GetTimerManager().SetTimer(
 		GrabTickHandle,
@@ -324,7 +391,8 @@ void UFAGA_Grab::TickGrab()
 	// 저항이 셀수록 감염이 느려진다: 저항 0 이면 BaseInfectDuration, 최대면 × MaxResistTimeMultiplier.
 	// 저항 강도는 여기서 감쇠시킨다 — 손을 놓으면 알아서 0 으로 돌아온다.
 	const float ResistLevel = GrabbedVictim->UpdateResistLevel(GrabTickInterval);
-	const float CurrentDuration = FMath::Max(0.1f, BaseInfectDuration * FMath::Lerp(1.0f, MaxResistTimeMultiplier, ResistLevel));
+	const float CurrentDuration = FMath::Max(0.1f,BaseInfectDuration
+		*FMath::Lerp(1.0f,CapturedMaxResistTimeMultiplier,ResistLevel));
 
 	CurrentInfectRate = 1.0f / CurrentDuration;
 	InfectProgress += GrabTickInterval * CurrentInfectRate;
@@ -358,10 +426,168 @@ void UFAGA_Grab::CompleteInfection()
 			{
 				GameMode->HandleInfection(VictimState, InfectorState);
 			}
+			ResolvePlagueGamble();
 		}
 	}
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+}
+
+void UFAGA_Grab::ResolvePlagueGamble()
+{
+	// Z50 판정과 추가 감염은 서버에서만 실행한다.
+    if (!HasAuthority(&CurrentActivationInfo))
+    {
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    // 현재 서버의 GameMode를 가져와 사용.
+    AFAGameMode* GameMode =World->GetAuthGameMode<AFAGameMode>();
+    if (!GameMode)
+    {
+        return;
+    }
+    // 현재 Grab 어빌리티를 사용한 캐릭터가 감염자다.
+    AFACharacter* InfectorCharacter =Cast<AFACharacter>(GetAvatarActorFromActorInfo());
+    if (!InfectorCharacter)
+    {
+        return;
+    }
+
+    // 감염자의 PlayerState를 가져온다.
+    AFAPlayerState* InfectorState =InfectorCharacter->GetPlayerState<AFAPlayerState>();
+
+    if (!InfectorState)
+    {
+        return;
+    }
+    // Z50 보유 여부와 실패 GE 적용을 위해
+    // 감염자의 AbilitySystemComponent를 가져온다.
+    UAbilitySystemComponent* InfectorASC =InfectorCharacter->GetAbilitySystemComponent();
+    if (!InfectorASC)
+    {
+        return;
+    }
+
+    const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+    // Rule.Gamble.Plague를 가진 좀비만 Z50을 발동한다.
+    if (!InfectorASC->HasMatchingGameplayTag(Tags.Rule_Gamble_Plague))
+    {
+        return;
+    }
+
+    // 이번 포획으로 이미 감염된 1차 피해자다.
+    //
+    // ResolvePlagueGamble()은 EndAbility() 전에 호출되므로
+    // GrabbedVictim은 아직 유효한 상태다.
+    AFACharacter* PrimaryVictimCharacter = GrabbedVictim.Get();
+
+    AFAPlayerState* PrimaryVictimState = PrimaryVictimCharacter? PrimaryVictimCharacter
+                ->GetPlayerState<AFAPlayerState>(): nullptr;
+
+	// 성공 확률설정 . 매직 넘버 수정 생각 .
+    constexpr float PlagueSuccessChance = 0.35f;
+
+    const float RandomRoll = FMath::FRand();
+
+    const bool bPlagueSucceeded = RandomRoll < PlagueSuccessChance;
+
+    if (!bPlagueSucceeded)
+    {
+    	// 실패처리 / 20초 정지 Gameplay Effect를 적용한다.
+        if (PlagueFailStunEffectClass)
+        {
+            FGameplayEffectSpecHandle StunSpec =MakeOutgoingGameplayEffectSpec(PlagueFailStunEffectClass);
+
+            if (StunSpec.IsValid()&& StunSpec.Data.IsValid())
+            {
+                InfectorASC->ApplyGameplayEffectSpecToSelf(*StunSpec.Data.Get());
+            }
+        }
+        else
+        {
+            // 블루프린트 Class Defaults에 실패 GE가
+            // 지정되지 않았을 때 확인할 수 있는 오류 로그다.
+            UE_LOG(LogTemp,Error,TEXT("[Z50] PlagueFailStunEffectClass가 ""설정되지 않았습니다."));
+        }
+
+        UE_LOG(LogTemp,Warning,TEXT("[Z50] 전염 도박 실패 | ""Infector=%s | Roll=%.3f | "
+                "Chance=%.2f | Stun=20.0s"),*GetNameSafe(InfectorCharacter),RandomRoll,PlagueSuccessChance);
+
+        return;
+    }
+	// 성공처리
+    TArray<AFAPlayerState*> HumanCandidates;
+
+    // 현재 맵에 존재하는 모든 캐릭터를 검사한다.
+    for (TActorIterator<AFACharacter> Iterator(World);Iterator;++Iterator)
+    {
+        AFACharacter* CandidateCharacter =*Iterator;
+
+        if (!IsValid(CandidateCharacter))
+        {
+            continue;
+        }
+
+        AFAPlayerState* CandidateState = CandidateCharacter->GetPlayerState<AFAPlayerState>();
+
+        if (!CandidateState)
+        {
+            continue;
+        }
+
+        // 이번에 이미 감염된 1차 피해자를 제외한다.
+        if (CandidateState == PrimaryVictimState)
+        {
+            continue;
+        }
+
+        // Z50을 발동시킨 좀비 자신을 제외한다.
+        if (CandidateState == InfectorState)
+        {
+            continue;
+        }
+
+        // 현재 인간인 플레이어만 추가 감염 후보로 사용한다.
+        if (!CandidateState->IsHuman())
+        {
+            continue;
+        }
+
+        HumanCandidates.Add(CandidateState);
+    }
+
+	// 추가 감염 인간이 없는 경우
+    if (HumanCandidates.IsEmpty())
+    {
+        // 이 경우는 확률 판정 실패가 아니므로
+        // 좀비에게 20초 정지를 적용하지 않는다.
+        UE_LOG(LogTemp,Warning,TEXT("[Z50] 전염 도박 성공, 추가 대상 없음 | ""Infector=%s | Roll=%.3f"),
+            *GetNameSafe(InfectorCharacter),RandomRoll);
+
+        return;
+    }
+
+    // 인간 후보 중 한 명을 무작위로 선택한다.
+    const int32 RandomTargetIndex =FMath::RandRange(0,HumanCandidates.Num() - 1);
+
+    AFAPlayerState* AdditionalVictim =HumanCandidates[RandomTargetIndex];
+
+	// 갱신
+    GameMode->HandleInfection(AdditionalVictim,InfectorState);
+
+    UE_LOG(LogTemp,Warning,TEXT("[Z50] 전염 도박 성공 | "
+            "Infector=%s | AdditionalVictim=%s | "
+            "Roll=%.3f | Chance=%.2f"),
+        *GetNameSafe(InfectorCharacter),*GetNameSafe(AdditionalVictim),
+        RandomRoll,PlagueSuccessChance);
 }
 
 void UFAGA_Grab::EndAbility(
@@ -436,4 +662,60 @@ AFACharacter* UFAGA_Grab::FindTargetInFront(AFACharacter* Avatar, float Range, f
 		}
 	}
 	return nullptr;
+}
+
+AFACharacter* UFAGA_Grab::FindTargetOnLadder(AFACharacter* Avatar, float Range, FGameplayTag RequiredTag) const
+{
+	AFALadder* Ladder = Avatar ? Avatar->GetClimbingLadder() : nullptr;
+	if (!Ladder)
+	{
+		return nullptr;
+	}
+
+	const UCapsuleComponent* MyCapsule = Avatar->GetCapsuleComponent();
+	const float MyHalfHeight = MyCapsule ? MyCapsule->GetScaledCapsuleHalfHeight() : 0.0f;
+
+	// 사다리에 겹쳐 붙은 두 사람은 캡슐이 서로를 막아 중심끼리 키만큼 벌어진다.
+	// 중심 거리로 재면 사거리를 넘겨버리므로 몸 표면 사이의 간격으로 잰다 — 캡슐 크기와 무관해진다.
+	const FVector Origin = Avatar->GetActorLocation();
+
+	TArray<FOverlapResult> Overlaps;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(Avatar);
+
+	Avatar->GetWorld()->OverlapMultiByChannel(
+		Overlaps, Origin, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeSphere(Range + MyHalfHeight * 2.0f), QueryParams);
+
+	AFACharacter* Nearest = nullptr;
+	float NearestGap = TNumericLimits<float>::Max();
+
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		AFACharacter* Candidate = Cast<AFACharacter>(Overlap.GetActor());
+
+		// 같은 사다리에 붙은 사람만 본다. 꼭대기 바닥에 선 사람까지 걸리면 벽 너머로 잡는 꼴이 된다.
+		if (!Candidate || Candidate->GetClimbingLadder() != Ladder)
+		{
+			continue;
+		}
+
+		const UAbilitySystemComponent* CandidateASC = Candidate->GetAbilitySystemComponent();
+		if (!CandidateASC || !CandidateASC->HasMatchingGameplayTag(RequiredTag))
+		{
+			continue;
+		}
+
+		const UCapsuleComponent* TheirCapsule = Candidate->GetCapsuleComponent();
+		const float TheirHalfHeight = TheirCapsule ? TheirCapsule->GetScaledCapsuleHalfHeight() : 0.0f;
+
+		const float Gap = FVector::Dist(Origin, Candidate->GetActorLocation()) - MyHalfHeight - TheirHalfHeight;
+		if (Gap <= Range && Gap < NearestGap)
+		{
+			NearestGap = Gap;
+			Nearest = Candidate;
+		}
+	}
+
+	return Nearest;
 }

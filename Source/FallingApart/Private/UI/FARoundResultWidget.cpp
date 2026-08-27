@@ -175,9 +175,9 @@ void UFARoundResultWidget::RefreshEntries()
 		Entry.Row = Snapshot.Rows[Index];
 		Entry.bIsLocalPlayer = (LocalPlayerState != nullptr && Entry.Row.PlayerState == LocalPlayerState);
 
-		// 생존 시간이 같으면 같은 순위를 준다 — 끝까지 살아남은 사람들이 전부 1위로 묶인다.
+		// 4차 — 총점·진영 기여도·생존 시간이 모두 같을 때만 공동 순위로 묶는다.
 		Entry.Rank = (Index > 0
-			&& FMath::IsNearlyEqual(Snapshot.Rows[Index - 1].SurvivalTime, Entry.Row.SurvivalTime, 0.01f))
+			&& FFAPlayerScore::AreTiedByRankRules(Snapshot.Rows[Index - 1].Score, Entry.Row.Score))
 			? Entries.Last().Rank
 			: Index + 1;
 

@@ -91,6 +91,7 @@ FFARuleDisplayInfo UFARuleSettings::MakeRuleDisplayInfo(FName RuleId)
 	Info.DisplayName = Row->DisplayName.IsEmpty() ? FText::FromName(RuleId) : Row->DisplayName;
 	Info.ShortDesc = Row->ShortDesc;
 	Info.Icon = Row->Icon;
+	Info.BackgroundImage = Row->BackgroundImage;
 	Info.Team = Row->Team;
 	Info.Tier = Row->Tier;
 	Info.Type = Row->Type;
@@ -138,6 +139,12 @@ EFARuleCategory UFARuleSettings::GetRuleCategory(const FGameplayTag& RuleTag, EF
 		return EFARuleCategory::Vision;
 	}
 
+	// H36~H38처럼 Rule.State.* 태그를 사용하는 상태 제한 카드.
+	if (TagName.StartsWith(TEXT("Rule.State.")))
+	{
+		return EFARuleCategory::State;
+	}
+
 	static const TCHAR* AudioPrefixes[] = { TEXT("Rule.Audio."), TEXT("Rule.Social.") };
 	for (const TCHAR* Prefix : AudioPrefixes)
 	{
@@ -170,6 +177,7 @@ FLinearColor UFARuleSettings::GetRuleCategoryColor(EFARuleCategory Category)
 	case EFARuleCategory::Rescue:	return FLinearColor(0.16f, 0.75f, 0.35f, 1.0f);	// 초록
 	case EFARuleCategory::Trade:	return FLinearColor(0.95f, 0.78f, 0.15f, 1.0f);	// 노랑
 	case EFARuleCategory::Gamble:	return FLinearColor(0.85f, 0.85f, 0.85f, 1.0f);	// 무지개의 기준색
+	case EFARuleCategory::State:	return FLinearColor(1.00f, 0.48f, 0.10f, 1.0f);	// 주황
 	default:						return FLinearColor(0.55f, 0.55f, 0.58f, 1.0f);	// 계열 미상 — 회색
 	}
 }

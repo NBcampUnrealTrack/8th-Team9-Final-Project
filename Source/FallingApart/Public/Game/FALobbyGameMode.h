@@ -6,6 +6,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "FALobbyGameMode.generated.h"
 
+class AFAOnlineBeaconHostObject;
 /**
  *	박지석 임시 로비 시스템 흐름
  *	최소 2명 이상의 플레이가 접속 + 모든 플레이어가 준비했을때 호스트는 게임을 시작
@@ -44,6 +45,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 private:
+	bool IsSessionOwner(FUniqueNetIdRepl UniqueNetId);
 	/** GameState에 필요 데이터 전파. LobbyGameState->SetLobbySnapshot를 참고 */
 	void RefreshLobbyState();
 	/** 게임 시작이 가능한 상태인지 갱신 */
@@ -77,6 +79,12 @@ private:
 	// 1 이상: 정확히 이 인원이 모여야 시작
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	int32 RequiredPlayersToStart = 0;
+
+	/**
+	 * 전원이 준비 구역(AFALobbyReadyZone)에 모이는 즉시 카운트다운을 자동으로 건다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
+	bool bAutoStartCountdownWhenAllReady = true;
 
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	TSoftObjectPtr<UWorld> DestinationMap;
@@ -115,5 +123,19 @@ private:
 	float CountdownEndServerTime = 0.f;
 	
 #pragma endregion StartTimer
+#pragma region PasswordVerify
+	
+protected:
+	UPROPERTY(Transient)
+	TObjectPtr<class AOnlineBeaconHost> PasswordBeaconHost;
+	
+	UPROPERTY(Transient)
+	TObjectPtr<AFAOnlineBeaconHostObject> PasswordBeaconHostObject;
+	
+	bool StartPasswordBeacon();
+	void StopPasswordBeacon();
+	
+	
+#pragma endregion PasswordVerify
 };
 

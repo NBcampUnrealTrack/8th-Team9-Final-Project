@@ -37,9 +37,9 @@ void AFALobbyPlayerController::BeginPlay()
 	Super::BeginPlay();
 	if (IsLocalController())
 	{
-		FInputModeGameAndUI InputModeData;
+		FInputModeGameOnly InputModeData;
 		SetInputMode(InputModeData);
-		bShowMouseCursor = true;
+		bShowMouseCursor = false;
 		
 		CreateLobbyWidget();
 		BindLobbyState();
@@ -62,7 +62,9 @@ void AFALobbyPlayerController::PreClientTravel(const FString& PendingURL, ETrave
 	{
 		LobbyWidgetInstance->ShowLoadingScreen();
 		LobbyWidgetInstance->SetReadyInteractionEnabled(false);
-		
+
+		// 로딩 화면이 먼저 덮은 다음에 걷는다.
+		RemoveLobbyWidget();
 	}
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
 }
@@ -114,4 +116,16 @@ void AFALobbyPlayerController::BindLobbyState()
 
 void AFALobbyPlayerController::RemoveLobbyWidget()
 {
+	if (LobbyWidgetInstance)
+	{
+		LobbyWidgetInstance->RemoveFromParent();
+		LobbyWidgetInstance = nullptr;
+	}
+}
+
+void AFALobbyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	RemoveLobbyWidget();
+
+	Super::EndPlay(EndPlayReason);
 }

@@ -12,6 +12,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "LoadingScreenSubsystem.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Network/FAOnlineSessionSubsystem.h"
@@ -142,16 +143,38 @@ void AFAPlayerController::FAPlaySound(const FString& SoundId)
 	}
 
 	const FName Id(*SoundId);
-	if (!UFAAudioSettings::FindSound(Id))
+	const FFASoundRow* Row = UFAAudioSettings::FindSound(Id);
+	if (!Row)
 	{
 		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 행을 다섯 표 어디에서도 찾지 못했다"), *SoundId));
 		return;
 	}
 
+	UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this);
+	if (!Audio)
+	{
+		return;
+	}
+
+	// 루프 행을 PlaySound 로 내면 끌 방법이 없다 — 컴포넌트를 안 돌려받는 데다 bAutoDestroy 도 꺼져 있다.
+	// 들어보려고 켠 BGM 이 레벨을 옮길 때까지 안 멎으면 곤란하니 음악 채널로 태운다.
+	if (Row->bLooping)
+	{
+		Audio->PlayMusic(Id, /*FadeTime=*/0.0f);
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생 (루프 — FAStopSound 로 정지)"), *SoundId));
+		return;
+	}
+
+	Audio->PlaySound(Id);
+	ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+}
+
+void AFAPlayerController::FAStopSound()
+{
 	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
 	{
-		Audio->PlaySound(Id);
-		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+		Audio->StopMusic(/*FadeTime=*/0.25f);
+		ClientMessage(TEXT("[FAStopSound] 루프 정지"));
 	}
 }
 
@@ -512,6 +535,13 @@ void AFAPlayerController::TravelToMainMenu()
 	}
 
 	MapPath = FPackageName::ObjectPathToPackageName(MapPath);
+
+	// 세션 정리까지 끝난 뒤라 게임 화면은 이미 의미가 없다. 메뉴가 뜰 때까지 덮는다.
+	if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+	{
+		LoadingScreen->ShowWithTitle(
+			NSLOCTEXT("FAPauseMenu", "ReturningToMainMenu", "메인 메뉴로 돌아가는 중..."));
+	}
 
 	ClientTravel(MapPath, TRAVEL_Absolute);
 }

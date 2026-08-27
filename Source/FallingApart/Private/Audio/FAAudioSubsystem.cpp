@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Audio/FAAudioSubsystem.h"
 
@@ -28,6 +28,7 @@ namespace FAAudioIds
 	static const FName BgmLobby(TEXT("BGM_Lobby"));
 	static const FName BgmRoundBase(TEXT("BGM_Round_Base"));
 	static const FName BgmRoundTension(TEXT("BGM_Round_Tension"));
+	static const FName BgmRoundFinal(TEXT("BGM_Round_Final"));
 	static const FName BgmRoundResult(TEXT("BGM_RoundResult"));
 	static const FName BgmMatchResult(TEXT("BGM_MatchResult"));
 	static const FName BgmDeathMatch(TEXT("BGM_DeathMatch"));
@@ -35,6 +36,9 @@ namespace FAAudioIds
 
 	/** 생존자가 이 비율 아래로 떨어지면 긴장 레이어가 최대가 된다. */
 	static constexpr float TensionFullRatio = 0.25f;
+
+	/** 막판 곡으로 넘어갈 때의 크로스페이드(초). */
+	static constexpr float FinalMusicFadeSeconds = 2.0f;
 }
 
 bool UFAAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -169,6 +173,24 @@ void UFAAudioSubsystem::PlayMusic(FName SoundId, float FadeTime)
 	}
 }
 
+void UFAAudioSubsystem::EnterFinalCountdown()
+{
+	if (bFinalCountdownActive || !CanPlay())
+	{
+		return;
+	}
+
+	const FFASoundRow* Row = UFAAudioSettings::FindSound(FAAudioIds::BgmRoundFinal);
+	if (!Row || Row->Sound.IsNull())
+	{
+		return;
+	}
+
+	bFinalCountdownActive = true;
+
+	PlayMusic(FAAudioIds::BgmRoundFinal, FAAudioIds::FinalMusicFadeSeconds);
+}
+
 void UFAAudioSubsystem::StopMusic(float FadeTime)
 {
 	if (MusicComponent)
@@ -256,6 +278,8 @@ UAudioComponent* UFAAudioSubsystem::PlayLoopAtLocation(FName SoundId, FVector Lo
 
 void UFAAudioSubsystem::UpdateMusicForPhase(EFARoundPhase Phase)
 {
+	bFinalCountdownActive = false;
+
 	switch (Phase)
 	{
 	// 로비가 별도 레벨로 분리된 뒤로, 매치 레벨의 WaitingToStart 는 '인원 차기를 기다리는 몇 초'다.
@@ -293,6 +317,12 @@ void UFAAudioSubsystem::UpdateTensionLayer()
 
 	// 긴장 레이어는 라운드가 도는 동안에만 의미가 있다.
 	if (GameState->GetRoundPhase() != EFARoundPhase::InProgress)
+	{
+		StopMusicLayer();
+		return;
+	}
+
+	if (bFinalCountdownActive)
 	{
 		StopMusicLayer();
 		return;
