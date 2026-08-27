@@ -9,6 +9,7 @@
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
 #include "TimerManager.h"
+#include "Interact/FAInteractionComponent.h"
 
 namespace FAHUDAudio
 {
@@ -70,6 +71,7 @@ void UFAHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	// UpdatePolledValues 는 GameState 가 없으면 그냥 빠져나가므로 게이지·프롬프트는 따로 부른다.
 	UpdateCaptureGauge();
 	UpdateContestPrompt();
+	UpdateInteractPrompt();
 }
 
 float UFAHUDWidget::GetRoundTimeRemaining() const
@@ -297,15 +299,16 @@ void UFAHUDWidget::UpdateContestPrompt()
 void UFAHUDWidget::RefreshBindings()
 {
 	const UWorld* World = GetWorld();
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다.
 	AFAGameState* CurrentGameState = World ? World->GetGameState<AFAGameState>() : nullptr;
-	if (CurrentGameState != CachedGameState.Get())
+	if (CurrentGameState != CachedGameState.Get(/*bEvenIfGarbage=*/true))
 	{
 		UnbindGameState();
 		BindGameState(CurrentGameState);
 	}
 
 	AFAPlayerState* CurrentPlayerState = Cast<AFAPlayerState>(GetOwningPlayerState());
-	if (CurrentPlayerState != CachedPlayerState.Get())
+	if (CurrentPlayerState != CachedPlayerState.Get(/*bEvenIfGarbage=*/true))
 	{
 		UnbindPlayerState();
 		BindPlayerState(CurrentPlayerState);
@@ -331,7 +334,7 @@ void UFAHUDWidget::BindGameState(AFAGameState* NewGameState)
 
 void UFAHUDWidget::UnbindGameState()
 {
-	if (AFAGameState* FAGameState = CachedGameState.Get())
+	if (AFAGameState* FAGameState = CachedGameState.Get(/*bEvenIfGarbage=*/true))
 	{
 		FAGameState->OnRoundPhaseChanged.RemoveDynamic(this, &UFAHUDWidget::HandleRoundPhaseChanged);
 		FAGameState->OnTeamCountsChanged.RemoveDynamic(this, &UFAHUDWidget::HandleTeamCountsChanged);
@@ -367,7 +370,7 @@ void UFAHUDWidget::BindPlayerState(AFAPlayerState* NewPlayerState)
 
 void UFAHUDWidget::UnbindPlayerState()
 {
-	if (AFAPlayerState* FAPlayerState = CachedPlayerState.Get())
+	if (AFAPlayerState* FAPlayerState = CachedPlayerState.Get(/*bEvenIfGarbage=*/true))
 	{
 		FAPlayerState->OnTeamChanged.RemoveDynamic(this, &UFAHUDWidget::HandleLocalTeamChanged);
 		FAPlayerState->OnScoreChanged.RemoveDynamic(this, &UFAHUDWidget::HandleLocalScoreChanged);
@@ -436,6 +439,11 @@ void UFAHUDWidget::UpdateRoundTimerAudio(float SecondsRemaining, bool bRoundInPr
 
 		// 스팅어와 첫 초침이 같은 프레임에 겹치지 않도록 여기서부터 새로 센다.
 		TickAccumulator = 0.0f;
+
+		if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+		{
+			Audio->EnterFinalCountdown();
+		}
 
 		if (!bSawAboveTickWindow)
 		{
@@ -585,4 +593,61 @@ void UFAHUDWidget::UpdateScoreFeedback()
 	LastPersonalScore = Personal;
 	LastTeamScore = Team;
 	bLastWasInfectedThisRound = bVoided;
+}
+
+//~ ---------------- 상호작용 프롬프트 ----------------
+
+UFAInteractionComponent* UFAHUDWidget::GetLocalInteractionComponent() const
+{
+	const APlayerController* PC = GetOwningPlayer();
+	const AFACharacter* Character = PC ? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
+	return Character ? Character->GetInteractionComponent() : nullptr;
+}
+
+float UFAHUDWidget::GetInteractHoldProgress() const
+{
+	const UFAInteractionComponent* Interaction = GetLocalInteractionComponent();
+	return Interaction ? Interaction->GetHoldProgress() : 0.0f;
+}
+
+void UFAHUDWidget::UpdateInteractPrompt()
+{
+	const UFAInteractionComponent* Interaction = GetLocalInteractionComponent();
+
+	// 컴포넌트가 아직 없으면(빙의 전 · 관전) 떠 있던 프롬프트만 내린다.
+	const bool bShouldShow = Interaction && Interaction->HasTarget();
+
+	if (!bShouldShow)
+	{
+		if (bInteractPromptVisible)
+		{
+			bInteractPromptVisible = false;
+			LastInteractPrompt = FText::GetEmpty();
+			LastInteractHoldProgress = -1.0f;
+			OnInteractPromptHidden();
+		}
+		return;
+	}
+
+	const FText Prompt = Interaction->GetPromptText();
+
+	if (!bInteractPromptVisible)
+	{
+		bInteractPromptVisible = true;
+		LastInteractPrompt = Prompt;
+		OnInteractPromptShown(Prompt);
+	}
+	else if (!Prompt.EqualTo(LastInteractPrompt))
+	{
+		// 대상은 그대로인데 문구만 바뀌는 경우가 흔하다 — 문 열기 <-> 문 닫기.
+		LastInteractPrompt = Prompt;
+		OnInteractPromptTextChanged(Prompt);
+	}
+
+	const float Progress = Interaction->GetHoldProgress();
+	if (!FMath::IsNearlyEqual(Progress, LastInteractHoldProgress, 0.01f))
+	{
+		LastInteractHoldProgress = Progress;
+		OnInteractHoldProgressChanged(Progress);
+	}
 }

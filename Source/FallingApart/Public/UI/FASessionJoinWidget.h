@@ -14,7 +14,7 @@ class UButton;
 class UTextBlock;
 
 DECLARE_MULTICAST_DELEGATE(FOnSessionRefreshRequested);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinRequested, const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnSessionJoinRequested, const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
 
 /**
  * 세션 참가 선택시 출력할 위젯, SessionScrollBox에서 Entry 하나 선택후 입장하는 구성
@@ -34,6 +34,8 @@ public:
 	void ShowSearchResults(const TArray<FOnlineSessionSearchResult>& SessionResults);
 	void ShowStatusMessage(const FText& Message);
 	void SetJoinInProgress(bool bIsJoining);
+	
+	FString GetNickname() const;
 
 	FOnSessionRefreshRequested OnSessionRefreshRequested;
 	FOnSessionJoinRequested OnSessionJoinRequested;

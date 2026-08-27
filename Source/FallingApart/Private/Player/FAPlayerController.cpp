@@ -12,7 +12,9 @@
 #include "HAL/IConsoleManager.h"
 #include "Game/FAGameState.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "LoadingScreenSubsystem.h"
 #include "Misc/PackageName.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
@@ -22,14 +24,27 @@
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
+#include "UI/FARoundResultWidget.h"
 #include "UI/FAPauseMenuWidget.h"
 
 AFAPlayerController::AFAPlayerController()
 {
 	bReplicates = true;
 
+	// 로비 · 인게임 어느 컨트롤러로 들어와도 WBP 가 뜨게 여기서 기본값을 잡는다.
+	// 못 찾으면 C++ 임시 레이아웃으로 떨어진다.
+	static ConstructorHelpers::FClassFinder<UFAPauseMenuWidget> PauseMenuWBP(
+		TEXT("/Game/FallingApart/WBP/WBP_FAPauseMenu"));
 	PauseMenuWidgetClass = UFAPauseMenuWidget::StaticClass();
+	if (PauseMenuWBP.Succeeded())
+	{
+		PauseMenuWidgetClass = PauseMenuWBP.Class;
+	}
+
 	MatchResultWidgetClass = UFAMatchResultWidget::StaticClass();
+
+	// WBP 가 없어도 임시 레이아웃으로 뜬다 — UI 담당이 WBP 를 만들면 BP_FAPlayerController 에서 갈아끼울 것.
+	RoundResultWidgetClass = UFARoundResultWidget::StaticClass();
 	PauseMenuKeys.Add(EKeys::Escape);
 }
 
@@ -128,16 +143,38 @@ void AFAPlayerController::FAPlaySound(const FString& SoundId)
 	}
 
 	const FName Id(*SoundId);
-	if (!UFAAudioSettings::FindSound(Id))
+	const FFASoundRow* Row = UFAAudioSettings::FindSound(Id);
+	if (!Row)
 	{
 		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 행을 다섯 표 어디에서도 찾지 못했다"), *SoundId));
 		return;
 	}
 
+	UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this);
+	if (!Audio)
+	{
+		return;
+	}
+
+	// 루프 행을 PlaySound 로 내면 끌 방법이 없다 — 컴포넌트를 안 돌려받는 데다 bAutoDestroy 도 꺼져 있다.
+	// 들어보려고 켠 BGM 이 레벨을 옮길 때까지 안 멎으면 곤란하니 음악 채널로 태운다.
+	if (Row->bLooping)
+	{
+		Audio->PlayMusic(Id, /*FadeTime=*/0.0f);
+		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생 (루프 — FAStopSound 로 정지)"), *SoundId));
+		return;
+	}
+
+	Audio->PlaySound(Id);
+	ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+}
+
+void AFAPlayerController::FAStopSound()
+{
 	if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
 	{
-		Audio->PlaySound(Id);
-		ClientMessage(FString::Printf(TEXT("[FAPlaySound] '%s' 재생"), *SoundId));
+		Audio->StopMusic(/*FadeTime=*/0.25f);
+		ClientMessage(TEXT("[FAStopSound] 루프 정지"));
 	}
 }
 
@@ -305,6 +342,16 @@ void AFAPlayerController::ShowPauseMenu()
 	PauseMenuWidget->SetIsFocusable(true);
 	PauseMenuWidget->AddToViewport(PauseMenuZOrder);
 
+	FocusPauseMenu();
+}
+
+void AFAPlayerController::FocusPauseMenu()
+{
+	if (!IsLocalController() || !IsPauseMenuOpen())
+	{
+		return;
+	}
+
 	// 멀티플레이라 게임을 멈추지는 않는다. 대신 메뉴가 입력을 독점한다.
 	FInputModeUIOnly InputMode;
 	InputMode.SetWidgetToFocus(PauseMenuWidget->TakeWidget());
@@ -387,6 +434,85 @@ void AFAPlayerController::Client_ShowMatchResult_Implementation()
 	SetShowMouseCursor(true);
 }
 
+//~ ---------------- 라운드 결과 화면 ----------------
+
+bool AFAPlayerController::IsRoundResultOpen() const
+{
+	return RoundResultWidget != nullptr && RoundResultWidget->IsInViewport();
+}
+
+void AFAPlayerController::Client_ShowRoundResult_Implementation()
+{
+	if (!IsLocalController() || IsRoundResultOpen())
+	{
+		return;
+	}
+
+	// RPC 는 월드가 내려가기 시작한 뒤에도 도착할 수 있다 — 그때 위젯을 만들면 ensure 가 터진다.
+	const UWorld* World = GetWorld();
+	if (!World || World->bIsTearingDown)
+	{
+		return;
+	}
+
+	// 매치가 끝나 최종 순위표가 뜬 뒤라면 라운드 결과를 덧씌우지 않는다.
+	if (IsMatchResultOpen())
+	{
+		return;
+	}
+
+	if (!RoundResultWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FA] AFAPlayerController: RoundResultWidgetClass 가 비어 있어 라운드 결과 화면을 만들지 못했다."));
+		return;
+	}
+
+	if (!RoundResultWidget)
+	{
+		RoundResultWidget = CreateWidget<UFARoundResultWidget>(this, RoundResultWidgetClass);
+		if (!RoundResultWidget)
+		{
+			return;
+		}
+	}
+
+	// 입력 모드는 건드리지 않는다 — 결과를 보는 동안에도 다음 라운드로 그대로 이어져야 한다.
+	RoundResultWidget->AddToViewport(RoundResultZOrder);
+}
+
+void AFAPlayerController::Client_HideRoundResult_Implementation()
+{
+	if (RoundResultWidget && RoundResultWidget->IsInViewport())
+	{
+		RoundResultWidget->RemoveFromParent();
+	}
+}
+
+void AFAPlayerController::ReturnToLobby()
+{
+	Server_RequestReturnToLobby();
+}
+
+void AFAPlayerController::Server_RequestReturnToLobby_Implementation()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* FAGameMode = World->GetAuthGameMode<AFAGameMode>())
+		{
+			FAGameMode->RequestReturnToLobbyNow();
+		}
+	}
+}
+
+void AFAPlayerController::Client_NotifyReturnToLobbyFailed_Implementation()
+{
+	if (MatchResultWidget)
+	{
+		MatchResultWidget->NotifyReturnToLobbyFailed();
+	}
+}
+
 void AFAPlayerController::ReturnToMainMenu()
 {
 	if (bReturningToMainMenu)
@@ -443,6 +569,13 @@ void AFAPlayerController::TravelToMainMenu()
 	}
 
 	MapPath = FPackageName::ObjectPathToPackageName(MapPath);
+
+	// 세션 정리까지 끝난 뒤라 게임 화면은 이미 의미가 없다. 메뉴가 뜰 때까지 덮는다.
+	if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+	{
+		LoadingScreen->ShowWithTitle(
+			NSLOCTEXT("FAPauseMenu", "ReturningToMainMenu", "메인 메뉴로 돌아가는 중..."));
+	}
 
 	ClientTravel(MapPath, TRAVEL_Absolute);
 }

@@ -45,6 +45,7 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 	//~ WBP 에 같은 이름의 버튼이 있으면 자동으로 물린다. 없으면 임시 레이아웃이 채운다.
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|PauseMenu")
@@ -76,6 +77,10 @@ protected:
 	void OnPauseMenuClosed();
 
 private:
+	/** 설정창이 닫히기 시작할 때. 닫히는 소리를 낸다. */
+	UFUNCTION()
+	void HandleSettingsClosed();
+
 	//~ WBP 가 없을 때만 쓰는 임시 레이아웃.
 	void BuildFallbackLayout();
 

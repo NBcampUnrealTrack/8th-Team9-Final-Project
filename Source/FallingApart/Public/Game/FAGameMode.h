@@ -71,6 +71,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
 
+	/**
+	 * 최종 순위표의 '로비로 나가기' 가 부르는 즉시 복귀.
+	 */
+	void RequestReturnToLobbyNow();
+
 protected:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void BeginPlay() override;
@@ -85,6 +90,11 @@ protected:
 
 	virtual void Logout(AController* Exiting) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	/**
+	 * 첫 스폰 자리에 고정되지 않게 함
+	 */
+	virtual bool ShouldSpawnAtStartSpot(AController* Player) override { return false; }
 	virtual void UpdateGameplayMuteList(APlayerController* aPlayer) override;
 
 	void UpdateVoiceMuteMatrix();
@@ -106,6 +116,16 @@ protected:
 
 	/** 라운드 점수 정산 (GDD 5.1 / 5.2 · 기술문서 4.2) */
 	void SettleRoundScore(EFARoundResult Result);
+
+	/**
+	 * 결과 화면이 읽을 라운드 스냅샷을 GameState 에 떠 둔다 (GDD 8.4).
+	 * 반드시 CommitRoundScore() '전에' 불러야 한다 — 커밋이 라운드 점수를 0 으로 지운다.
+	 */
+	void BuildRoundResultSnapshot(EFARoundResult Result, const TArray<AFAPlayerState*>& AllPlayerStates);
+
+	/** 라운드 결과 화면을 전 클라이언트에 띄우고 내린다. */
+	void ShowRoundResult();
+	void HideRoundResult();
 
 	void StartNextRoundOrEndMatch();
 
@@ -259,6 +279,9 @@ private:
 	void BeginReturnToLobby();
 	void HandleSessionReopenForLobby(bool bSuccess);
 	void TravelToLobby();
+
+	/** 로비 복귀가 무산됐을 때 전원에게 알린다 — 결과창의 '로비로 나가기' 버튼을 되살린다. */
+	void NotifyReturnToLobbyFailedToAll();
 	
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Lobby")
 	float ReturnToLobbyDelaySeconds = 10.f;

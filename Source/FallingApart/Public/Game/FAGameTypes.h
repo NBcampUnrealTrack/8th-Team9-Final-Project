@@ -44,26 +44,33 @@ enum class EFARoundResult : uint8
 
 /**
  * 포획(감염) 진행 상태. 서버가 채우고 전 클라이언트에 복제된다.
+ *
+ * 감염은 고정 길이 타이머가 아니다 — 잡힌 사람이 WASD 로 저항하면 차는 속도가 느려진다
+ * (저항 0 이면 5초, 최대로 버티면 15초).
  */
 USTRUCT(BlueprintType)
 struct FFACaptureState
 {
 	GENERATED_BODY()
 
-	/** 감염이 완료되는 서버 월드 시각(초). TotalDuration 이 0 이면 의미 없음. */
+	/** 서버가 마지막으로 보낸 감염 진행도 0~1. 1 에 닿으면 감염이 확정된다. */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float EndServerTime = 0.0f;
-
-	/** 감염까지 걸리는 총 시간(초). 0 이면 포획 중이 아니다 — 이 값 하나가 활성 여부를 겸한다. */
-	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float TotalDuration = 0.0f;
+	float InfectProgress = 0.0f;
 
 	/**
-	 * 구출 QTE 로 감염 타이머가 멈춰 있는 동안의 남은 시간(초).
-	 * 0 보다 크면 게이지는 이 값에서 멈춘다 — 서버 시각으로 계산하면 QTE 중에도 혼자 채워진다.
+	 * 그 시점의 초당 진행 속도. 저항이 셀수록 작아진다.
+	 * 0 은 '멈춤' 이다 — 구출 QTE 중에는 이 값이 0 이라 게이지가 그 자리에 선다.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
-	float PausedRemaining = 0.0f;
+	float InfectRatePerSecond = 0.0f;
+
+	/** InfectProgress 를 찍은 서버 월드 시각(초). 클라이언트는 이 시각부터 속도로 외삽한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	float ProgressServerTime = 0.0f;
+
+	/** 포획 중인가. 진행도는 시작 직후 0 이라 활성 여부를 겸할 수 없어 따로 둔다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
+	bool bActive = false;
 
 	/** 이 캐릭터가 잡힌 쪽인가. false 면 잡고 있는 좀비. */
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
@@ -73,7 +80,7 @@ struct FFACaptureState
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Capture")
 	float ResistRatio = 0.0f;
 
-	bool IsActive() const { return TotalDuration > 0.0f; }
+	bool IsActive() const { return bActive; }
 };
 
 /** 구출 QTE(줄다리기)에서 이 캐릭터가 맡은 역할. */
@@ -150,9 +157,80 @@ struct FFAPlayerScore
 	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Score")
 	bool bWasInfectedThisRound = false;
 
+	/**
+	 * 진영 기여도 — **라운드를 시작한 진영에서 번 점수**. 타이브레이크 2차 기준.
+	 *
+	 * 매치 누적에서는 `Add()` 가 라운드마다 쌓아 올린 값
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Score")
+	int32 StartingSideScore = 0;
+
 	int32 GetTotal() const { return HumanTeam + HumanPersonal + ZombieTeam + ZombiePersonal; }
 	int32 GetHumanTotal() const { return HumanTeam + HumanPersonal; }
 	int32 GetZombieTotal() const { return ZombieTeam + ZombiePersonal; }
+
+	//~ ---------------- 순위 판정 ----------------
+
+	/**
+	 * 이 값이 한 라운드의 점수일 때, 그 라운드를 시작한 진영에서 번 점수.
+	 */
+	int32 ComputeRoundStartingSideScore() const
+	{
+		return bWasInfectedThisRound ? GetHumanTotal() : GetTotal();
+	}
+
+	/** 인간 점수 합과 좀비 점수 합 중 큰 쪽. 순위 판정에는 안 쓴다 — 표시·분석용. */
+	EFATeam GetMainSide() const
+	{
+		return (GetZombieTotal() > GetHumanTotal()) ? EFATeam::Zombie : EFATeam::Human;
+	}
+
+	/** 많이 번 쪽 진영에서의 점수. 순위 판정에는 안 쓴다 — 표시·분석용. */
+	int32 GetMainSideScore() const { return FMath::Max(GetHumanTotal(), GetZombieTotal()); }
+
+	/** 총점 대비 주 진영 비율. 총점이 0 이면 0. 순위 판정에는 안 쓴다 — 표시·분석용. */
+	float GetMainSideRatio() const
+	{
+		const int32 Total = GetTotal();
+		return (Total > 0) ? static_cast<float>(GetMainSideScore()) / static_cast<float>(Total) : 0.0f;
+	}
+
+	/**
+	 * 순위 사다리 — 1차 총점 → 2차 진영 기여도 → 3차 생존 시간.
+	 *
+	 * @return A 가 B 보다 상위면 true. 완전 동점이면 false (양쪽 다 false = 공동 순위).
+	 */
+	static bool CompareByRankRules(const FFAPlayerScore& A, const FFAPlayerScore& B)
+	{
+		// 1차 — 총점
+		if (A.GetTotal() != B.GetTotal())
+		{
+			return A.GetTotal() > B.GetTotal();
+		}
+
+		// 2차 — 진영 기여도 = 시작한 진영에서 번 점수가 많은 쪽이 상위.
+		//
+		// 감염된 뒤 좀비로 벌어 총점을 맞춘 사람보다, 시작 진영에서 그만큼을 벌어낸
+		// '순수 진영' 쪽을 위로 둔다.
+		if (A.StartingSideScore != B.StartingSideScore)
+		{
+			return A.StartingSideScore > B.StartingSideScore;
+		}
+
+		// 3차 — 생존 시간
+		if (!FMath::IsNearlyEqual(A.SurvivalTime, B.SurvivalTime, 0.01f))
+		{
+			return A.SurvivalTime > B.SurvivalTime;
+		}
+
+		return false;
+	}
+
+	/** 위 사다리로 우열이 안 갈리는가 = 공동 순위로 묶을 사이인가. */
+	static bool AreTiedByRankRules(const FFAPlayerScore& A, const FFAPlayerScore& B)
+	{
+		return !CompareByRankRules(A, B) && !CompareByRankRules(B, A);
+	}
 
 	/** 라운드 점수를 매치 누적에 합산한다. bWasInfectedThisRound 는 라운드 한정 플래그라 합산하지 않음. */
 	void Add(const FFAPlayerScore& Other)
@@ -162,7 +240,66 @@ struct FFAPlayerScore
 		ZombieTeam += Other.ZombieTeam;
 		ZombiePersonal += Other.ZombiePersonal;
 		SurvivalTime += Other.SurvivalTime;
+		StartingSideScore += Other.ComputeRoundStartingSideScore();
 	}
 
 	void Reset() { *this = FFAPlayerScore(); }
+};
+
+/**
+ * 라운드 결과 화면 한 줄 (GDD 8.4).
+ *
+ * 왜 스냅샷인가 — AFAPlayerState::CommitRoundScore() 가 라운드 점수를 매치 누적으로 넘기면서
+ * RoundScore 를 0 으로 지운다. 그런데 결과 화면은 그 뒤 RoundEndDelay(8초) 동안 떠 있어야 하므로,
+ * PlayerState 를 직접 읽으면 전부 0 이 찍힌다. 그래서 서버가 정산 직후 여기에 떠서 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFARoundResultRow
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	FString PlayerName;
+
+	/** 자기 줄 강조용. 도중에 나간 사람은 null 이 될 수 있으니 이름은 위에 따로 들고 있는다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	TObjectPtr<class AFAPlayerState> PlayerState = nullptr;
+
+	/** 이번 라운드 점수 — 팀/개인 4분할 그대로 (GDD 8.4 '팀/개인 분리 표시'). */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	FFAPlayerScore Score;
+
+	/** 이번 라운드에 인간으로 버틴 시간(초). */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	float SurvivalTime = 0.0f;
+
+	/** 감염되지 않고 끝까지 인간으로 남았는가. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	bool bSurvived = false;
+
+	/** 라운드가 끝난 시점의 진영. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	EFATeam TeamAtRoundEnd = EFATeam::None;
+};
+
+/**
+ * 한 라운드의 결과 전체. 서버가 채워 전 클라이언트로 복제한다.
+ */
+USTRUCT(BlueprintType)
+struct FFARoundResultSnapshot
+{
+	GENERATED_BODY()
+
+	/** 1부터 시작. 0 이면 아직 채워진 적이 없다는 뜻이라 유효성 판정을 겸한다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	int32 RoundIndex = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	EFARoundResult Result = EFARoundResult::None;
+
+	/** 생존 시간 내림차순으로 서버가 미리 정렬해 보낸다. */
+	UPROPERTY(BlueprintReadOnly, Category = "FallingApart|Result")
+	TArray<FFARoundResultRow> Rows;
+
+	bool IsValid() const { return RoundIndex > 0; }
 };

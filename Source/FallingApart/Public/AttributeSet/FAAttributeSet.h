@@ -60,7 +60,6 @@ public:
 	// Move.SlowTurn
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_TurnRateScale,Category = "Attribute|Movement")
 	FGameplayAttributeData TurnRateScale;
-
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, TurnRateScale)
 
 	// 물속 이동속도 배율 기본값 1.0
@@ -68,8 +67,18 @@ public:
 	//Move.WaterFear
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_WaterMoveSpeedMultiplier,Category = "Attribute|Movement")
 	FGameplayAttributeData WaterMoveSpeedMultiplier;
-
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,WaterMoveSpeedMultiplier)
+
+	// H50 저주받은 행운이 10초마다 정하는 이동속도 배율. 기본값 1.0.
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing=OnRep_GambleSpeedMultiplier,Category="Attribute|Movement")
+	FGameplayAttributeData GambleSpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,GambleSpeedMultiplier)
+
+	// 점프 기본값 420.0
+	// GameplayEffect에서 배율 또는 고정값으로 변경
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_RuleJumpZVelocity,Category = "Attribute|Movement")
+	FGameplayAttributeData RuleJumpZVelocity;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet,RuleJumpZVelocity)
 
 #pragma endregion
 
@@ -94,30 +103,49 @@ public:
 	//Vision.Fog 적용값: 800uu
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_VisionRange,Category = "Attribute|Vision")
 	FGameplayAttributeData VisionRange;
-
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, VisionRange)
 
 	// 카메라 시야각
 	//Vision.NarrowFOV
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_FieldOfView,Category = "Attribute|Vision")
 	FGameplayAttributeData FieldOfView;
-
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, FieldOfView)
 
+#pragma endregion
+
+#pragma region Bite
+
+public:
+	/** 좀비 포획(Bite) 기본 쿨타임 */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_BiteCooldown, Category = "Attributes|Zombie")
+	FGameplayAttributeData BiteCooldown;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, BiteCooldown)
 
 #pragma endregion
 
 #pragma region GrabAndRescue
+
 public:
 	// 포획 사거리 기본값 200.0uu (2.0m)
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_GrabRange, Category = "Attribute|Grab")
 	FGameplayAttributeData GrabRange;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, GrabRange)
 
-	// 감염 소요 시간 기본값 10.0초 클램프 0.5~15.0
+	// 감염 소요 시간(저항 0 기준) 기본값 5.0초 클램프 0.5~15.0
+	// 실제 감염 시간은 인질의 저항 강도에 따라 이 값의 1~3배 사이에서 움직인다.
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_InfectDuration, Category = "Attribute|Grab")
 	FGameplayAttributeData InfectDuration;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, InfectDuration)
+
+	/**
+	* 최대 저항 상태에서 감염 시간이 늘어나는 배율.
+	*
+	* 기본값 3.0:
+	* InfectDuration이 5초라면 최대 저항에서 15초.
+	*/
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_MaxResistTimeMultiplier,Category = "Attribute|Grab")
+	FGameplayAttributeData MaxResistTimeMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, MaxResistTimeMultiplier)
 
 	// 구출 QTE 진입 선딜레이 기본값 0.0초
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_RescueDuration, Category = "Attribute|Rescue")
@@ -128,6 +156,7 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_ContestGauge, Category = "Attribute|QTE")
 	FGameplayAttributeData ContestGauge;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet, ContestGauge)
+
 #pragma endregion
 
 #pragma region RepNotify
@@ -152,6 +181,9 @@ protected:
 	void OnRep_WaterMoveSpeedMultiplier(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
+	void OnRep_GambleSpeedMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
 	void OnRep_Stamina(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
@@ -159,7 +191,7 @@ protected:
 
 	UFUNCTION()
 	void OnRep_VisionRange(const FGameplayAttributeData& OldValue);
-	
+
 	UFUNCTION()
 	void OnRep_FieldOfView(const FGameplayAttributeData& OldValue);
 
@@ -170,9 +202,19 @@ protected:
 	void OnRep_InfectDuration(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
+	void OnRep_MaxResistTimeMultiplier(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
 	void OnRep_RescueDuration(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION()
 	void OnRep_ContestGauge(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_BiteCooldown(const FGameplayAttributeData& OldBiteCooldown);
+
 #pragma endregion
 };
