@@ -520,7 +520,7 @@ void UFADraftWidget::RefreshTimerText(int32 WholeSeconds)
 {
 	if (Txt_Timer)
 	{
-		Txt_Timer->SetText(FText::FromString(FString::Printf(TEXT("%d s"), FMath::Max(0, WholeSeconds))));
+		Txt_Timer->SetText(FText::FromString(FString::Printf(TEXT("%d"), FMath::Max(0, WholeSeconds))));
 	}
 }
 
