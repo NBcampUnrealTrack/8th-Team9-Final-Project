@@ -106,6 +106,12 @@ protected:
 private:
 	AFACharacter* FindTargetInFront(AFACharacter* Avatar, float Range, float Radius, struct FGameplayTag RequiredTag);
 
+	/**
+	 * 등반 중일 때의 포획 판정. 사다리에 붙으면 정면이 벽 쪽이라 스윕이 사람을 물 수 없으므로,
+	 * 같은 사다리에 붙은 사람들 중 몸이 가장 가까운 쪽을 고른다.
+	 */
+	AFACharacter* FindTargetOnLadder(AFACharacter* Avatar, float Range, struct FGameplayTag RequiredTag) const;
+
 	/** 공격 몽타주의 타격 시점에 서버가 실행하는 실제 포획 판정. */
 	void ResolveGrabAttempt();
 
