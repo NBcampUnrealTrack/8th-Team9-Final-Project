@@ -110,6 +110,13 @@ protected:
 	/** 대상이 요구하는 사거리. 0 이면 컴포넌트 기본값. */
 	float GetTargetRange(const AActor* Target) const;
 
+	/**
+	 * 눈에서 대상까지 가리는 것이 없는가.
+	 * 시작점은 카메라가 아니라 눈이고
+	 * 끝점은 조준 기준점이 아니라 대상 바운드의 겉면
+	 */
+	bool HasLineOfSight(const FVector& EyeLocation, const AActor* Target, const FVector& Focus) const;
+
 public:
 	//~ ---------------- 에디터 설정 ----------------
 

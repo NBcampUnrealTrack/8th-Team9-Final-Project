@@ -40,8 +40,8 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_Blackout  = AddTag(TEXT("Rule.Vision.Blackout"),  TEXT("Z19/H20 명멸/암전 — Periodic GE + PostProcess 암전."));
 	Rule_Vision_ForceFPS  = AddTag(TEXT("Rule.Vision.ForceFPS"),  TEXT("Z20/H21 1인칭 강제 — 토글 잠금 + FOV -10%."));
 	Rule_Vision_FlipY     = AddTag(TEXT("Rule.Vision.FlipY"),     TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
-	
-	
+
+
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
 	State_Zombie        = AddTag(TEXT("State.Zombie"),        TEXT("현재 좀비."));
@@ -77,7 +77,8 @@ void FAGameplayTags::AddAllTags()
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
 	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
 
-
+	//~ 쿨타임
+	Cooldown_Bite = AddTag(TEXT("Cooldown.Bite"), TEXT("좀비 포획(Bite) 어빌리티 쿨타임 상태를 나타내는 태그"));
 
 #pragma region Zombie Rule
 
@@ -92,6 +93,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Bite_FailStun = AddTag(TEXT("Rule.Bite.FailStun"), TEXT("Z28 빗나감 — 포획 실패 시 5초 경직"));
 	Rule_Bite_RootedGrab = AddTag(TEXT("Rule.Bite.RootedGrab"), TEXT("Z29 고정 턱 — 포획 중 완전 이동 불가"));
 	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
+	Rule_Bite_Cooldown = AddTag(TEXT("Rule.Bite.Cooldown"), TEXT("Z33 재장전 — 포획 쿨타임 8초"));
 
 	//~ 룰 - Social
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
@@ -101,14 +103,14 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
-	
+
 	//~ 룰 - State
 	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
 	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
 	State_NoInteract = AddTag(TEXT("State.NoInteract"),TEXT("상호작용 오브젝트 사용이 제한된 상태."));
 	Rule_State_NoStruggle = AddTag(TEXT("Rule.State.NoStruggle"),TEXT("H38 유리 몸 — 일반 포획 저항 불가."));
 	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
-	
+
 	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
 
 #pragma endregion
@@ -123,6 +125,10 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Rescue
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
+	Rule_Rescue_SlowHands = AddTag(TEXT("Rule.Rescue.SlowHands"), TEXT("H33 굼뜬 손 — QTE 개시 전 2초 선딜레이"));
+
+	//~ 룰 - Bite
+	Rule_Bite_InstantInfect = AddTag(TEXT("Rule.Bite.InstantInfect"), TEXT("H39 즉시 감염 — 포획 성공 즉시 감염"));
 
 	//~ 룰 - Trade
 	Rule_Trade_Sprinter = AddTag(TEXT("Rule.Trade.Sprinter"), TEXT("H44 질주 — 이동속도 +40%, 위치 상시 노출"));
