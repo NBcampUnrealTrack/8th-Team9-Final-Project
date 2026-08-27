@@ -78,8 +78,8 @@ public:
 
 	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
 	FGameplayTag Rule_Vision_FlipY;
-	
-	
+
+
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -150,7 +150,9 @@ public:
 	/* H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동 */
 	FGameplayTag Rule_Gamble_Blink;
 
+	//~ ========================= Cooldown Tag =========================
 
+	FGameplayTag Cooldown_Bite;
 
 #pragma region Zombie Rule
 
@@ -180,6 +182,9 @@ public:
 	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
 	FGameplayTag Rule_Bite_RescueStun;
 
+	/* Z33 재장전. 포획 쿨타임 8초 */
+	FGameplayTag Rule_Bite_Cooldown;
+
 	// Social
 	/* Z38 상시 표적 . 내 위치 상시 노출 */
 	FGameplayTag Rule_Social_Exposed;
@@ -197,7 +202,7 @@ public:
 
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
-	
+
 	// ~ ====== State
 	// * H36 뿌리내림 /  */
 	FGameplayTag Rule_State_Camp;
@@ -209,7 +214,7 @@ public:
 	/** H38 유리 몸 — 일반 포획 저항 입력 무효, 구출 QTE는 정상 */
 	FGameplayTag Rule_State_NoStruggle;
 	FGameplayTag State_NoStruggle;
-	
+
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
 
@@ -231,6 +236,12 @@ public:
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
+
+	/* H33 굼뜬 손. QTE 개시 전 2초 선딜레이 */
+	FGameplayTag Rule_Rescue_SlowHands;
+
+	/* H39 즉시 감염. 포획 성공 즉시 감염 (3초 없음) */
+	FGameplayTag Rule_Bite_InstantInfect;
 
 	// Trade
 	/* H44 질주 . 이동속도 +40%, 위치 노출 */
