@@ -35,6 +35,7 @@ UFAAttributeSet::UFAAttributeSet()
 	InitMaxResistTimeMultiplier(3.0f);
 	InitRescueDuration(0.0f);
 	InitContestGauge(50.0f);
+	InitBiteCooldown(3.0f);
 }
 
 void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,float& NewValue)
@@ -115,6 +116,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,2000.0f);
 	}
+	else if (Attribute == GetBiteCooldownAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 20.0f);
+	}
 }
 
 void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
@@ -181,7 +186,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	else if (ChangedAttribute == GetInfectDurationAttribute())
 	{
 		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 15.0f));
-	}  
+	}
 	else if (ChangedAttribute ==GetMaxResistTimeMultiplierAttribute())
 	{
 		SetMaxResistTimeMultiplier(FMath::Clamp(GetMaxResistTimeMultiplier(),1.0f,10.0f));
@@ -193,6 +198,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	else if (ChangedAttribute == GetRuleJumpZVelocityAttribute())
 	{
 		SetRuleJumpZVelocity(FMath::Clamp(GetRuleJumpZVelocity(), 0.0f, 2000.0f));
+	}
+	else if (ChangedAttribute == GetBiteCooldownAttribute())
+	{
+		SetBiteCooldown(FMath::Clamp(GetBiteCooldown(), 0.0f, 20.0f));
 	}
 }
 
@@ -210,12 +219,13 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,Stamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxStamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,VisionRange,COND_None,REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, GrabRange, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, InfectDuration, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RescueDuration, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, ContestGauge, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RuleJumpZVelocity, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,GrabRange, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,InfectDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,RescueDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,ContestGauge, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,RuleJumpZVelocity, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,BiteCooldown,COND_None,REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -300,4 +310,9 @@ void UFAAttributeSet::OnRep_ContestGauge(const FGameplayAttributeData& OldValue)
 void UFAAttributeSet::OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, RuleJumpZVelocity, OldValue);
+}
+
+void UFAAttributeSet::OnRep_BiteCooldown(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, BiteCooldown, OldValue);
 }
