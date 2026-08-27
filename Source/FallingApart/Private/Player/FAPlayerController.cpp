@@ -3,6 +3,7 @@
 #include "Player/FAPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameMapsSettings.h"
 #include "Audio/FAAudioSettings.h"
@@ -583,4 +584,29 @@ void AFAPlayerController::TravelToMainMenu()
 void AFAPlayerController::QuitGame()
 {
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
+// ============================================================
+// 콘솔에서 ESC 메뉴 열기
+// ============================================================
+namespace FAPauseMenuDebug
+{
+	static void TogglePauseMenuCommand(UWorld* World)
+	{
+		APlayerController* PlayerController = GEngine != nullptr ? GEngine->GetFirstLocalPlayerController(World) : nullptr;
+		AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(PlayerController);
+
+		if (FAPlayerController == nullptr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FA.PauseMenu: 로컬 플레이어 컨트롤러가 없다. 아직 맵에 들어오지 않았을 수 있다."));
+			return;
+		}
+
+		FAPlayerController->TogglePauseMenu();
+	}
+
+	static FAutoConsoleCommandWithWorld TogglePauseMenuConsoleCommand(
+		TEXT("FA.PauseMenu"),
+		TEXT("ESC 메뉴를 연다/닫는다. PIE 에서 Esc 가 플레이를 멈춰 버릴 때 쓴다."),
+		FConsoleCommandWithWorldDelegate::CreateStatic(&TogglePauseMenuCommand));
 }

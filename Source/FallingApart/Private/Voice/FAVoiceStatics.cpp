@@ -17,6 +17,7 @@
 #include "OnlineSubsystemUtils.h"
 #include "UObject/UObjectIterator.h"
 #include "VoipListenerSynthComponent.h"
+#include "Voice/FAVoiceComponent.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTypes.h"
 
@@ -218,10 +219,28 @@ namespace FAVoiceDebug
 				continue;
 			}
 
-			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s"),
+			// 개별 배수(설정창 접속자 목록)는 이미 Talker 의 배수에 곱해져 있다.
+			// 따로 찍어 주지 않으면 "왜 이 사람만 작지" 의 답이 로그에 안 남는다.
+			const UFAVoiceComponent* VoiceComponent = Talker->GetOwner() != nullptr
+				? Talker->GetOwner()->FindComponentByClass<UFAVoiceComponent>()
+				: nullptr;
+			const float ListenerScale = VoiceComponent != nullptr ? VoiceComponent->GetListenerVolumeScale() : 1.f;
+
+			FString ListenerNote;
+			if (ListenerScale <= 0.f)
+			{
+				ListenerNote = TEXT("   (내가 음소거함)");
+			}
+			else if (!FMath::IsNearlyEqual(ListenerScale, 1.f))
+			{
+				ListenerNote = FString::Printf(TEXT("   (내가 개별 x%.2f)"), ListenerScale);
+			}
+
+			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s%s"),
 				*GetNameSafe(Talker->GetOwner()),
 				Talker->GetPlaybackVolumeMultiplier(),
 				Talker->GetEffectivePlaybackVolume(),
+				*ListenerNote,
 				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""));
 		}
 

@@ -3,6 +3,7 @@
 #include "SettingsKitMenuWidget.h"
 
 #include "SettingsKitLog.h"
+#include "SettingsKitPluginSettings.h"
 #include "SettingsKitSubsystem.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -15,6 +16,7 @@
 #include "Components/ComboBoxString.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/Slider.h"
@@ -99,6 +101,7 @@ void USKSettingsMenuWidget::NativeConstruct()
 	// 그 시점엔 붙일 위젯이 아직 없다.
 	ApplySliderRanges();
 	BindCallbacks();
+	BuildTabExtensions();
 
 	OpenSettings();
 }
@@ -1167,6 +1170,83 @@ void USKSettingsMenuWidget::PlayHoverSound()
 	if (USKSettingsSubsystem* Settings = GetSettings())
 	{
 		Settings->RequestUISound(HoverSoundId);
+	}
+}
+
+
+// ============================================================
+// 게임 전용 확장 — 탭 안에 게임 쪽 위젯을 끼워 넣는다
+// ============================================================
+UPanelWidget* USKSettingsMenuWidget::GetTabExtensionBox(ESKSettingsTab Tab) const
+{
+	switch (Tab)
+	{
+	case ESKSettingsTab::Audio:    return Box_AudioExtra;
+	case ESKSettingsTab::Voice:    return Box_VoiceExtra;
+	case ESKSettingsTab::Video:    return Box_VideoExtra;
+	case ESKSettingsTab::Controls: return Box_ControlsExtra;
+	default:                       return nullptr;
+	}
+}
+
+void USKSettingsMenuWidget::BuildTabExtensions()
+{
+	if (IsDesignTime())
+	{
+		return;
+	}
+	
+	for (UUserWidget* Existing : TabExtensionWidgets)
+	{
+		if (Existing != nullptr)
+		{
+			Existing->RemoveFromParent();
+		}
+	}
+	TabExtensionWidgets.Reset();
+
+	const USKPluginSettings* PluginSettings = USKPluginSettings::Get();
+	if (PluginSettings == nullptr)
+	{
+		return;
+	}
+
+	for (const FSKTabExtension& Extension : PluginSettings->TabExtensions)
+	{
+		if (Extension.WidgetClass.IsNull())
+		{
+			continue;
+		}
+
+		UPanelWidget* Box = GetTabExtensionBox(Extension.Tab);
+		if (Box == nullptr)
+		{
+			// 자리를 안 놓았을 때 조용히 사라지면 원인을 찾기 어렵다. 놓아야 할 이름을 그대로 알려준다.
+			static const TCHAR* BoxNames[] = { TEXT("Box_AudioExtra"), TEXT("Box_VoiceExtra"), TEXT("Box_VideoExtra"), TEXT("Box_ControlsExtra") };
+			const int32 TabIndex = static_cast<int32>(Extension.Tab);
+			UE_LOG(LogSettingsKit, Warning,
+				TEXT("[SettingsKit] 확장 위젯 %s 를 넣을 자리가 없다 — 설정창 WBP 의 해당 탭에 패널(Vertical Box 등)을 놓고 이름을 %s 로 지을 것."),
+				*Extension.WidgetClass.ToString(),
+				BoxNames[FMath::Clamp(TabIndex, 0, UE_ARRAY_COUNT(BoxNames) - 1)]);
+			continue;
+		}
+
+		UClass* WidgetClass = Extension.WidgetClass.LoadSynchronous();
+		if (WidgetClass == nullptr)
+		{
+			UE_LOG(LogSettingsKit, Warning, TEXT("[SettingsKit] 확장 위젯 클래스를 로드하지 못했다: %s"),
+				*Extension.WidgetClass.ToString());
+			continue;
+		}
+
+		UUserWidget* ExtensionWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
+		if (ExtensionWidget == nullptr)
+		{
+			continue;
+		}
+
+		Box->AddChild(ExtensionWidget);
+		TabExtensionWidgets.Add(ExtensionWidget);
 	}
 }
 
