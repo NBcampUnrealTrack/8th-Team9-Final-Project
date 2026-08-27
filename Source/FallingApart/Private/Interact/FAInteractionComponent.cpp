@@ -215,6 +215,9 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 	FVector ViewDirection;
 	GetViewPoint(ViewLocation, ViewDirection);
 
+	// 가림 검사만은 카메라가 아니라 눈에서 쏜다.
+	const FVector EyeLocation = Character->GetActorLocation() + FVector(0.0f, 0.0f, Character->BaseEyeHeight);
+
 	// 거리는 카메라가 아니라 캐릭터에서 잰다 — 3인칭에서 카메라가 뒤로 빠진 만큼 손해 보면 안 된다.
 	const FVector Origin = Character->GetActorLocation();
 
@@ -256,6 +259,10 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 
 		if (!IFAInteractable::Execute_CanInteract(Actor, Character))
 		{
+			if (IsInteractDebugOn())
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Interact][%s] 후보 제외 — %s 의 CanInteract 가 false"), RoleTag(this), *Actor->GetName());
+			}
 			continue;
 		}
 
@@ -269,6 +276,10 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 		const float Distance = FVector::Dist(Origin, Focus);
 		if (Distance > Range)
 		{
+			if (IsInteractDebugOn())
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Interact][%s] 후보 제외 — %s 사거리 초과 (%.0f > %.0f)"), RoleTag(this), *Actor->GetName(), Distance, Range);
+			}
 			continue;
 		}
 
@@ -277,6 +288,11 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 		const float Alignment = FVector::DotProduct(ViewDirection, ToFocus);
 		if (Alignment < CosLimit)
 		{
+			if (IsInteractDebugOn())
+			{
+				UE_LOG(LogTemp, Log, TEXT("[Interact][%s] 후보 제외 — %s 가 시야각 밖 (%.0f도 > %.0f도)"),
+					RoleTag(this), *Actor->GetName(), FMath::RadiansToDegrees(FMath::Acos(Alignment)), DetectHalfAngleDegrees);
+			}
 			continue;
 		}
 
@@ -286,16 +302,13 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 			continue;
 		}
 
-		if (bRequireLineOfSight)
+		if (bRequireLineOfSight && !HasLineOfSight(EyeLocation, Actor, Focus))
 		{
-			FCollisionQueryParams LosParams(SCENE_QUERY_STAT(FAInteractLoS), true, Character);
-			LosParams.AddIgnoredActor(Actor);
-
-			FHitResult Blocker;
-			if (World->LineTraceSingleByChannel(Blocker, ViewLocation, Focus, ECC_Visibility, LosParams))
+			if (IsInteractDebugOn())
 			{
-				continue;
+				UE_LOG(LogTemp, Log, TEXT("[Interact][%s] 후보 제외 — %s 가 가려져 있다"), RoleTag(this), *Actor->GetName());
 			}
+			continue;
 		}
 
 		BestScore = Score;
@@ -303,6 +316,43 @@ AActor* UFAInteractionComponent::FindBestTarget() const
 	}
 
 	return BestActor;
+}
+
+bool UFAInteractionComponent::HasLineOfSight(const FVector& EyeLocation, const AActor* Target, const FVector& Focus) const
+{
+	AFACharacter* Character = GetFACharacter();
+	UWorld* World = Character ? Character->GetWorld() : nullptr;
+	if (!World || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// 조준 기준점은 물건 '안쪽' 인 경우가 많다 — 캐비넷의 기준점은 사람이 서는 자리
+	FVector TraceEnd = Focus;
+
+	const FBox TargetBox = Target->GetComponentsBoundingBox(/*bNonColliding=*/false);
+	if (TargetBox.IsValid)
+	{
+		FVector BoxHit = FVector::ZeroVector;
+		FVector BoxNormal = FVector::ZeroVector;
+		float BoxTime = 0.0f;
+		if (FMath::LineExtentBoxIntersection(TargetBox, EyeLocation, Focus, FVector::ZeroVector, BoxHit, BoxNormal, BoxTime))
+		{
+			TraceEnd = BoxHit;
+		}
+	}
+
+	// 이미 대상 안(또는 코앞)에 서 있으면 볼 것도 없다.
+	if (FVector::DistSquared(EyeLocation, TraceEnd) < FMath::Square(10.0f))
+	{
+		return true;
+	}
+
+	FCollisionQueryParams LosParams(SCENE_QUERY_STAT(FAInteractLoS), true, Character);
+	LosParams.AddIgnoredActor(Target);
+
+	FHitResult Blocker;
+	return !World->LineTraceSingleByChannel(Blocker, EyeLocation, TraceEnd, ECC_Visibility, LosParams);
 }
 
 void UFAInteractionComponent::SetCurrentTarget(AActor* NewTarget)
