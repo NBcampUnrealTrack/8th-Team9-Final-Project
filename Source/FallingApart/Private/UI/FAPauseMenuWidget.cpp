@@ -94,6 +94,11 @@ void UFAPauseMenuWidget::OnSettingsClicked()
 void UFAPauseMenuWidget::HandleSettingsClosed()
 {
 	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::PopupClose);
+
+	if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer()))
+	{
+		FAPlayerController->FocusPauseMenu();
+	}
 }
 
 void UFAPauseMenuWidget::OnQuitClicked()
@@ -111,6 +116,8 @@ void UFAPauseMenuWidget::NativeConstruct()
 	Super::NativeConstruct();
 
 	SetIsFocusable(true);
+
+	SetVisibility(ESlateVisibility::Visible);
 
 	BindButtons();
 
@@ -149,6 +156,11 @@ FReply UFAPauseMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FK
 	}
 
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UFAPauseMenuWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	return FReply::Handled().SetUserFocus(TakeWidget(), EFocusCause::Mouse);
 }
 
 void UFAPauseMenuWidget::BindButtons()

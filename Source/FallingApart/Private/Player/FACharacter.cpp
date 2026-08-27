@@ -809,13 +809,14 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AFACharacter::BindTeamNotify()
 {
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다.
 	AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
-	if (!FAPlayerState || TeamNotifySource.Get() == FAPlayerState)
+	if (!FAPlayerState || TeamNotifySource.Get(/*bEvenIfGarbage=*/true) == FAPlayerState)
 	{
 		return;
 	}
 
-	if (AFAPlayerState* PreviousState = TeamNotifySource.Get())
+	if (AFAPlayerState* PreviousState = TeamNotifySource.Get(/*bEvenIfGarbage=*/true))
 	{
 		PreviousState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
 	}
