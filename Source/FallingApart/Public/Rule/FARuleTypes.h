@@ -54,6 +54,10 @@ struct FFARuleCardRow : public FTableRowBase
 	/** 카드 아이콘. 비어 있으면 티어 기본 아이콘으로 대체. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "표시")
 	TSoftObjectPtr<UTexture2D> Icon;
+	
+	/** 카드 아이콘. 비어 있으면 티어 기본 아이콘으로 대체. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "표시")
+	TSoftObjectPtr<UTexture2D> BackgroundImage;
 
 	//~ ---------------- 분류 ----------------
 
@@ -163,6 +167,9 @@ struct FFARuleDisplayInfo
 
 	UPROPERTY(BlueprintReadOnly, Category = "Rule")
 	TSoftObjectPtr<UTexture2D> Icon;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	TSoftObjectPtr<UTexture2D> BackgroundImage;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Rule")
 	EFATeam Team = EFATeam::None;
