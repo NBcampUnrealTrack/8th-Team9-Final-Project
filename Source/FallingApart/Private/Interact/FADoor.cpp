@@ -144,10 +144,26 @@ void AFADoor::Interact_Implementation(AFACharacter* Interactor)
 		return;
 	}
 
+	const bool bOpening = !bIsOpen;
+	MulticastPlayDoorInteractionMontage(Interactor, bOpening);
 	ToggleDoor(Interactor);
 
 	// BP 훅(OnInteracted)까지 살려둔다.
 	Super::Interact_Implementation(Interactor);
+}
+
+void AFADoor::MulticastPlayDoorInteractionMontage_Implementation(AFACharacter* Interactor, bool bOpening)
+{
+	if (!IsValid(Interactor))
+	{
+		return;
+	}
+
+	UAnimMontage* MontageToPlay = bOpening ? DoorOpenMontage : DoorCloseMontage;
+	if (MontageToPlay)
+	{
+		Interactor->PlayAnimMontage(MontageToPlay);
+	}
 }
 
 void AFADoor::ToggleDoor(AFACharacter* ByCharacter)
