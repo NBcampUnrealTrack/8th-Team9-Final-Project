@@ -77,55 +77,33 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule|Audio")
 	bool bPlayRuleSounds = true;
 
-	//~ WBP 에 같은 이름의 위젯이 있으면 자동으로 물린다. 없으면 그 칸만 건너뛴다.
-	//~ Slot0 은 칸 전체를 숨기는 손잡이다 — 없으면 Border_Slot0 을 숨긴다.
+	//~ 슬롯 0
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UWidget> Slot0;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UBorder> Border_Slot0;
+	TObjectPtr<UImage> Img_Slot0Background;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
 	TObjectPtr<UImage> Img_Slot0Icon;
-
+	
+	//~ 슬롯 1
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UTextBlock> Txt_Slot0Name;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UWidget> Slot1;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UBorder> Border_Slot1;
+	TObjectPtr<UImage> Img_Slot1Background;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
 	TObjectPtr<UImage> Img_Slot1Icon;
-
+	
+	//~ 슬롯 2
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UTextBlock> Txt_Slot1Name;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UWidget> Slot2;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UBorder> Border_Slot2;
+	TObjectPtr<UImage> Img_Slot2Background;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
 	TObjectPtr<UImage> Img_Slot2Icon;
-
+	
+	//~ 슬롯 3
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UTextBlock> Txt_Slot2Name;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UWidget> Slot3;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UBorder> Border_Slot3;
+	TObjectPtr<UImage> Img_Slot3Background;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
 	TObjectPtr<UImage> Img_Slot3Icon;
-
-	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Rule")
-	TObjectPtr<UTextBlock> Txt_Slot3Name;
 
 private:
 	UFUNCTION()
@@ -149,9 +127,6 @@ private:
 	/** 깜빡임·무지개처럼 매 프레임 움직이는 색만 갱신한다. */
 	void UpdateAnimatedVisuals(float InDeltaTime);
 
-	/** WBP 가 없을 때만 쓰는 임시 레이아웃. */
-	void BuildFallbackLayout();
-
 	/** 룰 추가·제거 소리. 로컬 화면 소리라 여기서 낸다. */
 	void PlayRuleAddedSound(const FFARuleDisplayInfo& Rule);
 	void PlayRuleRemovedSound();
@@ -162,19 +137,11 @@ private:
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UFAAbilitySystemComponent> BoundASC;
 
-	//~ GatherSlotWidgets() 가 채우는 인덱스 접근용 사본. 원본은 위의 Slot0 … 이다.
-	//~ 길이는 항상 MaxSlots 이고, WBP 에 없는 칸은 null 로 남는다.
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UWidget>> SlotRoots;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UBorder>> SlotBorders;
-
+	TArray<TObjectPtr<UImage>> SlotBackgrounds;
+	
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UImage>> SlotIcons;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTextBlock>> SlotNames;
 
 	/** 직전 프레임의 보유 ID — 추가·제거를 구분해 소리와 이벤트를 나누는 기준. */
 	TArray<FName> LastRuleIds;
