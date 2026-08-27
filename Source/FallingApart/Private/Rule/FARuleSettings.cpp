@@ -92,6 +92,7 @@ FFARuleDisplayInfo UFARuleSettings::MakeRuleDisplayInfo(FName RuleId)
 	Info.ShortDesc = Row->ShortDesc;
 	Info.Icon = Row->Icon;
 	Info.BackgroundImage = Row->BackgroundImage;
+	Info.CardBackgroundImage = Row->CardBackgroundImage;
 	Info.Team = Row->Team;
 	Info.Tier = Row->Tier;
 	Info.Type = Row->Type;
