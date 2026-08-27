@@ -72,7 +72,7 @@ void UFAGA_Grab::ActivateAbility(
 	// InstancedPerActor 라 인스턴스가 포획 사이에 재사용된다 — 지난 포획의 진행도가 남아 있으면 안 된다.
 	InfectProgress = 0.0f;
 	bInfectPaused = false;
-	
+
 	// 실제 포획 성공 시 Attribute 값으로 다시 설정된다.
 	CapturedMaxResistTimeMultiplier = 1.0f;
 
@@ -240,15 +240,19 @@ void UFAGA_Grab::ResolveGrabAttempt()
 		VictimEffectHandle = SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
 	}
 
-	float InfectDuration = SourceASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
-	// Attribute 가 아직 초기화 전이면 쓰는 폴백. UFAAttributeSet 의 기본값과 같이 움직여야 한다.
-	if (InfectDuration <= 0.0f) InfectDuration = 5.0f;
+	// H39 카드는 인간 진영 룰이므로 TargetASC(인간)의 속성을 읽어온다.
+	float InfectDuration = TargetASC->GetNumericAttribute(UFAAttributeSet::GetInfectDurationAttribute());
+	if (InfectDuration <= 0.01f) // H39 - 감염 소요 시간이 0초라면 줄다리기(QTE) 없이 즉시 감염
+	{
+		CompleteInfection();
+		return;
+	}
 
 	BaseInfectDuration = InfectDuration;
 	CurrentInfectRate = 1.0f / BaseInfectDuration;
-	
+
 	float ResistTimeMultiplier =SourceASC->GetNumericAttribute(UFAAttributeSet::GetMaxResistTimeMultiplierAttribute());
-	
+
 	if (ResistTimeMultiplier < 1.0f)
 	{
 		ResistTimeMultiplier = 3.0f;
@@ -265,7 +269,7 @@ void UFAGA_Grab::ResolveGrabAttempt()
 			TEXT("[Z43] 광폭 감염 시간 적용 | Base=%.1fs | Max=%.1fs"),
 			BaseInfectDuration,BaseInfectDuration * ResistTimeMultiplier);
 	}
-	
+
 	// 포획 도중 GE 값이 바뀌어도 이번 포획에는 시작 시점 값을 사용한다.
 	CapturedMaxResistTimeMultiplier =ResistTimeMultiplier;
 
@@ -374,7 +378,7 @@ void UFAGA_Grab::TickGrab()
 	// 저항이 셀수록 감염이 느려진다: 저항 0 이면 BaseInfectDuration, 최대면 × MaxResistTimeMultiplier.
 	// 저항 강도는 여기서 감쇠시킨다 — 손을 놓으면 알아서 0 으로 돌아온다.
 	const float ResistLevel = GrabbedVictim->UpdateResistLevel(GrabTickInterval);
-	const float CurrentDuration = FMath::Max(0.1f,BaseInfectDuration 
+	const float CurrentDuration = FMath::Max(0.1f,BaseInfectDuration
 		*FMath::Lerp(1.0f,CapturedMaxResistTimeMultiplier,ResistLevel));
 
 	CurrentInfectRate = 1.0f / CurrentDuration;
@@ -547,7 +551,7 @@ void UFAGA_Grab::ResolvePlagueGamble()
         HumanCandidates.Add(CandidateState);
     }
 
-	// 추가 감염 인간이 없는 경우 
+	// 추가 감염 인간이 없는 경우
     if (HumanCandidates.IsEmpty())
     {
         // 이 경우는 확률 판정 실패가 아니므로
