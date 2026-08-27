@@ -4,11 +4,14 @@
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Game/FAGameMode.h"
+#include "Interact/FALadder.h"
 #include "Player/FACharacter.h"
 #include "Player/FAPlayerState.h"
 #include "AbilitySystemComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Animation/AnimMontage.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
@@ -171,7 +174,17 @@ void UFAGA_Grab::ResolveGrabAttempt()
 	if (GrabRange <= 0.0f) GrabRange = 200.0f;
 
 	float SphereRadius = 50.0f;
-	AFACharacter* TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
+
+	// 사다리에 붙어 있으면 정면이 벽이라 스윕이 절대 사람을 못 문다 — 사다리 위·아래를 먼저 본다.
+	// 못 찾으면 평소 판정으로 떨어진다(사다리 옆에 선 사람은 그쪽으로 걸린다).
+	AFACharacter* TargetHuman = ZombieChar->IsClimbing()
+		? FindTargetOnLadder(ZombieChar, GrabRange, Tags.State_Human)
+		: nullptr;
+
+	if (!TargetHuman)
+	{
+		TargetHuman = FindTargetInFront(ZombieChar, GrabRange, SphereRadius, Tags.State_Human);
+	}
 
 	// 대상이 없거나 이미 다른 좀비에게 잡힌 상태인 경우
 	if (!TargetHuman || TargetHuman->GetAbilitySystemComponent()->HasMatchingGameplayTag(Tags.State_Grabbed))
@@ -649,4 +662,60 @@ AFACharacter* UFAGA_Grab::FindTargetInFront(AFACharacter* Avatar, float Range, f
 		}
 	}
 	return nullptr;
+}
+
+AFACharacter* UFAGA_Grab::FindTargetOnLadder(AFACharacter* Avatar, float Range, FGameplayTag RequiredTag) const
+{
+	AFALadder* Ladder = Avatar ? Avatar->GetClimbingLadder() : nullptr;
+	if (!Ladder)
+	{
+		return nullptr;
+	}
+
+	const UCapsuleComponent* MyCapsule = Avatar->GetCapsuleComponent();
+	const float MyHalfHeight = MyCapsule ? MyCapsule->GetScaledCapsuleHalfHeight() : 0.0f;
+
+	// 사다리에 겹쳐 붙은 두 사람은 캡슐이 서로를 막아 중심끼리 키만큼 벌어진다.
+	// 중심 거리로 재면 사거리를 넘겨버리므로 몸 표면 사이의 간격으로 잰다 — 캡슐 크기와 무관해진다.
+	const FVector Origin = Avatar->GetActorLocation();
+
+	TArray<FOverlapResult> Overlaps;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(Avatar);
+
+	Avatar->GetWorld()->OverlapMultiByChannel(
+		Overlaps, Origin, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeSphere(Range + MyHalfHeight * 2.0f), QueryParams);
+
+	AFACharacter* Nearest = nullptr;
+	float NearestGap = TNumericLimits<float>::Max();
+
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		AFACharacter* Candidate = Cast<AFACharacter>(Overlap.GetActor());
+
+		// 같은 사다리에 붙은 사람만 본다. 꼭대기 바닥에 선 사람까지 걸리면 벽 너머로 잡는 꼴이 된다.
+		if (!Candidate || Candidate->GetClimbingLadder() != Ladder)
+		{
+			continue;
+		}
+
+		const UAbilitySystemComponent* CandidateASC = Candidate->GetAbilitySystemComponent();
+		if (!CandidateASC || !CandidateASC->HasMatchingGameplayTag(RequiredTag))
+		{
+			continue;
+		}
+
+		const UCapsuleComponent* TheirCapsule = Candidate->GetCapsuleComponent();
+		const float TheirHalfHeight = TheirCapsule ? TheirCapsule->GetScaledCapsuleHalfHeight() : 0.0f;
+
+		const float Gap = FVector::Dist(Origin, Candidate->GetActorLocation()) - MyHalfHeight - TheirHalfHeight;
+		if (Gap <= Range && Gap < NearestGap)
+		{
+			NearestGap = Gap;
+			Nearest = Candidate;
+		}
+	}
+
+	return Nearest;
 }

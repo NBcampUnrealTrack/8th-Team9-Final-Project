@@ -289,6 +289,13 @@ protected:
 	/** 등반 입력 — Move() 가 사다리 위에서는 여기로 넘긴다. */
 	void ClimbMove(const FVector2D& MovementVector);
 
+	/**
+	 * 사다리에서 오르내림과 뛰어내리기를 막아야 하는가.
+	 *
+	 * 포획·줄다리기가 걸린 동안은 좀비와 인질이 그 자리에 함께 묶여야 한다
+	 */
+	bool IsLadderMovementLocked() const;
+
 	/** GA_Jump 를 통해 점프한다 — 점프 불가 룰(Z01/H01)이 여기서 걸린다. */
 	void Input_Jump();
 	void Input_StopJumping();

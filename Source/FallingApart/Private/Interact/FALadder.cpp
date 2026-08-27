@@ -27,8 +27,9 @@ AFALadder::AFALadder()
 	// 꼭대기보다 조금 위, 그리고 벽 반대쪽(+X)으로 나온 자리.
 	TopExit->SetRelativeLocation(FVector(80.0f, 0.0f, 340.0f));
 
-	// 한 번에 한 명만 오른다.
-	bExclusiveInteraction = true;
+	// 여러 명이 같이 붙는다. 한 명만 오를 수 있으면 좀비가 따라 올라갈 수 없어서
+	// 긴 사다리 중간에 멈춰 있는 인간이 감염 불가능한 무적 지대가 된다.
+	bExclusiveInteraction = false;
 
 	// 조준 기준점은 사다리 중간 높이.
 	InteractFocusOffset = FVector(0.0f, 0.0f, 150.0f);
