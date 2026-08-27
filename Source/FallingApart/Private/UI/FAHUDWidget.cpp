@@ -299,15 +299,16 @@ void UFAHUDWidget::UpdateContestPrompt()
 void UFAHUDWidget::RefreshBindings()
 {
 	const UWorld* World = GetWorld();
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다.
 	AFAGameState* CurrentGameState = World ? World->GetGameState<AFAGameState>() : nullptr;
-	if (CurrentGameState != CachedGameState.Get())
+	if (CurrentGameState != CachedGameState.Get(/*bEvenIfGarbage=*/true))
 	{
 		UnbindGameState();
 		BindGameState(CurrentGameState);
 	}
 
 	AFAPlayerState* CurrentPlayerState = Cast<AFAPlayerState>(GetOwningPlayerState());
-	if (CurrentPlayerState != CachedPlayerState.Get())
+	if (CurrentPlayerState != CachedPlayerState.Get(/*bEvenIfGarbage=*/true))
 	{
 		UnbindPlayerState();
 		BindPlayerState(CurrentPlayerState);
@@ -333,7 +334,7 @@ void UFAHUDWidget::BindGameState(AFAGameState* NewGameState)
 
 void UFAHUDWidget::UnbindGameState()
 {
-	if (AFAGameState* FAGameState = CachedGameState.Get())
+	if (AFAGameState* FAGameState = CachedGameState.Get(/*bEvenIfGarbage=*/true))
 	{
 		FAGameState->OnRoundPhaseChanged.RemoveDynamic(this, &UFAHUDWidget::HandleRoundPhaseChanged);
 		FAGameState->OnTeamCountsChanged.RemoveDynamic(this, &UFAHUDWidget::HandleTeamCountsChanged);
@@ -369,7 +370,7 @@ void UFAHUDWidget::BindPlayerState(AFAPlayerState* NewPlayerState)
 
 void UFAHUDWidget::UnbindPlayerState()
 {
-	if (AFAPlayerState* FAPlayerState = CachedPlayerState.Get())
+	if (AFAPlayerState* FAPlayerState = CachedPlayerState.Get(/*bEvenIfGarbage=*/true))
 	{
 		FAPlayerState->OnTeamChanged.RemoveDynamic(this, &UFAHUDWidget::HandleLocalTeamChanged);
 		FAPlayerState->OnScoreChanged.RemoveDynamic(this, &UFAHUDWidget::HandleLocalScoreChanged);

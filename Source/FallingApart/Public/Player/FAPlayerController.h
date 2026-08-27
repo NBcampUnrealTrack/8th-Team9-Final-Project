@@ -80,6 +80,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void HidePauseMenu();
 
+	/**
+	 * 키보드 포커스와 입력 모드를 일시정지 메뉴로 되돌린다.
+	 *
+	 * 설정창처럼 메뉴 위에 겹쳐 뜬 창이 닫힌 뒤에 부른다. ESC 로 메뉴를 닫는 것은
+	 * UFAPauseMenuWidget::NativeOnKeyDown 이라 포커스가 메뉴에 없으면 키가 아무 데도 안 간다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void FocusPauseMenu();
+
 	UFUNCTION(BlueprintPure, Category = "FallingApart|PauseMenu")
 	bool IsPauseMenuOpen() const;
 
@@ -100,6 +109,22 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
 	bool IsMatchResultOpen() const;
+
+	/**
+	 * 최종 순위표의 '로비로 나가기'.
+	 *
+	 * ReturnToMainMenu() 와 달리 세션을 부수지 않는다. 혼자 빠져나가는 게 아니라
+	 * 서버가 세션을 다시 열고 다 같이 로비 레벨로 ServerTravel 하도록 요청
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Result")
+	void ReturnToLobby();
+
+	UFUNCTION(Server, Reliable)
+	void Server_RequestReturnToLobby();
+
+	/** 서버가 로비 복귀에 실패했다 — 결과창의 버튼을 되살린다. */
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyReturnToLobbyFailed();
 
 	//~ ---------------- 라운드 결과 화면 ----------------
 

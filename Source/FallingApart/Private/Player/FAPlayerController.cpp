@@ -342,6 +342,16 @@ void AFAPlayerController::ShowPauseMenu()
 	PauseMenuWidget->SetIsFocusable(true);
 	PauseMenuWidget->AddToViewport(PauseMenuZOrder);
 
+	FocusPauseMenu();
+}
+
+void AFAPlayerController::FocusPauseMenu()
+{
+	if (!IsLocalController() || !IsPauseMenuOpen())
+	{
+		return;
+	}
+
 	// 멀티플레이라 게임을 멈추지는 않는다. 대신 메뉴가 입력을 독점한다.
 	FInputModeUIOnly InputMode;
 	InputMode.SetWidgetToFocus(PauseMenuWidget->TakeWidget());
@@ -476,6 +486,30 @@ void AFAPlayerController::Client_HideRoundResult_Implementation()
 	if (RoundResultWidget && RoundResultWidget->IsInViewport())
 	{
 		RoundResultWidget->RemoveFromParent();
+	}
+}
+
+void AFAPlayerController::ReturnToLobby()
+{
+	Server_RequestReturnToLobby();
+}
+
+void AFAPlayerController::Server_RequestReturnToLobby_Implementation()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* FAGameMode = World->GetAuthGameMode<AFAGameMode>())
+		{
+			FAGameMode->RequestReturnToLobbyNow();
+		}
+	}
+}
+
+void AFAPlayerController::Client_NotifyReturnToLobbyFailed_Implementation()
+{
+	if (MatchResultWidget)
+	{
+		MatchResultWidget->NotifyReturnToLobbyFailed();
 	}
 }
 

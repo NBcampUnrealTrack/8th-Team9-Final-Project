@@ -963,38 +963,51 @@ void AFAGameMode::UpdateVoiceMuteMatrix()
 AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
 	const AFAPlayerState* FAPlayerState = Player ? Cast<AFAPlayerState>(Player->PlayerState) : nullptr;
-	if (FAPlayerState && FAPlayerState->GetTeam() != EFATeam::None)
+	const bool bTeamDecided = FAPlayerState && FAPlayerState->GetTeam() != EFATeam::None;
+
+	// 로그인 직후 첫 스폰은 아직 진영이 없다
+	const FName WantedTag = bTeamDecided
+		? (FAPlayerState->IsZombie() ? ZombiePlayerStartTag : HumanPlayerStartTag)
+		: NAME_None;
+
+	TArray<AActor*> TeamCandidates;
+	TArray<AActor*> AnyCandidates;
+
+	for (TActorIterator<APlayerStart> Iterator(GetWorld()); Iterator; ++Iterator)
 	{
-		const FName WantedTag = FAPlayerState->IsZombie() ? ZombiePlayerStartTag : HumanPlayerStartTag;
+		APlayerStart* PlayerStart = *Iterator;
 
-		TArray<AActor*> Candidates;
-		for (TActorIterator<APlayerStart> Iterator(GetWorld()); Iterator; ++Iterator)
+		// 데스매치 전용 스폰은 1층 아레나에 몰려 있어 일반 라운드에 쓰면 안 된다.
+		if (UFADeathMatchSubsystem::IsArenaPlayerStart(PlayerStart))
 		{
-			APlayerStart* PlayerStart = *Iterator;
-
-			// 데스매치 전용 스폰은 1층에 몰려 있어 일반 라운드에 쓰면 안 된다.
-			if (UFADeathMatchSubsystem::IsArenaPlayerStart(PlayerStart))
-			{
-				continue;
-			}
-
-			// Player Start Tag 든 액터 태그든 인정한다 — 레벨이 액터 태그로 진영을 구분해 두었다.
-			if (UFADeathMatchSubsystem::PlayerStartHasTag(PlayerStart, WantedTag))
-			{
-				Candidates.Add(PlayerStart);
-			}
+			continue;
 		}
 
-		if (Candidates.Num() > 0)
-		{
-			return Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
-		}
+		AnyCandidates.Add(PlayerStart);
 
-		// 여기까지 오면 진영 스폰을 하나도 못 찾았다는 뜻이다. 엔진 기본값은 아무 PlayerStart 나
-		// 고르므로 인간이 좀비 스폰에서 시작할 수 있다 — 조용히 넘어가면 안 된다.
+		// Player Start Tag 든 액터 태그든 인정한다 — 이 맵은 액터 태그로 진영을 구분해 두었다.
+		if (bTeamDecided && UFADeathMatchSubsystem::PlayerStartHasTag(PlayerStart, WantedTag))
+		{
+			TeamCandidates.Add(PlayerStart);
+		}
+	}
+
+	if (TeamCandidates.Num() > 0)
+	{
+		return TeamCandidates[FMath::RandRange(0, TeamCandidates.Num() - 1)];
+	}
+
+	if (bTeamDecided)
+	{
+		// 진영 스폰을 하나도 못 찾았다는 뜻이다. 조용히 넘어가면 인간이 좀비 스폰에서 시작한다.
 		UE_LOG(LogTemp, Warning,
 			TEXT("[FA] '%s' 태그가 붙은 PlayerStart 를 찾지 못했다 — 진영 스폰이 무시되고 아무 자리에서나 시작한다 (맵 확인)"),
 			*WantedTag.ToString());
+	}
+
+	if (AnyCandidates.Num() > 0)
+	{
+		return AnyCandidates[FMath::RandRange(0, AnyCandidates.Num() - 1)];
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);
@@ -1018,6 +1031,20 @@ float AFAGameMode::GetServerTime() const
 AFAGameState* AFAGameMode::GetFAGameState() const
 {
 	return GetGameState<AFAGameState>();
+}
+
+void AFAGameMode::RequestReturnToLobbyNow()
+{
+	if (bReturningToLobby)
+	{
+		return;
+	}
+
+	// 자동 복귀를 앞당기는 것뿐이다. 남은 타이머만 정리하고 같은 경로를 그대로 탄다 —
+	// 세션 재개와 ServerTravel 이 두 번 돌면 안 된다.
+	GetWorldTimerManager().ClearTimer(ReturnToLobbyTimerHandle);
+
+	BeginReturnToLobby();
 }
 
 void AFAGameMode::BeginReturnToLobby()
@@ -1048,9 +1075,24 @@ void AFAGameMode::HandleSessionReopenForLobby(bool bSuccess)
 	
 	if (!bSuccess)
 	{
-		//세션 복구 실패?? 이 경우 저장된 Saved\Logs경로의 로그에서 OnlineSubsystem의 오류 메세지 확인할 필요가 있음.
+		UGameInstance* GameInstance = GetGameInstance();
+		UFAOnlineSessionSubsystem* SessionSubsystem =
+			GameInstance ? GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
+
+		// 세션이 아예 없는 로컬 실행(PIE · 단독 실행)은 복구할 외부 상태 자체가 없어서 여기로 떨어진다.
+		// 로비로 옮기는 데 세션이 필요한 것도 아니므로, 이 경우는 레벨 이동까지 그대로 간다.
+		if (!SessionSubsystem || !SessionSubsystem->GetCurrentSession())
+		{
+			UE_LOG(LogFAOSS, Warning,
+				TEXT("세션이 없는 로컬 실행이다 — 세션 복구를 건너뛰고 로비 레벨로만 이동한다."));
+			TravelToLobby();
+			return;
+		}
+
+		// 세션은 살아 있는데 복구만 실패한 경우다. 세션과 UI 상태가 어긋나면 안 되므로 이동하지 않는다.
 		UE_LOG(LogFAOSS, Error, TEXT("세션 복구 실패, Log확인필요"));
 		bReturningToLobby = false;
+		NotifyReturnToLobbyFailedToAll();
 		return;
 	}
 	TravelToLobby();
@@ -1070,6 +1112,10 @@ void AFAGameMode::TravelToLobby()
 	if (LobbyLevelPath.IsEmpty())
 	{
 		UE_LOG(LogFAOSS, Error, TEXT("FAGameMode에 돌아갈 로비 레벨이 지정되지 않았습니다."));
+
+		// 플래그를 안 되돌리면 다시 눌러도 앞단 가드에 걸려 영영 시도조차 못 한다.
+		bReturningToLobby = false;
+		NotifyReturnToLobbyFailedToAll();
 		return;
 	}
 	
@@ -1081,5 +1127,25 @@ void AFAGameMode::TravelToLobby()
 			TEXT("로비 ServerTravel 요청에 실패했습니다."));
 
 		bReturningToLobby = false;
+		NotifyReturnToLobbyFailedToAll();
+	}
+}
+
+void AFAGameMode::NotifyReturnToLobbyFailedToAll()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// 최종 순위표가 떠 있는 동안은 ESC 메뉴도 막혀 있다(AFAPlayerController::ShowPauseMenu).
+	// 버튼을 되살려 주지 않으면 그 화면에서 나갈 방법이 아예 없어진다.
+	for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(Iterator->Get()))
+		{
+			FAPlayerController->Client_NotifyReturnToLobbyFailed();
+		}
 	}
 }
