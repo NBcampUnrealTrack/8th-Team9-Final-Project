@@ -8,6 +8,10 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/PanelWidget.h"
+#include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
+#include "Components/SizeBox.h"
+#include "Components/SizeBoxSlot.h"
 #include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -336,9 +340,16 @@ void UFAVoiceRosterWidget::RefreshRoster()
 
 		if (Box_Players)
 		{
-			if (UVerticalBoxSlot* EntrySlot = Cast<UVerticalBoxSlot>(Box_Players->AddChild(Entry)))
+			// 상자가 ScrollBox 인지 VerticalBox 인지에 따라 슬롯 타입이 다르다.
+			// WBP 가 어느 쪽을 쓰든 여백은 같게 준다.
+			UPanelSlot* EntrySlot = Box_Players->AddChild(Entry);
+			if (UScrollBoxSlot* ScrollSlot = Cast<UScrollBoxSlot>(EntrySlot))
 			{
-				EntrySlot->SetPadding(FMargin(0.f, 3.f));
+				ScrollSlot->SetPadding(FMargin(0.f, 3.f));
+			}
+			else if (UVerticalBoxSlot* VerticalSlot = Cast<UVerticalBoxSlot>(EntrySlot))
+			{
+				VerticalSlot->SetPadding(FMargin(0.f, 3.f));
 			}
 		}
 	}
@@ -397,8 +408,17 @@ void UFAVoiceRosterWidget::BuildFallbackLayout()
 		LOCTEXT("Hint", "나에게만 적용되고 바로 저장됩니다. 상대의 마이크를 바꾸지는 않습니다."),
 		11, FAVoiceRosterUI::HintColor));
 
-	Box_Players = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	if (UVerticalBoxSlot* ListSlot = Root->AddChildToVerticalBox(Box_Players))
+	// 목록은 스크롤된다. 8인 방이면 줄이 7개라 VerticalBox 로는 아래쪽이 화면 밖으로 나간다.
+	// ScrollBox 는 자식 높이만큼 계속 커지므로, 최대 높이를 정해 주지 않으면 스크롤이 생기지 않는다.
+	USizeBox* ListBounds = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	ListBounds->SetMaxDesiredHeight(FMath::Max(60.f, FallbackListMaxHeight));
+
+	UScrollBox* PlayerList = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	PlayerList->SetAllowOverscroll(false);
+	ListBounds->AddChild(PlayerList);
+	Box_Players = PlayerList;
+
+	if (UVerticalBoxSlot* ListSlot = Root->AddChildToVerticalBox(ListBounds))
 	{
 		ListSlot->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
 	}

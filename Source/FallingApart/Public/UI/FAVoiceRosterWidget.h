@@ -9,6 +9,7 @@
 class UButton;
 class UCheckBox;
 class UPanelWidget;
+class UScrollBox;
 class USlider;
 class UTextBlock;
 class UVerticalBox;
@@ -84,9 +85,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice")
 	TSubclassOf<UFAVoiceRosterEntryWidget> EntryWidgetClass;
 
-	/** 목록이 들어갈 상자. */
+	/**
+	 * 목록이 들어갈 상자. WBP 에서는 ScrollBox 로 바인딩할 것
+	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Voice")
 	TObjectPtr<UPanelWidget> Box_Players;
+
+	/**
+	 * C++ 임시 레이아웃에서 목록에 주는 최대 높이(px). 이 높이를 넘으면 스크롤된다.
+	 * WBP 를 쓰면 이 값은 무시되고 WBP 의 레이아웃이 높이를 정한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice", meta = (ClampMin = "60"))
+	float FallbackListMaxHeight = 260.f;
 
 	/** 다른 사람이 아무도 없을 때 대신 보여줄 문구. */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Voice")
