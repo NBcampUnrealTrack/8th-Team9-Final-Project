@@ -1488,12 +1488,12 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 3초 주기로 0.4초간 완전 암전.
+	// 5초 주기로 1초간 완전 암전.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 3.0f;
-		constexpr float BlackoutFlashDuration = 0.4f;
+		constexpr float BlackoutPeriod = 5.0f;
+		constexpr float BlackoutFlashDuration = 1.0f;
 
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
