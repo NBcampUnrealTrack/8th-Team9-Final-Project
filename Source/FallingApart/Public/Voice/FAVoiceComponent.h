@@ -175,6 +175,15 @@ private:
 	/** 저장된 개별 볼륨을 다시 읽어 Talker 에 반영. */
 	void RefreshListenerVolumeScale();
 
+	/** 등록이 유지되고 있는지 주기적으로 확인하는 타이머를 건다. 등록에 성공한 뒤에만 돈다. */
+	void StartRegistrationWatchdog();
+
+	/**
+	 * 엔진 VoiceTalkerMap 에서 내 화자가 밀려났으면 다시 등록한다.
+	 * 밀려난 채로 두면 그 사람 목소리가 감쇠·개별 음량·뮤트 없이 2D 로 재생된다.
+	 */
+	void EnsureTalkerRegistration();
+
 	void HandlePlayerVoiceSettingsChanged(const FString& PlayerKey, float NewScale);
 
 	/** 채널이 바뀐 뒤 등록·감쇠·리스너·아이콘을 현재 채널에 맞춤. */
@@ -239,6 +248,8 @@ private:
 	FDelegateHandle VoiceSettingsChangedHandle;
 
 	FTimerHandle RegisterRetryTimerHandle;
+
+	FTimerHandle RegistrationWatchdogTimerHandle;
 
 	/** AI 등 PlayerState 가 영영 안 생기는 Pawn 에서 타이머가 무한히 도는 것을 막음. */
 	int32 RemainingRegisterAttempts = 0;

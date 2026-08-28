@@ -236,12 +236,17 @@ namespace FAVoiceDebug
 				ListenerNote = FString::Printf(TEXT("   (내가 개별 x%.2f)"), ListenerScale);
 			}
 
-			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s%s"),
+			// 엔진 VoiceTalkerMap 에서 밀려나 있으면 재생 자체가 이 화자를 안 거친다 —
+			// 즉 위에 찍힌 배수·뮤트가 전부 무의미하다. "뮤트가 안 먹는다" 의 첫 확인 지점.
+			const bool bRegistered = Talker->IsRegisteredWithVoiceEngine();
+
+			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s%s%s"),
 				*GetNameSafe(Talker->GetOwner()),
 				Talker->GetPlaybackVolumeMultiplier(),
 				Talker->GetEffectivePlaybackVolume(),
 				*ListenerNote,
-				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""));
+				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""),
+				bRegistered ? TEXT("") : TEXT("   <<< 엔진 등록 풀림. 음량·뮤트·감쇠 안 먹는다"));
 		}
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));

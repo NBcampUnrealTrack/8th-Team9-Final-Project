@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Settings/FASettingsBridge.h"
 
@@ -25,8 +25,9 @@ namespace FASettingsMapping
 {
 	/**
 	 * 슬라이더 0~1 을 실제 값으로 편다.
+	 * 선언은 FASettingsBridge.h — 자동 캘리브레이션이 역방향으로도 쓴다.
 	 */
-	static float MapWithMidpoint(float T, float Min, float Mid, float Max)
+	float MapWithMidpoint(float T, float Min, float Mid, float Max)
 	{
 		T = FMath::Clamp(T, 0.f, 1.f);
 		return T <= 0.5f
@@ -34,7 +35,23 @@ namespace FASettingsMapping
 			: FMath::Lerp(Mid, Max, (T - 0.5f) * 2.f);
 	}
 
+	float UnmapWithMidpoint(float Value, float Min, float Mid, float Max)
+	{
+		// 접힌 두 구간의 기울기가 다르므로 어느 쪽인지 먼저 가른다.
+		if (Value <= Mid)
+		{
+			return FMath::IsNearlyEqual(Mid, Min)
+				? 0.f
+				: FMath::Clamp((Value - Min) / (Mid - Min) * 0.5f, 0.f, 0.5f);
+		}
+
+		return FMath::IsNearlyEqual(Max, Mid)
+			? 1.f
+			: FMath::Clamp(0.5f + (Value - Mid) / (Max - Mid) * 0.5f, 0.5f, 1.f);
+	}
+
 	//~ 아래 숫자들은 Config/DefaultEngine.ini 의 튜닝 결과
+	//~ (게이트 환산은 헤더로 옮겼다 — 캘리브레이션과 같은 표를 써야 한다)
 
 	/** 보이스 수신 배수. 0.5 → 1.0 (= 지금 음량). */
 	static float ToVoiceOutputVolume(float T) { return MapWithMidpoint(T, 0.f, 1.f, 2.f); }
@@ -43,14 +60,6 @@ namespace FASettingsMapping
 	 * 마이크 게인. 0.5 → 1.5 (= voice.MicInputGain 기본값).
 	 */
 	static float ToMicInputGain(float T) { return MapWithMidpoint(T, 0.5f, 1.5f, 2.f); }
-
-	/** 마이크 노이즈 게이트. 0.5 → 0.02 (= voice.MicNoiseGateThreshold 기본값). */
-	static float ToNoiseGate(float T) { return MapWithMidpoint(T, 0.005f, 0.02f, 0.08f); }
-
-	/**
-	 * 무음 판정(전송 임계).
-	 */
-	static float ToSilenceThreshold(float NoiseGate) { return NoiseGate * 0.75f; }
 
 	static void SetCVarFloat(const TCHAR* Name, float Value)
 	{
