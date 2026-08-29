@@ -6,6 +6,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "FAVoiceStatics.generated.h"
 
+class UFAVoiceComponent;
 class UWorld;
 
 /**
@@ -35,6 +36,19 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	static float GetVoiceOutputVolume();
+
+	/**
+	 * 마이크 방식. 설정창의 '마이크 방식'(오픈 마이크 / 푸시투토크)이 여기로 들어온다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice", meta = (WorldContext = "WorldContextObject"))
+	static void SetPushToTalkEnabled(const UObject* WorldContextObject, bool bEnabled);
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
+	static bool IsPushToTalkEnabled();
+
+	/** 내가 조종 중인 Pawn 의 보이스 컴포넌트. 관전 Pawn 도 같은 컴포넌트를 단다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice", meta = (WorldContext = "WorldContextObject"))
+	static UFAVoiceComponent* GetLocalVoiceComponent(const UObject* WorldContextObject);
 
 	/**
 	 * 지금 실제로 올라와 있는 보이스 백엔드 이름(NULL, STEAM …). 설정 UI 표시와 디버그용.

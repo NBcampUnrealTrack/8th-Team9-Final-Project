@@ -22,6 +22,7 @@
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Rule/FARuleDraftSubsystem.h"
 #include "Voice/FAVoiceComponent.h"
+#include "Voice/FAVoiceStatics.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
@@ -47,6 +48,7 @@ AFAPlayerController::AFAPlayerController()
 	// WBP 가 없어도 임시 레이아웃으로 뜬다 — UI 담당이 WBP 를 만들면 BP_FAPlayerController 에서 갈아끼울 것.
 	RoundResultWidgetClass = UFARoundResultWidget::StaticClass();
 	PauseMenuKeys.Add(EKeys::Escape);
+	PushToTalkKeys.Add(EKeys::Tilde);
 }
 
 void AFAPlayerController::FADraft(int32 DraftIndex)
@@ -209,16 +211,17 @@ void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThr
 
 void AFAPlayerController::FAPushToTalk(bool bEnabled)
 {
-	const AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn());
-	UFAVoiceComponent* Voice = FACharacter ? FACharacter->GetVoiceComponent() : nullptr;
-	if (!Voice)
+	// 설정창과 같은 통로로 넣는다 — 컴포넌트에 직접 넣으면 리스폰 한 번에 되돌아간다.
+	UFAVoiceStatics::SetPushToTalkEnabled(this, bEnabled);
+
+	if (UFAVoiceStatics::GetLocalVoiceComponent(this) == nullptr)
 	{
-		ClientMessage(TEXT("[FAPushToTalk] 보이스 컴포넌트를 찾을 수 없다 (폰 없음/관전 중?)"));
-		return;
+		ClientMessage(TEXT("[FAPushToTalk] 지금은 보이스 컴포넌트가 없다 (폰 없음?). 다음에 스폰될 폰부터 적용된다."));
 	}
 
-	Voice->SetPushToTalkEnabled(bEnabled);
-	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s"), bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크")));
+	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s (키: %s)"),
+		bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크"),
+		PushToTalkKeys.IsEmpty() ? TEXT("없음") : *PushToTalkKeys[0].GetDisplayName().ToString()));
 }
 
 void AFAPlayerController::BeginPlay()
@@ -258,6 +261,42 @@ void AFAPlayerController::SetupInputComponent()
 		{
 			InputComponent->BindKey(Key, IE_Pressed, this, &AFAPlayerController::TogglePauseMenu);
 		}
+	}
+
+	for (const FKey& Key : PushToTalkKeys)
+	{
+		if (Key.IsValid())
+		{
+			InputComponent->BindKey(Key, IE_Pressed, this, &AFAPlayerController::StartPushToTalk);
+			InputComponent->BindKey(Key, IE_Released, this, &AFAPlayerController::StopPushToTalk);
+		}
+	}
+}
+
+void AFAPlayerController::StartPushToTalk()
+{
+	// 오픈 마이크일 때는 손대지 않는다 — 특히 뗄 때. 안 그러면 이 키가 마이크를 꺼버린다.
+	if (!UFAVoiceStatics::IsPushToTalkEnabled())
+	{
+		return;
+	}
+
+	if (UFAVoiceComponent* Voice = UFAVoiceStatics::GetLocalVoiceComponent(this))
+	{
+		Voice->StartTalking();
+	}
+}
+
+void AFAPlayerController::StopPushToTalk()
+{
+	if (!UFAVoiceStatics::IsPushToTalkEnabled())
+	{
+		return;
+	}
+
+	if (UFAVoiceComponent* Voice = UFAVoiceStatics::GetLocalVoiceComponent(this))
+	{
+		Voice->StopTalking();
 	}
 }
 
