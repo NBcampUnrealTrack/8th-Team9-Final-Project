@@ -15,6 +15,7 @@
 #include "TimerManager.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTransport.h"
+#include "Voice/FAVoiceUserSettings.h"
 
 DEFINE_LOG_CATEGORY(LogFAVoice);
 
@@ -23,6 +24,12 @@ namespace FAVoice
 	/** PlayerState / UniqueNetId 복제를 기다리는 재시도 간격과 횟수 (= 최대 10초). */
 	static constexpr float RegisterRetryInterval = 0.5f;
 	static constexpr int32 MaxRegisterAttempts = 20;
+
+	/**
+	 * 엔진 VoiceTalkerMap 에서 내 화자가 밀려나지 않았는지 확인하는 주기(초).
+	 * TMap 조회 한 번이라 8인 방에서도 무시할 만한 비용이다.
+	 */
+	static constexpr float RegistrationWatchdogInterval = 1.f;
 }
 
 UFAVoiceComponent::UFAVoiceComponent()
@@ -44,6 +51,13 @@ void UFAVoiceComponent::BeginPlay()
 	const TSubclassOf<UFAVoiceTransport> ResolvedTransportClass =
 		TransportClass ? TransportClass : TSubclassOf<UFAVoiceTransport>(UFAEngineVoiceTransport::StaticClass());
 	Transport = NewObject<UFAVoiceTransport>(this, ResolvedTransportClass);
+
+	// 설정창에서 이 사람 볼륨을 움직이면 말하는 도중에도 바로 반영돼야 한다.
+	if (UFAVoiceUserSettings* VoiceSettings = UFAVoiceUserSettings::Get(this))
+	{
+		VoiceSettingsChangedHandle = VoiceSettings->OnPlayerVoiceSettingsChanged.AddUObject(
+			this, &UFAVoiceComponent::HandlePlayerVoiceSettingsChanged);
+	}
 
 	SetupVoiceSource();
 	SetupListenerAnchor();
@@ -67,6 +81,7 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RegisterRetryTimerHandle);
+		World->GetTimerManager().ClearTimer(RegistrationWatchdogTimerHandle);
 	}
 
 	if (APlayerController* PlayerController = GetOwningPlayerController())
@@ -85,6 +100,15 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (Talker)
 	{
 		Talker->OnTalkerStateChanged.RemoveAll(this);
+	}
+
+	if (VoiceSettingsChangedHandle.IsValid())
+	{
+		if (UFAVoiceUserSettings* VoiceSettings = UFAVoiceUserSettings::Get(this))
+		{
+			VoiceSettings->OnPlayerVoiceSettingsChanged.Remove(VoiceSettingsChangedHandle);
+		}
+		VoiceSettingsChangedHandle.Reset();
 	}
 
 	// 라운드 리스폰(Destroyed)에서는 전송 계층을 유지해야 다음 Pawn 이 바로 이어받는다.
@@ -178,7 +202,38 @@ void UFAVoiceComponent::ApplyTalkerSettings()
 
 	// FVoiceSettings 에는 음량 항목이 없다. 재생 배수는 Talker 가 직접 들고 있다가
 	// 엔진이 재생 컴포넌트를 건네주는 순간(OnTalkingBegin) 적용한다.
-	Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume);
+	// 듣는 사람이 이 화자에게 따로 준 배수를 여기서 곱한다 (설정창 접속자 목록).
+	Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume * ListenerVolumeScale);
+}
+
+void UFAVoiceComponent::RefreshListenerVolumeScale()
+{
+	const UFAVoiceUserSettings* VoiceSettings = UFAVoiceUserSettings::Get(this);
+
+	ListenerVolumeScale = (VoiceSettings != nullptr && !OwnerVoiceKey.IsEmpty())
+		? VoiceSettings->GetPlayerVolumeScale(OwnerVoiceKey)
+		: 1.f;
+
+	if (Talker)
+	{
+		Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume * ListenerVolumeScale);
+	}
+}
+
+void UFAVoiceComponent::HandlePlayerVoiceSettingsChanged(const FString& PlayerKey, float NewScale)
+{
+	// 8인 파티면 이 알림이 사람 수만큼 온다. 내 화자가 아니면 여기서 끝낸다.
+	if (OwnerVoiceKey.IsEmpty() || PlayerKey != OwnerVoiceKey)
+	{
+		return;
+	}
+
+	ListenerVolumeScale = NewScale;
+
+	if (Talker)
+	{
+		Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume * ListenerVolumeScale);
+	}
 }
 
 void UFAVoiceComponent::SetVoicePlaybackVolume(float NewVolume)
@@ -187,7 +242,7 @@ void UFAVoiceComponent::SetVoicePlaybackVolume(float NewVolume)
 
 	if (Talker)
 	{
-		Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume);
+		Talker->SetPlaybackVolumeMultiplier(VoicePlaybackVolume * ListenerVolumeScale);
 	}
 }
 
@@ -274,8 +329,13 @@ void UFAVoiceComponent::TryRegisterTalker()
 		Talker->RegisterComponent();
 	}
 
+	// 여기까지 왔으면 UniqueNetId 가 유효하다 — 저장 키를 잡을 수 있는 첫 시점이다.
+	OwnerVoiceKey = UFAVoiceUserSettings::MakePlayerKey(PlayerState);
+	RefreshListenerVolumeScale();
+
 	ApplyTalkerSettings();
-	Talker->RegisterWithPlayerState(PlayerState);
+	Talker->RegisterForPlayer(PlayerState);
+	StartRegistrationWatchdog();
 
 	if (VoiceChannel == EFAVoiceChannel::Proximity)
 	{
@@ -296,6 +356,37 @@ void UFAVoiceComponent::TryRegisterTalker()
 	{
 		StartTalking();
 	}
+}
+
+void UFAVoiceComponent::StartRegistrationWatchdog()
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr || RegistrationWatchdogTimerHandle.IsValid())
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(RegistrationWatchdogTimerHandle, this, &UFAVoiceComponent::EnsureTalkerRegistration,
+		FAVoice::RegistrationWatchdogInterval, true);
+}
+
+void UFAVoiceComponent::EnsureTalkerRegistration()
+{
+	if (Talker == nullptr || Talker->IsRegisteredWithVoiceEngine())
+	{
+		return;
+	}
+
+	APlayerState* PlayerState = GetOwningPlayerState();
+	if (PlayerState == nullptr || !PlayerState->GetUniqueId().IsValid())
+	{
+		return;
+	}
+
+	UE_LOG(LogFAVoice, Warning, TEXT("%s: VOIP 화자 등록이 풀려 있어 다시 등록합니다."), *GetNameSafe(GetOwner()));
+
+	Talker->RegisterForPlayer(PlayerState);
+	ApplyTalkerSettings();
 }
 
 void UFAVoiceComponent::SetupVoiceSource()

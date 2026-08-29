@@ -62,6 +62,7 @@ void UFAAudioSubsystem::Deinitialize()
 		GameState->OnTeamCountsChanged.RemoveAll(this);
 	}
 	BoundGameState.Reset();
+	bBoundGameState = false;
 
 	// bAutoDestroy 를 꺼둔 컴포넌트라 직접 정리해야 한다.
 	StopMusic(0.0f);
@@ -80,7 +81,7 @@ bool UFAAudioSubsystem::IsTickable() const
 
 	// GameState 를 잡을 때까지, 그리고 긴장 레이어가 살아 있는 동안만 돈다.
 	// 메뉴·로비처럼 AFAGameState 가 아예 없는 레벨에서는 포기하고 틱을 끈다.
-	const bool bWaitingForGameState = !BoundGameState.IsValid() && !bGaveUpBindingGameState;
+	const bool bWaitingForGameState = !bBoundGameState && !bGaveUpBindingGameState;
 	return bWaitingForGameState || MusicLayerComponent != nullptr;
 }
 
@@ -100,7 +101,14 @@ void UFAAudioSubsystem::Tick(float DeltaTime)
 void UFAAudioSubsystem::TryBindGameState()
 {
 	UWorld* World = GetWorld();
-	if (BoundGameState.IsValid() || bGaveUpBindingGameState || !World)
+	if (bBoundGameState || bGaveUpBindingGameState || !World)
+	{
+		return;
+	}
+
+	// 정리에 들어간 월드에는 걸어봐야 곧 같이 사라진다. 이 프레임의 GameState 는 이미
+	// 파괴 예약된 상태로 돌아오므로 여기서 끊어야 한다.
+	if (World->bIsTearingDown)
 	{
 		return;
 	}
@@ -112,6 +120,7 @@ void UFAAudioSubsystem::TryBindGameState()
 		GameState->OnTeamCountsChanged.AddDynamic(this, &UFAAudioSubsystem::HandleTeamCountsChanged);
 
 		BoundGameState = GameState;
+		bBoundGameState = true;
 		LastSurvivorCount = GameState->GetSurvivorCount();
 
 		// 늦게 들어온 클라이언트는 페이즈 전환 이벤트를 이미 놓쳤다 — 현재 페이즈로 음악을 맞춘다.

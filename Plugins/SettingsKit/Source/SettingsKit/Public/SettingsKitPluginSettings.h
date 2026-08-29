@@ -1,9 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "SettingsKitTypes.h"
 #include "SettingsKitPluginSettings.generated.h"
 
 class UInputMappingContext;
@@ -28,6 +29,12 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Controls", meta = (AllowedClasses = "/Script/EnhancedInput.InputMappingContext"))
 	TArray<TSoftObjectPtr<UInputMappingContext>> RebindableMappingContexts;
+
+	/**
+	 * 게임 전용 위젯을 탭 안에 끼워 넣을 목록.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Extensions")
+	TArray<FSKTabExtension> TabExtensions;
 
 	static const USKPluginSettings* Get();
 };

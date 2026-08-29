@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/PlayerState.h"
 #include "Net/VoiceConfig.h"
 #include "FAVoiceTalker.generated.h"
 
@@ -26,7 +27,16 @@ public:
 
 	virtual void OnTalkingBegin(UAudioComponent* AudioComponent) override;
 	virtual void OnTalkingEnd() override;
+	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 	virtual void BeginDestroy() override;
+
+	/**
+	 * UVOIPTalker::RegisterWithPlayerState 대신 반드시 이것을 쓴다.
+	 */
+	void RegisterForPlayer(APlayerState* OwningState);
+
+	/** 엔진 맵이 지금 이 화자를 가리키고 있는가. 풀렸으면 소유 컴포넌트가 다시 등록한다. */
+	bool IsRegisteredWithVoiceEngine() const;
 
 	bool IsTalking() const { return bIsTalking; }
 
@@ -53,6 +63,9 @@ public:
 private:
 	void SetTalkingState(bool bNewTalking);
 
+	/** 내가 이 플레이어의 '현재 화자' 로 기록돼 있으면 지운다. 남의 것이면 건드리지 않는다. */
+	void ClearCurrentTalkerEntry();
+
 	/** 캐시해 둔 재생 컴포넌트에 최종 배수를 밀어넣는다. 재생 중이 아니면 아무 일도 안 한다. */
 	void ApplyPlaybackVolume();
 
@@ -72,4 +85,12 @@ private:
 
 	/** 지금 발화 중인 화자 목록. 출력 볼륨 슬라이더를 움직였을 때 실시간 반영용. */
 	static TArray<TWeakObjectPtr<UFAVoiceTalker>> TalkingTalkers;
+
+	/** RegisterForPlayer 로 잡아 둔 등록 키. 죽을 때 남의 칸을 지웠는지 판정하는 데 쓴다. */
+	FUniqueNetIdRepl RegisteredPlayerId;
+
+	/**
+	 * UniqueNetId 문자열 -> 그 플레이어의 가장 최근 화자.
+	 */
+	static TMap<FString, TWeakObjectPtr<UFAVoiceTalker>> CurrentTalkerByPlayer;
 };

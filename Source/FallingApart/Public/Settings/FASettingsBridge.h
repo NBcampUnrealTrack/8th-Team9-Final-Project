@@ -12,6 +12,35 @@ class USoundClass;
 class USoundMix;
 
 /**
+ * 설정 슬라이더(0~1) 와 실제 값 사이의 환산.
+ */
+namespace FASettingsMapping
+{
+	/** 0.5 를 가운데 값에 맞춰 접은 선형 보간. 슬라이더 한가운데가 ini 튜닝값이 된다. */
+	FALLINGAPART_API float MapWithMidpoint(float T, float Min, float Mid, float Max);
+
+	/** MapWithMidpoint 의 역. 실제 값을 슬라이더 위치로 되돌린다. */
+	FALLINGAPART_API float UnmapWithMidpoint(float Value, float Min, float Mid, float Max);
+
+	//~ 아래 숫자는 Config/DefaultEngine.ini 의 튜닝 결과다. 가운데(0.02)가 기본값.
+	inline constexpr float GateMin = 0.005f;
+	inline constexpr float GateMid = 0.02f;
+	inline constexpr float GateMax = 0.08f;
+
+	/** 슬라이더 -> voice.MicNoiseGateThreshold */
+	inline float ToNoiseGate(float T) { return MapWithMidpoint(T, GateMin, GateMid, GateMax); }
+
+	/** voice.MicNoiseGateThreshold -> 슬라이더 */
+	inline float FromNoiseGate(float NoiseGate) { return UnmapWithMidpoint(NoiseGate, GateMin, GateMid, GateMax); }
+
+	/**
+	 * 무음 판정(전송 임계)은 게이트보다 살짝 아래에 둔다.
+	 * 게이트가 눌러 놓은 구간까지는 보내지 않되, 말 시작의 여린 부분은 살린다.
+	 */
+	inline float ToSilenceThreshold(float NoiseGate) { return NoiseGate * 0.75f; }
+}
+
+/**
  * SettingsKit 이 보관한 값을 이 게임의 실제 시스템에 밀어넣는 곳.
  *
  * 플러그인은 값만 들고 있고 적용은 전부 여기서 한다.

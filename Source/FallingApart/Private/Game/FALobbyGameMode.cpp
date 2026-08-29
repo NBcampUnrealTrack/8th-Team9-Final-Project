@@ -408,9 +408,21 @@ void AFALobbyGameMode::CommitGameStart()
 
 	const FName MapId = LobbyState->GetSelectedMapId();
 
-	if (!OnlineSessionSubsystem)
+	// 세션이 없는 로컬 실행(PIE · 단독 실행)은 잠글 세션 자체가 없다. 
+	if (!OnlineSessionSubsystem || !OnlineSessionSubsystem->GetCurrentSession())
 	{
-		RollbackGameStart();
+		UE_LOG(LogFAOSS, Warning,
+			TEXT("세션이 없는 로컬 실행이다 — 세션 준비를 건너뛰고 맵으로만 이동한다."));
+
+		LobbyState->SetLobbySnapshot(
+			PlayerCount,
+			ReadyCount,
+			MinPlayersToStart,
+			EFALobbyPhase::Traveling,
+			bCanStart,
+			CountdownEndServerTime);
+
+		TravelToSelectedMap();
 		return;
 	}
 
@@ -512,7 +524,8 @@ void AFALobbyGameMode::RollbackGameStart()
 		return;
 	}
 
-	if (!OnlineSessionSubsystem)
+	// 서브시스템이 아니라 세션이 있는지
+	if (!OnlineSessionSubsystem || !OnlineSessionSubsystem->GetCurrentSession())
 	{
 		// 온라인 세션이 없는 로컬 실행에서는 복구할 외부 상태가 없으므로 즉시 잠금을 해제한다.
 		bGameStartCommitted = false;

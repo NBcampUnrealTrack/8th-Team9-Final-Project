@@ -98,7 +98,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
 	const TArray<FFAMatchResultEntry>& GetResultEntries() const { return Entries; }
 
-	/** 로비(메인 메뉴)로 나간다 — 세션을 정리하고 레벨을 옮긴다. */
+	/**
+	 * 로비로 나가는 버튼 클릭시
+	 */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Result")
 	void OnReturnToLobbyClicked();
 
@@ -106,10 +108,25 @@ public:
 	void OnReturnToLobbyHovered();
 
 	/**
+	 * 서버가 로비 복귀에 실패했을 때 버튼을 되살려 다시 누를 수 있게 한다.
+	 */
+	void NotifyReturnToLobbyFailed();
+
+	/**
 	 * 순위가 확정되거나 바뀌었을 때. WBP 가 행 위젯을 직접 그린다면 여기서 그릴 것.
 	 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|Result")
 	void OnResultsChanged(const TArray<FFAMatchResultEntry>& NewEntries);
+
+	/**
+	 * '로비로 나가기' 를 눌러 서버 응답을 기다리는 중.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|Result")
+	void OnReturnToLobbyPending();
+
+	/** 로비 복귀가 실패해 버튼이 다시 살아났다. WBP 가 안내 문구를 띄우고 싶으면 여기서. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|Result")
+	void OnReturnToLobbyFailed();
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
@@ -119,6 +136,10 @@ protected:
 	//~ WBP 에 같은 이름의 위젯이 있으면 자동으로 물린다. 없으면 임시 레이아웃이 채운다.
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Result")
 	TObjectPtr<UButton> Btn_ReturnToLobby;
+
+	/** 위 버튼의 글자. 있으면 서버 응답을 기다리는 동안 대기 문구로 바뀐다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Result")
+	TObjectPtr<UTextBlock> Text_ReturnToLobby;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Result")
 	TObjectPtr<UTextBlock> Text_Title;

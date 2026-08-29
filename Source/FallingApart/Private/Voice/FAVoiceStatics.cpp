@@ -17,6 +17,7 @@
 #include "OnlineSubsystemUtils.h"
 #include "UObject/UObjectIterator.h"
 #include "VoipListenerSynthComponent.h"
+#include "Voice/FAVoiceComponent.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTypes.h"
 
@@ -218,11 +219,34 @@ namespace FAVoiceDebug
 				continue;
 			}
 
-			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s"),
+			// 개별 배수(설정창 접속자 목록)는 이미 Talker 의 배수에 곱해져 있다.
+			// 따로 찍어 주지 않으면 "왜 이 사람만 작지" 의 답이 로그에 안 남는다.
+			const UFAVoiceComponent* VoiceComponent = Talker->GetOwner() != nullptr
+				? Talker->GetOwner()->FindComponentByClass<UFAVoiceComponent>()
+				: nullptr;
+			const float ListenerScale = VoiceComponent != nullptr ? VoiceComponent->GetListenerVolumeScale() : 1.f;
+
+			FString ListenerNote;
+			if (ListenerScale <= 0.f)
+			{
+				ListenerNote = TEXT("   (내가 음소거함)");
+			}
+			else if (!FMath::IsNearlyEqual(ListenerScale, 1.f))
+			{
+				ListenerNote = FString::Printf(TEXT("   (내가 개별 x%.2f)"), ListenerScale);
+			}
+
+			// 엔진 VoiceTalkerMap 에서 밀려나 있으면 재생 자체가 이 화자를 안 거친다 —
+			// 즉 위에 찍힌 배수·뮤트가 전부 무의미하다. "뮤트가 안 먹는다" 의 첫 확인 지점.
+			const bool bRegistered = Talker->IsRegisteredWithVoiceEngine();
+
+			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s%s%s"),
 				*GetNameSafe(Talker->GetOwner()),
 				Talker->GetPlaybackVolumeMultiplier(),
 				Talker->GetEffectivePlaybackVolume(),
-				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""));
+				*ListenerNote,
+				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""),
+				bRegistered ? TEXT("") : TEXT("   <<< 엔진 등록 풀림. 음량·뮤트·감쇠 안 먹는다"));
 		}
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));

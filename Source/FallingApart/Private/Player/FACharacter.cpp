@@ -187,6 +187,15 @@ void AFACharacter::BeginCaptureState(bool bInIsVictim)
 	ResistLevel = 0.0f;
 	LastResistInputTime = -1.0f;
 	LastResistDirection = 0;
+
+	// 사다리 위에서 잡혔다면 남아 있던 등반 속도를 여기서 끊는다.
+	if (IsClimbing())
+	{
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+	}
 }
 
 void AFACharacter::UpdateCaptureProgress(float Progress, float RatePerSecond)
@@ -783,8 +792,8 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	UpdateWadeLoop(/*bInWater=*/false);
 
-	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 점유가 남는다.
-	// AFAInteractableActor 의 감시 타이머가 결국 풀어주지만, 여기서 바로 놓는 편이 빠르다.
+	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 등반 상태가 남는다.
+	// 사다리는 점유를 쓰지 않으므로 감시 타이머가 대신 치워주지 않는다 — 여기서 직접 놓는다.
 	if (HasAuthority() && ClimbingLadder)
 	{
 		ServerStopClimbing(/*bLaunchOverLedge=*/false);
@@ -800,13 +809,14 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AFACharacter::BindTeamNotify()
 {
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다.
 	AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
-	if (!FAPlayerState || TeamNotifySource.Get() == FAPlayerState)
+	if (!FAPlayerState || TeamNotifySource.Get(/*bEvenIfGarbage=*/true) == FAPlayerState)
 	{
 		return;
 	}
 
-	if (AFAPlayerState* PreviousState = TeamNotifySource.Get())
+	if (AFAPlayerState* PreviousState = TeamNotifySource.Get(/*bEvenIfGarbage=*/true))
 	{
 		PreviousState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
 	}
@@ -1255,7 +1265,11 @@ void AFACharacter::Input_Jump()
 	// 사다리에 붙어 있으면 점프는 '뛰어내리기' 다. 서버만 상태를 바꿀 수 있으므로 요청만 보낸다.
 	if (IsClimbing())
 	{
-		Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		// 잡힌 채로 뛰어내리면 그게 곧 포획 탈출이 된다 — 저항으로 시간을 버는 것 말고는 못 벗어난다.
+		if (!IsLadderMovementLocked())
+		{
+			Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		}
 		return;
 	}
 
@@ -1474,12 +1488,12 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 3초 주기로 0.4초간 완전 암전.
+	// 5초 주기로 1초간 완전 암전.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 3.0f;
-		constexpr float BlackoutFlashDuration = 0.4f;
+		constexpr float BlackoutPeriod = 5.0f;
+		constexpr float BlackoutFlashDuration = 1.0f;
 
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
@@ -1697,6 +1711,12 @@ void AFACharacter::ServerStopClimbing(bool bLaunchOverLedge)
 
 void AFACharacter::Server_RequestStopClimbing_Implementation(bool bLaunchOverLedge)
 {
+	// 클라이언트가 보내는 유일한 하차 경로다.
+	if (IsLadderMovementLocked())
+	{
+		return;
+	}
+
 	ServerStopClimbing(bLaunchOverLedge);
 }
 
@@ -1780,9 +1800,22 @@ void AFACharacter::ApplyClimbState()
 	}
 }
 
+bool AFACharacter::IsLadderMovementLocked() const
+{
+	// 포획은 좀비·인질 양쪽에 CaptureState 를 켜므로 한 번의 검사로 둘 다 묶인다.
+	return CaptureState.IsActive() || ContestState.IsActive();
+}
+
 void AFACharacter::ClimbMove(const FVector2D& MovementVector)
 {
 	if (!ClimbingLadder)
+	{
+		return;
+	}
+
+	// 잡힌 채로 계속 오를 수 있으면 인질이 거리를 벌려 포획을 스스로 푼다.
+	// 이때의 WASD 는 Move() 앞단에서 이미 저항 입력으로 소비된 뒤다.
+	if (IsLadderMovementLocked())
 	{
 		return;
 	}

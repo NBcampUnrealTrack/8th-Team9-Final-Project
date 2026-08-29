@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "SettingsKitTypes.generated.h"
 
+class UUserWidget;
+
 /** 설정창 탭. 위젯 스위처의 인덱스와 같은 순서다. */
 UENUM(BlueprintType)
 enum class ESKSettingsTab : uint8
@@ -138,4 +140,21 @@ struct SETTINGSKIT_API FSKSettingsValues
 
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Controls")
 	bool bInvertYAxis = false;
+};
+
+/**
+ * 게임 전용 위젯을 설정창 탭 안에 끼워 넣는 지정.
+ */
+USTRUCT(BlueprintType)
+struct FSKTabExtension
+{
+	GENERATED_BODY()
+
+	/** 어느 탭에 넣을 것인가. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SettingsKit")
+	ESKSettingsTab Tab = ESKSettingsTab::Audio;
+
+	/** 넣을 위젯. WBP 여도 되고 C++ 위젯 클래스여도 된다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SettingsKit", meta = (MetaClass = "/Script/UMG.UserWidget"))
+	TSoftClassPtr<UUserWidget> WidgetClass;
 };

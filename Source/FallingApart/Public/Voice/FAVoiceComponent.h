@@ -62,6 +62,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	float GetVoicePlaybackVolume() const { return VoicePlaybackVolume; }
 
+	/**
+	 * 듣는 사람이 이 화자에게만 따로 준 배수 (설정창 보이스 탭의 접속자 목록).
+	 * 뮤트면 0. UFAVoiceUserSettings 가 들고 있고 이 컴포넌트는 읽어다 곱하기만 한다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
+	float GetListenerVolumeScale() const { return ListenerVolumeScale; }
+
 	/** 마이크 송신 시작. 푸시투토크 키의 Pressed 에 연결. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
 	void StartTalking();
@@ -165,6 +172,20 @@ private:
 	/** PlayerState 와 UniqueNetId 가 준비될 때까지 재시도. */
 	void TryRegisterTalker();
 
+	/** 저장된 개별 볼륨을 다시 읽어 Talker 에 반영. */
+	void RefreshListenerVolumeScale();
+
+	/** 등록이 유지되고 있는지 주기적으로 확인하는 타이머를 건다. 등록에 성공한 뒤에만 돈다. */
+	void StartRegistrationWatchdog();
+
+	/**
+	 * 엔진 VoiceTalkerMap 에서 내 화자가 밀려났으면 다시 등록한다.
+	 * 밀려난 채로 두면 그 사람 목소리가 감쇠·개별 음량·뮤트 없이 2D 로 재생된다.
+	 */
+	void EnsureTalkerRegistration();
+
+	void HandlePlayerVoiceSettingsChanged(const FString& PlayerKey, float NewScale);
+
 	/** 채널이 바뀐 뒤 등록·감쇠·리스너·아이콘을 현재 채널에 맞춤. */
 	void ApplyChannelChange();
 
@@ -215,7 +236,20 @@ private:
 	 */
 	mutable TWeakObjectPtr<APlayerController> CachedPlayerController;
 
+	/**
+	 * 이 화자의 저장 키(UniqueNetId). Talker 등록 시점에 채워진다 —
+	 * 그 전에는 UniqueNetId 복제가 안 왔다는 뜻이라 비어 있는 게 맞다.
+	 */
+	FString OwnerVoiceKey;
+
+	/** 듣는 사람이 이 화자에게 준 배수. 기본 1.0, 뮤트면 0. */
+	float ListenerVolumeScale = 1.f;
+
+	FDelegateHandle VoiceSettingsChangedHandle;
+
 	FTimerHandle RegisterRetryTimerHandle;
+
+	FTimerHandle RegistrationWatchdogTimerHandle;
 
 	/** AI 등 PlayerState 가 영영 안 생기는 Pawn 에서 타이머가 무한히 도는 것을 막음. */
 	int32 RemainingRegisterAttempts = 0;
