@@ -10,6 +10,7 @@
 #include "Rule/FARuleTypes.h"
 #include "FACharacter.generated.h"
 
+class UFAOverHeadWidget;
 class UFAAbilitySystemComponent;
 class UFACharacterMovementComponent;
 class UFAAttributeSet;
@@ -347,6 +348,8 @@ protected:
 
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
+	
+	void SetupNicknameMarker();
 
 	/**
 	 * 이 프레임에 머리 위 룰 아이콘을 그려야 하는가.
@@ -367,6 +370,10 @@ protected:
 
 	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
 	void RefreshCustomDepth();
+	
+	bool ShouldShowOverheadWidget() const;
+	
+	
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -562,6 +569,14 @@ public:
 	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
 	float RuleMarkerOcclusionInterval = 0.2f;
+	
+	/**
+	 *	닉네임 컴포넌트 
+	 *	Rule과 마찬가지로 플레이어가 보일때만 가시성 활성.
+	 *	여건이 되면 위의 Rulemarker와 통합하는게 좋을듯?
+	*/
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
 
 private:
 	/**
@@ -593,6 +608,16 @@ private:
 	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> RuleMarker;
+	
+	/** 머리 닉네임 텍스트. 서버 전용 인스턴스에서는 만들지 않는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> NicknameMarker;
+	
+	/** 머리 위 닉네임 텍스트 거림 검사 시간 확인용. */
+	float NicknameMarkerOcclusionTimer = 0.0f;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	FVector NicknameMarkerOffset = FVector(0.0f, 0.0f, 80.0f);
 
 	/** 룰 아이콘에 넘길 표시 사본. 매 프레임 새로 만들지 않도록 보유 목록이 바뀔 때만 다시 채운다. */
 	UPROPERTY(Transient)

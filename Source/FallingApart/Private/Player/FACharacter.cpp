@@ -32,6 +32,7 @@
 #include "Settings/FASettingsBridge.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
+#include "UI/FAOverHeadWidget.h"
 
 namespace FACharacterAudio
 {
@@ -488,7 +489,24 @@ void AFACharacter::SetupRuleMarker()
 	RuleMarker->SetRelativeLocation(RuleMarkerOffset);
 	RuleMarker->SetVisibility(false);
 }
+void AFACharacter::SetupNicknameMarker()
+{
+	if (OverHeadWidgetClass == nullptr || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
 
+	NicknameMarker = NewObject<UWidgetComponent>(this);
+	NicknameMarker->SetWidgetSpace(EWidgetSpace::Screen);
+	NicknameMarker->SetDrawAtDesiredSize(false);
+	NicknameMarker->SetDrawSize(RuleMarkerDrawSize);
+	NicknameMarker->SetWidgetClass(OverHeadWidgetClass);
+	NicknameMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	NicknameMarker->RegisterComponent();
+	NicknameMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	NicknameMarker->SetRelativeLocation(NicknameMarkerOffset);
+	NicknameMarker->SetVisibility(true);
+}
 bool AFACharacter::ShouldShowRuleMarker() const
 {
 	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
@@ -626,6 +644,124 @@ void AFACharacter::RefreshCustomDepth()
 	CharacterMesh->SetCustomDepthStencilValue(bShouldReveal ? 1 : 0);
 }
 
+bool AFACharacter::ShouldShowOverheadWidget() const
+{
+	// 이름표, 이름 상단의 위젯이 보여야하는지 조건 체크.
+	// 가벼운 조건부터 체크하여, 무거운 라인트레이스를 마지막에 체크함.
+
+	//로컬에서 자신의 위젯을 보일 필요가 없음.
+	if (IsLocallyControlled() == true)
+	{
+		return false;
+	}
+	
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+
+	float Scale = 1.0f;
+	bool bAbbreviated = false;
+	
+	//이름이 출력되는 위치 임시
+	FVector NameLocation = GetActorLocation() + FVector(0.0f, 0.0f, 80.0f);
+	//발 위치
+	FVector FootLocation = GetActorLocation() + FVector(0.0f, 0.0f, -70.0f);
+	if (LocalController)
+	{
+		// 거리 제한, 룰마커와 동일한 거리값을 임시로 사용.
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+		
+		//안개 디버프 먹었을때 제한할 필요가 있음.
+		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
+		float CullDistance = LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Fog)
+			? 800.0f
+			: RuleMarkerCullDistance;
+	
+		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("이름표 거리제한"));
+			return false;
+		}
+		
+		//이름표가 보일 시야각의 제한, 임시 90도 사용.
+		const FVector ToTarget = (NameLocation - ViewLocation).GetSafeNormal();
+		const FVector CameraForward = ViewRotation.Vector();
+		if (FVector::DotProduct(CameraForward, ToTarget) < FMath::Cos(FMath::DegreesToRadians(90.0f/2)))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("이름표 시야각 제한"));
+			return false;
+		}
+		
+		//화면내 영역에서만 처리하도록 위치가 Viewport내에 존재하는지 확인. 사람마다 화면 비율이 다를수 있으므로, 시야각과 같이 더블체크함.
+		FVector2D ScreenPosition;
+		if (!LocalController->ProjectWorldLocationToScreen(
+				NameLocation, ScreenPosition, false))
+		{
+			
+			UE_LOG(LogTemp, Warning, TEXT("이름표 좌표 화면내 존재하지않음."));
+			return false;
+		}
+
+		int32 ViewportX;
+		int32 ViewportY;
+		LocalController->GetViewportSize(ViewportX, ViewportY);
+
+		//가장자리 비율을 제외함.
+		const float HorizontalMargin = ViewportX * 0.10f;
+		const float VerticalMargin   = ViewportY * 0.12f;
+
+		const bool bInsideSafeArea =
+			ScreenPosition.X >= HorizontalMargin &&
+			ScreenPosition.X <= ViewportX - HorizontalMargin &&
+			ScreenPosition.Y >= VerticalMargin &&
+			ScreenPosition.Y <= ViewportY - VerticalMargin;
+
+		if (!bInsideSafeArea)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("이름표 위치 화면 가장자리 제외됨."));
+			return false;
+		}
+		
+		//계산이 무거운 라인트레이스를 마지막에 계산하도록 함.
+		FCollisionQueryParams Params(
+		SCENE_QUERY_STAT(FANameplateOcclusion),
+		false);
+		
+		Params.AddIgnoredActor(this);
+
+		if (const APawn* LocalPawn = LocalController->GetPawn())
+		{
+			Params.AddIgnoredActor(LocalPawn);
+		}
+
+		
+		
+		FHitResult Hit;
+		const bool bHeadBlocked = World->LineTraceSingleByChannel(
+			Hit,
+			ViewLocation,
+			NameLocation,
+			ECC_Visibility,
+			Params);
+		const bool bBodyBlocked = World->LineTraceSingleByChannel(
+			Hit,
+			ViewLocation,
+			FootLocation,
+			ECC_Visibility,
+			Params);
+		
+		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
+		if (bHeadBlocked || bBodyBlocked)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("이름표 가려짐."));
+			return false;
+		}
+		return true;
+	}
+	return false;
+}
+
 void AFACharacter::UpdateRuleMarker(float DeltaTime)
 {
 	if (!RuleMarker)
@@ -710,6 +846,7 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
+	SetupNicknameMarker();
 	
 	if (FollowCamera)
 	{
@@ -1102,7 +1239,18 @@ void AFACharacter::Tick(float DeltaTime)
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
-
+	
+	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
+	NicknameMarkerOcclusionTimer += DeltaTime;
+	if (NicknameMarker && NicknameMarkerOcclusionTimer >= 0.1f)
+	{	
+		NicknameMarkerOcclusionTimer = 0.0f;
+		bool ShouldVisible = ShouldShowOverheadWidget();
+		if (ShouldVisible != NicknameMarker->IsVisible())
+		{
+			NicknameMarker->SetVisibility(ShouldVisible);
+		}
+	}
 	UpdateClimbing(DeltaTime);
 
 	// 캐비넷 액터가 파괴된 경우의 복구.
