@@ -7,6 +7,7 @@
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
+class AFACharacter;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
@@ -87,14 +88,31 @@ private:
 
 	void SetInputFlipActive(bool bActive);
 	
-	
+	/**
+	  * Rule.State.Heartbeat 태그가
+	  * 추가되거나 제거됐을 때 호출된다.
+	  */
+	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
+
+	/**
+	 * H41의 주기적인 주변 좀비 탐색을 시작한다.
+	 */
+	void StartHeartbeatDetection();
+
+	/**
+	 * H41 탐색을 중지하고 감지 목록을 정리한다.
+	 */
+	void StopHeartbeatDetection();
+
+	/**
+	 * DetectionUnitComponent를 이용해
+	 * 15m 내 모든 Rule.Team.Zombie 캐릭터를 탐색한다.
+	 */
+	void ScanHeartbeatTargets();
 	
 	UAbilitySystemComponent* GetOwnerAbilitySystem() const;
 	
-	/**
-		* 착지 시 적용할 상태 GE.
-		* Has Duration 1초, Granted Tag는 State.Stunned로 설정한다.
-		*/
+	/* 착지 시 적용할 상태 GE. Has Duration 1초, Granted Tag는 State.Stunned로 설정한다. */
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Landing")
 	TSubclassOf<UGameplayEffect> LandStunEffect;
 
@@ -152,4 +170,22 @@ private:
 
 	// H43 반복 타이머
 	FTimerHandle GambleBlinkTimerHandle;
+
+	// [H41 추가 시작]
+
+	/** H41 주변 좀비 탐색 타이머 */
+	FTimerHandle HeartbeatDetectionTimerHandle;
+
+	/** 직전 탐색에서 15m 이내에 있던 모든 좀비 */
+	TSet<TWeakObjectPtr<AFACharacter>> HeartbeatDetectedZombies;
+
+	/** H41 탐색 거리: 1500uu = 15m */
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.0"))
+	float HeartbeatDetectionRadius = 1500.0f;
+
+	/** H41 탐색 주기: 초당 5회 */
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.05"))
+	float HeartbeatDetectionInterval = 0.2f;
+
+	// [H41 추가 끝]
 };

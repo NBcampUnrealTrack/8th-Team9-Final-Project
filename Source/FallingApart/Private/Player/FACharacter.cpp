@@ -32,6 +32,7 @@
 #include "Settings/FASettingsBridge.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
+#include "Player/FADetectionUnitComponent.h"
 
 namespace FACharacterAudio
 {
@@ -115,6 +116,8 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent =CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	
+	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
@@ -372,6 +375,18 @@ void AFACharacter::EndContestState()
 	ContestState = FFAContestState();
 }
 
+void AFACharacter::SetHeartbeatRevealActive(bool bActive)
+{
+	// 표시 상태가 같으면 불필요한 렌더링 갱신을 하지 않는다.
+	if (bHeartbeatRevealActive == bActive)
+	{
+		return;
+	}
+
+	bHeartbeatRevealActive = bActive;
+	RefreshCustomDepth();
+}
+
 bool AFACharacter::IsInRescueContest() const
 {
 	if (ContestState.IsActive())
@@ -588,7 +603,7 @@ void AFACharacter::RefreshCustomDepth()
 	USkeletalMeshComponent* CharacterMesh = GetMesh();
 	if (!CharacterMesh || !AbilitySystemComponent) return;
 
-	bool bShouldReveal = false;
+	bool bShouldReveal = bHeartbeatRevealActive;
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
 	// [H36 뿌리내림] 기존 상시 노출과 같은 X-Ray 아웃라인 경로를 사용한다.

@@ -27,7 +27,7 @@ class UWidgetComponent;
 class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
-
+class UFADetectionUnitComponent;
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -50,6 +50,19 @@ public:
 
 	/** 룰 Attribute 를 읽어 이동에 반영하는 CMC. */
 	UFACharacterMovementComponent* GetFAMovementComponent() const;
+	
+	UFUNCTION(BlueprintPure,Category = "FallingApart|Detection")
+	UFADetectionUnitComponent*GetDetectionUnitComponent() const
+	{
+		return DetectionUnitComponent;
+	}
+	
+	
+	/**
+	 * 주변 캐릭터 범위 탐색을 담당하는 범용 컴포넌트.
+	 */
+	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category = "FallingApart|Detection",meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
 
 	//~ 서버 권한 — 진영 배정 시 GameMode 가 호출.
 	/** State.Human / State.Zombie 를 갈아끼운다. 시야 필터·포획 대상 판정이 이 태그를 본다. */
@@ -180,6 +193,7 @@ public:
 
 	/** QTE 종료 — 승패 어느 쪽이든 반드시 불러야 프롬프트가 내려간다. */
 	void EndContestState();
+	void SetHeartbeatRevealActive(bool bActive);
 
 protected:
 	/** GameState 기준 서버 월드 시각. GameState 가 아직 없으면 로컬 시각으로 폴백. */
@@ -367,6 +381,7 @@ protected:
 
 	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
 	void RefreshCustomDepth();
+	
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -714,4 +729,7 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
+	
+	/** H41에 의해 현재 로컬 화면에서 감지된 상태 */
+	bool bHeartbeatRevealActive = false;
 };
