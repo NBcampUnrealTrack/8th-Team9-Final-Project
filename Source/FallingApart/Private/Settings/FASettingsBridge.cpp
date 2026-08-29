@@ -273,8 +273,13 @@ void UFASettingsBridge::ApplyVoice()
 	// 전송 임계는 UVOIPStatics 를 거쳐야 캡처 쪽까지 반영된다.
 	UFAVoiceStatics::SetMicThreshold(FASettingsMapping::ToSilenceThreshold(NoiseGate));
 
+	// 마이크 방식 — 지금 조종 중인 Pawn 에 즉시 반영되고, 다음 라운드에 새로 스폰되는 Pawn 도 이 값으로 시작한다.
+	const bool bPushToTalk = V.MicMode == ESKVoiceMicMode::PushToTalk;
+	UFAVoiceStatics::SetPushToTalkEnabled(GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr, bPushToTalk);
+
 	UE_LOG(LogFASettings, Verbose,
-		TEXT("[FA] 보이스 적용 — 출력 %.2f / 게인 %.2f / 게이트 %.4f"), OutputVolume, MicGain, NoiseGate);
+		TEXT("[FA] 보이스 적용 — 출력 %.2f / 게인 %.2f / 게이트 %.4f / 마이크 %s"),
+		OutputVolume, MicGain, NoiseGate, bPushToTalk ? TEXT("푸시투토크") : TEXT("오픈 마이크"));
 }
 
 // ============================================================

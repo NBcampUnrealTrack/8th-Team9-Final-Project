@@ -13,6 +13,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Sound/SoundAttenuation.h"
 #include "TimerManager.h"
+#include "Voice/FAVoiceStatics.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTransport.h"
 #include "Voice/FAVoiceUserSettings.h"
@@ -58,6 +59,9 @@ void UFAVoiceComponent::BeginPlay()
 		VoiceSettingsChangedHandle = VoiceSettings->OnPlayerVoiceSettingsChanged.AddUObject(
 			this, &UFAVoiceComponent::HandlePlayerVoiceSettingsChanged);
 	}
+
+	// 마이크 방식의 주인은 사용자 설정이다.
+	bPushToTalk = UFAVoiceStatics::IsPushToTalkEnabled();
 
 	SetupVoiceSource();
 	SetupListenerAnchor();

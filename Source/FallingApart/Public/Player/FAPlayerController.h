@@ -64,9 +64,17 @@ public:
 	UFUNCTION(Exec)
 	void FAVoiceGate(float SilenceThreshold = -1.0f, float NoiseGateThreshold = -1.0f);
 
-	/** 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구. */
+	/**
+	 * 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구.
+	 */
 	UFUNCTION(Exec)
 	void FAPushToTalk(bool bEnabled = true);
+
+	//~ ---------------- 푸시투토크 ----------------
+
+	/** 눌린 동안만 마이크를 연다. 오픈 마이크 상태에서는 아무 일도 하지 않는다. */
+	void StartPushToTalk();
+	void StopPushToTalk();
 
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
@@ -188,6 +196,15 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
 	TArray<FKey> PauseMenuKeys;
+
+	/**
+	 * 푸시투토크 키. 기본은 ` (EKeys::Tilde).
+	 *
+	 * Enhanced Input 을 거치지 않고 직접 잡는다(ESC 와 같은 방식) — 마이크는 캐릭터를 조종할 수
+	 * 없는 상태(관전·연출 중)에서도 열려야 하는데, IMC 는 그때 빠져 있을 수 있다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice")
+	TArray<FKey> PushToTalkKeys;
 
 	/**
 	 * 돌아갈 메인 메뉴 레벨. 비워두면 프로젝트 설정의 Game Default Map

@@ -29,6 +29,16 @@ enum class ESKColorblindType : uint8
 	Tritanope   UMETA(DisplayName = "청색맹")
 };
 
+UENUM(BlueprintType)
+enum class ESKVoiceMicMode : uint8
+{
+	/** 항상 열려 있다. 말하면 바로 나간다. */
+	OpenMic    UMETA(DisplayName = "오픈 마이크"),
+
+	/** 지정한 키를 누르고 있는 동안에만 나간다. */
+	PushToTalk UMETA(DisplayName = "푸시투토크")
+};
+
 /** 조작 탭의 키바인딩 한 행. WBP 가 목록을 그릴 때 쓴다. */
 USTRUCT(BlueprintType)
 struct SETTINGSKIT_API FSKKeybindRow
@@ -108,6 +118,13 @@ struct SETTINGSKIT_API FSKSettingsValues
 	/** 보이스 수신 전체 끄기. */
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
 	bool bVoiceMuted = false;
+
+	/**
+	 * 마이크를 항상 열어 둘지(오픈 마이크), 키를 누르는 동안만 열지(푸시투토크).
+	 * 기본은 오픈 마이크 — 푸시투토크는 키를 모르면 아예 말을 못 하는 상태가 된다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
+	ESKVoiceMicMode MicMode = ESKVoiceMicMode::OpenMic;
 
 	//~ ---------------- 화면 (엔진 GameUserSettings 에 없는 것만) ----------------
 
