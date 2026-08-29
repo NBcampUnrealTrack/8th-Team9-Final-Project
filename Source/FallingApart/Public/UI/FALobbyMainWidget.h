@@ -30,7 +30,9 @@ public:
 	
 	void SetReadyInteractionEnabled(bool bEnable);
 	
-	//TODO : 레벨 변경간에 레벨 지정 및 로딩화면 Async Loading Screen플러그인 또는 Persistent Level 확인해보기
+	/**
+	 * 매치 레벨로 넘어가는 동안 화면을 덮는다. 실제 로딩 화면은 LoadingScreenKit 플러그인이 들고 있다.
+	 */
 	void ShowLoadingScreen();
 	
 	void InitializeLobby();
@@ -83,10 +85,17 @@ private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UTextBlock> Text_PlayerCount;
 	
-	UPROPERTY(meta=(BindWidget))
+	/**
+	 * 준비 · 시작 버튼은 이제 필수가 아니다.
+	 *
+	 * 로비에는 마우스 커서가 없고, 준비는 AFALobbyReadyZone 에 걸어 들어가는 것으로,
+	 * 시작은 전원 준비 시 자동 카운트다운으로 대체됐다. WBP 에서 버튼을 지워도 위젯 생성이
+	 * 실패하지 않도록 Optional 로 둔다 — 아래 코드는 전부 null 체크를 거친다.
+	 */
+	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UButton> Button_Ready;
 	
-	UPROPERTY(meta=(BindWidget))
+	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UButton> Button_Start;
 	
 	UPROPERTY(meta = (BindWidget))

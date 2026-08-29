@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -62,15 +62,19 @@ protected:
 	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
 	void HandleSessionRefreshRequested();
-	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password);
+	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
 
 	// 세션 서브시스템 완료 콜백
 	void OnCreateSessionComplete(EFASessionRequestResult Result);
 	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);
 	
 	void OnJoinSessionComplete(EFASessionRequestResult Result, const FString& ConnectString);
-	
-	
+	void OnTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
+	void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
+	void BindTravelFailureDelegates();
+	void UnbindTravelFailureDelegates();
+	void RestoreJoinUIAfterTravelFailure(const FString& ErrorString);
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
 	TObjectPtr<UWidgetSwitcher> WidgetSwitcher_Page;
 	
@@ -107,6 +111,10 @@ private:
 	
 	UFUNCTION()
 	void OnSettingButtonClicked();
+
+	/** 설정창이 닫히기 시작할 때. 닫히는 소리를 낸다. */
+	UFUNCTION()
+	void HandleSettingsClosed();
 	
 	UFUNCTION()
 	void OnQuitButtonClicked();
@@ -137,4 +145,7 @@ private:
 	/** 지금 떠 있는 설정 창. 두 번 눌러도 겹쳐 뜨지 않게 들고 있는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> SettingsWidget;
+
+	FDelegateHandle TravelFailureDelegateHandle;
+	FDelegateHandle NetworkFailureDelegateHandle;
 };

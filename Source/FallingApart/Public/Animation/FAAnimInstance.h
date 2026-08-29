@@ -42,6 +42,8 @@ protected:
 	/* 현재 보유 태그를 애니메이션 전용 단일 상태로 변환한다. */
 	void UpdateGASStatusOverride();
 
+	/** 사다리 등반 여부와 등반 애니메이션 재생 속도를 갱신한다. */
+	void UpdateTraversalAnimationData();
 
 	[[nodiscard]] EFAAnimStatusOverride ResolveGASStatusOverride() const;
 
@@ -65,6 +67,25 @@ protected:
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
 	bool bIsFalling;
+
+	/*
+	  일반 이동 자세 선택에만 사용하며 GAS 상태 Override 와는 분리한다.
+	 */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|LocomotionData")
+	bool bIsCrouched = false;
+
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Traversal")
+	bool bIsClimbing = false;
+
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Traversal")
+	float ClimbSpeed = 0.0f;
+
+	/**
+	 * 등반 애니메이션 재생 배율.
+	 * 1은 위로 정상 재생, 0은 정지, 음수는 아래 방향 역재생.
+	 */
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "AnimData|Traversal")
+	float ClimbPlayRate = 0.0f;
 
 	/*
 	  AnimGraph 의 StatusOverride 상태머신이 직접 읽는 값.

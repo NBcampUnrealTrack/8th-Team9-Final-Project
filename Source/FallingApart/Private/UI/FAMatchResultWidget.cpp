@@ -75,11 +75,39 @@ void UFAMatchResultWidget::OnReturnToLobbyClicked()
 {
 	UFAAudioSubsystem::PlayFASound(this, FAMatchResultUI::SoundClick);
 
-	// 세션 정리 · 레벨 이동은 컨트롤러가 한 곳에서 책임진다 (ESC 메뉴의 '메인 메뉴' 와 같은 경로).
-	if (AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer()))
+	AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(GetOwningPlayer());
+	if (!FAPlayerController)
 	{
-		FAPlayerController->ReturnToMainMenu();
+		return;
 	}
+
+	// 로비 복귀는 서버가 다 같이 ServerTravel 하는 것이라 응답까지 몇 초 빈다.
+	// 그동안 버튼이 살아 있으면 안 눌린 줄 알고 계속 누르게 된다.
+	if (Btn_ReturnToLobby)
+	{
+		Btn_ReturnToLobby->SetIsEnabled(false);
+	}
+	if (Text_ReturnToLobby)
+	{
+		Text_ReturnToLobby->SetText(LOCTEXT("MatchResultReturningToLobby", "로비로 돌아가는 중..."));
+	}
+	OnReturnToLobbyPending();
+
+	FAPlayerController->ReturnToLobby();
+}
+
+void UFAMatchResultWidget::NotifyReturnToLobbyFailed()
+{
+	if (Btn_ReturnToLobby)
+	{
+		Btn_ReturnToLobby->SetIsEnabled(true);
+	}
+	if (Text_ReturnToLobby)
+	{
+		Text_ReturnToLobby->SetText(LOCTEXT("MatchResultReturnToLobby", "로비로 나가기"));
+	}
+
+	OnReturnToLobbyFailed();
 }
 
 void UFAMatchResultWidget::OnReturnToLobbyHovered()
@@ -311,6 +339,9 @@ void UFAMatchResultWidget::BuildFallbackLayout()
 	ButtonText->SetFont(FAMatchResultUI::MakeFont(16, false));
 	ButtonText->SetJustification(ETextJustify::Center);
 	Btn_ReturnToLobby->SetContent(ButtonText);
+
+	// 임시 레이아웃도 WBP 와 같은 대기 문구를 쓰도록 글자를 들고 있는다.
+	Text_ReturnToLobby = ButtonText;
 
 	if (UVerticalBoxSlot* ButtonSlot = Column->AddChildToVerticalBox(Btn_ReturnToLobby))
 	{

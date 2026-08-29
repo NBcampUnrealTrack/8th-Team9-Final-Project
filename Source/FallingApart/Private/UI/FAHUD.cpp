@@ -4,6 +4,7 @@
 #include "UI/FAHUD.h"
 
 #include "Blueprint/UserWidget.h"
+#include "LoadingScreenSubsystem.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUDWidget.h"
 #include "UI/FARuleSlotsWidget.h"
@@ -26,6 +27,12 @@ void AFAHUD::BeginPlay()
 	if (!PlayerOwner || !PlayerOwner->IsLocalController())
 	{
 		return;
+	}
+
+	// 로비에서 넘어오며 켜둔 로딩 화면을 여기서 걷는다.
+	if (ULSKLoadingScreenSubsystem* LoadingScreen = ULSKLoadingScreenSubsystem::Get(this))
+	{
+		LoadingScreen->Hide();
 	}
 
 	if (!HUDWidgetClass)

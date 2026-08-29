@@ -54,6 +54,14 @@ struct FFARuleCardRow : public FTableRowBase
 	/** 카드 아이콘. 비어 있으면 티어 기본 아이콘으로 대체. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "표시")
 	TSoftObjectPtr<UTexture2D> Icon;
+	
+	/** 디버프 룰 배경 이미지 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "표시")
+	TSoftObjectPtr<UTexture2D> BackgroundImage;
+	
+	/** 카드 색상 이미지 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "표시")
+	TSoftObjectPtr<UTexture2D> CardBackgroundImage;
 
 	//~ ---------------- 분류 ----------------
 
@@ -135,7 +143,9 @@ enum class EFARuleCategory : uint8
 	/** 거래(T) — 이득이 있는 카드 (노랑). 계열 태그보다 우선한다. */
 	Trade	= 5,
 	/** 도박(G) — 불확실성 (무지개·점멸). 계열 태그보다 우선한다. */
-	Gamble	= 6
+	Gamble	= 6,
+	/** Rule.State.* — 특정 행동·상태를 제한하는 계열 (주황) */
+	State	= 7
 };
 
 /**
@@ -161,6 +171,12 @@ struct FFARuleDisplayInfo
 
 	UPROPERTY(BlueprintReadOnly, Category = "Rule")
 	TSoftObjectPtr<UTexture2D> Icon;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	TSoftObjectPtr<UTexture2D> BackgroundImage;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Rule")
+	TSoftObjectPtr<UTexture2D> CardBackgroundImage;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Rule")
 	EFATeam Team = EFATeam::None;

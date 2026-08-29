@@ -32,13 +32,7 @@ namespace FARuleSlotsUI
 {
 	/** 임시 레이아웃 한 칸의 크기(픽셀). 화면을 가리지 않는 선. */
 	static constexpr float SlotSize = 72.0f;
-
 	static constexpr float IconSize = 40.0f;
-
-	FSlateFontInfo MakeFont(int32 Size, bool bBold)
-	{
-		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
-	}
 }
 
 TSharedRef<SWidget> UFARuleSlotsWidget::RebuildWidget()
@@ -46,12 +40,6 @@ TSharedRef<SWidget> UFARuleSlotsWidget::RebuildWidget()
 	if (IsDesignTime())
 	{
 		return Super::RebuildWidget();
-	}
-
-	// WBP 를 상속해 만들면 RootWidget 이 이미 차 있다 — 그때는 디자이너가 만든 트리를 그대로 쓴다.
-	if (WidgetTree && !WidgetTree->RootWidget)
-	{
-		BuildFallbackLayout();
 	}
 
 	GatherSlotWidgets();
@@ -106,7 +94,8 @@ void UFARuleSlotsWidget::RefreshBinding()
 		NewASC = Cast<UFAAbilitySystemComponent>(AsInterface->GetAbilitySystemComponent());
 	}
 
-	UFAAbilitySystemComponent* OldASC = BoundASC.Get();
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다. 
+	UFAAbilitySystemComponent* OldASC = BoundASC.Get(/*bEvenIfGarbage=*/true);
 	if (NewASC == OldASC)
 	{
 		return;
@@ -202,20 +191,9 @@ void UFARuleSlotsWidget::RefreshSlots(bool bForceEvent)
 //~ ---------------- 그리기 ----------------
 
 void UFARuleSlotsWidget::GatherSlotWidgets()
-{
-	SlotRoots = { Slot0, Slot1, Slot2, Slot3 };
-	SlotBorders = { Border_Slot0, Border_Slot1, Border_Slot2, Border_Slot3 };
+{ 
+	SlotBackgrounds = { Img_Slot0Background, Img_Slot1Background, Img_Slot2Background, Img_Slot3Background };
 	SlotIcons = { Img_Slot0Icon, Img_Slot1Icon, Img_Slot2Icon, Img_Slot3Icon };
-	SlotNames = { Txt_Slot0Name, Txt_Slot1Name, Txt_Slot2Name, Txt_Slot3Name };
-
-	// 칸 전체를 숨길 손잡이가 없으면 테두리를 대신 쓴다.
-	for (int32 Index = 0; Index < MaxSlots; ++Index)
-	{
-		if (!SlotRoots[Index])
-		{
-			SlotRoots[Index] = SlotBorders[Index];
-		}
-	}
 }
 
 void UFARuleSlotsWidget::ApplySlotsToWidgets()
@@ -223,49 +201,57 @@ void UFARuleSlotsWidget::ApplySlotsToWidgets()
 	for (int32 Index = 0; Index < MaxSlots; ++Index)
 	{
 		const bool bFilled = Slots.IsValidIndex(Index);
-
-		if (UWidget* Root = SlotRoots[Index])
-		{
-			Root->SetVisibility(bFilled ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-
-			// 깜빡임은 매 프레임 덮어쓰지만, 빈 칸에서 돌아온 칸이 흐린 채로 남지 않게 여기서 되돌린다.
-			Root->SetRenderOpacity(1.0f);
-		}
+		
+		UImage* BgImage = SlotBackgrounds.IsValidIndex(Index) ? SlotBackgrounds[Index].Get() : nullptr;
+		UImage* IconImage = SlotIcons.IsValidIndex(Index) ? SlotIcons[Index].Get() : nullptr;
 
 		if (!bFilled)
 		{
+			if (BgImage)
+			{
+				BgImage->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			
+			if (IconImage)
+			{
+				IconImage->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			
 			continue;
 		}
 
 		const FFARuleDisplayInfo& Info = Slots[Index];
 
-		if (UBorder* Border = SlotBorders[Index])
+		if (BgImage)
 		{
-			if (bTintSlotsByCategory || bUsingFallbackLayout)
+			if (UTexture2D* BgTexture = Info.BackgroundImage.IsNull() ? nullptr : Info.BackgroundImage.LoadSynchronous())
 			{
-				Border->SetBrushColor(Info.CategoryColor);
-			}
-		}
-
-		if (UImage* Icon = SlotIcons[Index])
-		{
-			// 아이콘은 DT 의 소프트 참조다. 4장뿐이고 드래프트 시점에만 바뀌므로 동기 로드로 충분하다.
-			if (UTexture2D* Texture = Info.Icon.IsNull() ? nullptr : Info.Icon.LoadSynchronous())
-			{
-				Icon->SetBrushFromTexture(Texture);
-				Icon->SetColorAndOpacity(FLinearColor::White);
-				Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
+				BgImage->SetBrushFromTexture(BgTexture);
+				BgImage->SetColorAndOpacity(FLinearColor::White);
+				BgImage->SetVisibility(ESlateVisibility::HitTestInvisible);
 			}
 			else
 			{
-				// 아이콘 미제작 카드. 색만 남기면 계열은 여전히 읽힌다.
-				Icon->SetVisibility(ESlateVisibility::Collapsed);
+				BgImage->SetVisibility(ESlateVisibility::Collapsed);
 			}
+			
+			BgImage->SetRenderOpacity(1.0f);
 		}
 
-		if (UTextBlock* NameText = SlotNames[Index])
+		if (IconImage)
 		{
-			NameText->SetText(Info.DisplayName);
+			if (UTexture2D* IconTexture = Info.Icon.IsNull() ? nullptr : Info.Icon.LoadSynchronous())
+			{
+				IconImage->SetBrushFromTexture(IconTexture);
+				IconImage->SetColorAndOpacity(FLinearColor::White);
+				IconImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+			else
+			{
+				IconImage->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			
+			IconImage->SetRenderOpacity(1.0f);
 		}
 	}
 }
@@ -282,32 +268,31 @@ void UFARuleSlotsWidget::UpdateAnimatedVisuals(float InDeltaTime)
 
 		for (int32 Index = 0; Index < MaxSlots; ++Index)
 		{
-			if (UWidget* Root = SlotRoots[Index])
+			if (!Slots.IsValidIndex(Index))
 			{
-				if (Slots.IsValidIndex(Index))
-				{
-					Root->SetRenderOpacity(Index == ExpiringSlotIndex ? Opacity : 1.0f);
-				}
+				continue;
+			}
+			
+			const float TargetOpacity = (Index == ExpiringSlotIndex) ? Opacity : 1.0f;
+			
+			if (UImage* BgImage = SlotBackgrounds.IsValidIndex(Index) ? SlotBackgrounds[Index].Get() : nullptr)
+			{
+				BgImage->SetRenderOpacity(TargetOpacity);
 			}
 		}
 	}
 
 	// 도박(G) 카드는 색 자체가 불확실성이다 (UX 가이드 3.1).
-	if (!bTintSlotsByCategory && !bUsingFallbackLayout)
-	{
-		return;
-	}
-
-	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+		for (int32 Index = 0; Index < Slots.Num(); ++Index)
 	{
 		if (!Slots[Index].bAnimatedColor)
 		{
 			continue;
 		}
 
-		if (UBorder* Border = SlotBorders[Index])
+		if (UImage* BgImage = SlotBackgrounds.IsValidIndex(Index) ? SlotBackgrounds[Index].Get() : nullptr)
 		{
-			Border->SetBrushColor(UFARuleSettings::GetGambleColor(AnimTime));
+			BgImage->SetColorAndOpacity(UFARuleSettings::GetGambleColor(AnimTime));
 		}
 	}
 }
@@ -345,74 +330,4 @@ void UFARuleSlotsWidget::PlayRuleRemovedSound()
 	}
 
 	UFAAudioSubsystem::PlayFASound(this, FARuleSlotsAudio::RuleExpired);
-}
-
-//~ ---------------- WBP 가 없을 때 쓰는 임시 레이아웃 ----------------
-
-void UFARuleSlotsWidget::BuildFallbackLayout()
-{
-	bUsingFallbackLayout = true;
-
-	UCanvasPanel* RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
-	WidgetTree->RootWidget = RootCanvas;
-
-	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-
-	// 좌하단 (GDD 8.1). 화면 가장자리에서 조금 띄운다.
-	if (UCanvasPanelSlot* RowSlot = RootCanvas->AddChildToCanvas(Row))
-	{
-		RowSlot->SetAnchors(FAnchors(0.0f, 1.0f));
-		RowSlot->SetAlignment(FVector2D(0.0f, 1.0f));
-		RowSlot->SetAutoSize(true);
-		RowSlot->SetPosition(FVector2D(32.0f, -32.0f));
-	}
-
-	for (int32 Index = 0; Index < MaxSlots; ++Index)
-	{
-		USizeBox* SizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		SizeBox->SetWidthOverride(FARuleSlotsUI::SlotSize);
-		SizeBox->SetHeightOverride(FARuleSlotsUI::SlotSize);
-
-		if (UHorizontalBoxSlot* BoxSlot = Row->AddChildToHorizontalBox(SizeBox))
-		{
-			BoxSlot->SetPadding(FMargin(0.0f, 0.0f, 6.0f, 0.0f));
-		}
-
-		UBorder* Border = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Border->SetBrushColor(UFARuleSettings::GetRuleCategoryColor(EFARuleCategory::None));
-		Border->SetPadding(FMargin(4.0f));
-		SizeBox->AddChild(Border);
-
-		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		Border->SetContent(Column);
-
-		UImage* Icon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-		Icon->SetDesiredSizeOverride(FVector2D(FARuleSlotsUI::IconSize, FARuleSlotsUI::IconSize));
-		Icon->SetVisibility(ESlateVisibility::Collapsed);
-		if (UVerticalBoxSlot* IconSlot = Column->AddChildToVerticalBox(Icon))
-		{
-			IconSlot->SetHorizontalAlignment(HAlign_Center);
-		}
-
-		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		NameText->SetFont(FARuleSlotsUI::MakeFont(11, true));
-		NameText->SetJustification(ETextJustify::Center);
-		NameText->SetAutoWrapText(true);
-		NameText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-		if (UVerticalBoxSlot* NameSlot = Column->AddChildToVerticalBox(NameText))
-		{
-			NameSlot->SetHorizontalAlignment(HAlign_Center);
-			NameSlot->SetVerticalAlignment(VAlign_Center);
-			NameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		}
-
-		// 칸을 통째로 숨기는 손잡이는 SizeBox 다 — 테두리만 숨기면 빈 자리가 남는다.
-		switch (Index)
-		{
-		case 0: Slot0 = SizeBox; Border_Slot0 = Border; Img_Slot0Icon = Icon; Txt_Slot0Name = NameText; break;
-		case 1: Slot1 = SizeBox; Border_Slot1 = Border; Img_Slot1Icon = Icon; Txt_Slot1Name = NameText; break;
-		case 2: Slot2 = SizeBox; Border_Slot2 = Border; Img_Slot2Icon = Icon; Txt_Slot2Name = NameText; break;
-		default: Slot3 = SizeBox; Border_Slot3 = Border; Img_Slot3Icon = Icon; Txt_Slot3Name = NameText; break;
-		}
-	}
 }

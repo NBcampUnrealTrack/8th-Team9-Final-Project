@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Audio/FAAudioSubsystem.h"
 
@@ -28,6 +28,7 @@ namespace FAAudioIds
 	static const FName BgmLobby(TEXT("BGM_Lobby"));
 	static const FName BgmRoundBase(TEXT("BGM_Round_Base"));
 	static const FName BgmRoundTension(TEXT("BGM_Round_Tension"));
+	static const FName BgmRoundFinal(TEXT("BGM_Round_Final"));
 	static const FName BgmRoundResult(TEXT("BGM_RoundResult"));
 	static const FName BgmMatchResult(TEXT("BGM_MatchResult"));
 	static const FName BgmDeathMatch(TEXT("BGM_DeathMatch"));
@@ -35,6 +36,9 @@ namespace FAAudioIds
 
 	/** 생존자가 이 비율 아래로 떨어지면 긴장 레이어가 최대가 된다. */
 	static constexpr float TensionFullRatio = 0.25f;
+
+	/** 막판 곡으로 넘어갈 때의 크로스페이드(초). */
+	static constexpr float FinalMusicFadeSeconds = 2.0f;
 }
 
 bool UFAAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -58,6 +62,7 @@ void UFAAudioSubsystem::Deinitialize()
 		GameState->OnTeamCountsChanged.RemoveAll(this);
 	}
 	BoundGameState.Reset();
+	bBoundGameState = false;
 
 	// bAutoDestroy 를 꺼둔 컴포넌트라 직접 정리해야 한다.
 	StopMusic(0.0f);
@@ -76,7 +81,7 @@ bool UFAAudioSubsystem::IsTickable() const
 
 	// GameState 를 잡을 때까지, 그리고 긴장 레이어가 살아 있는 동안만 돈다.
 	// 메뉴·로비처럼 AFAGameState 가 아예 없는 레벨에서는 포기하고 틱을 끈다.
-	const bool bWaitingForGameState = !BoundGameState.IsValid() && !bGaveUpBindingGameState;
+	const bool bWaitingForGameState = !bBoundGameState && !bGaveUpBindingGameState;
 	return bWaitingForGameState || MusicLayerComponent != nullptr;
 }
 
@@ -96,7 +101,14 @@ void UFAAudioSubsystem::Tick(float DeltaTime)
 void UFAAudioSubsystem::TryBindGameState()
 {
 	UWorld* World = GetWorld();
-	if (BoundGameState.IsValid() || bGaveUpBindingGameState || !World)
+	if (bBoundGameState || bGaveUpBindingGameState || !World)
+	{
+		return;
+	}
+
+	// 정리에 들어간 월드에는 걸어봐야 곧 같이 사라진다. 이 프레임의 GameState 는 이미
+	// 파괴 예약된 상태로 돌아오므로 여기서 끊어야 한다.
+	if (World->bIsTearingDown)
 	{
 		return;
 	}
@@ -108,6 +120,7 @@ void UFAAudioSubsystem::TryBindGameState()
 		GameState->OnTeamCountsChanged.AddDynamic(this, &UFAAudioSubsystem::HandleTeamCountsChanged);
 
 		BoundGameState = GameState;
+		bBoundGameState = true;
 		LastSurvivorCount = GameState->GetSurvivorCount();
 
 		// 늦게 들어온 클라이언트는 페이즈 전환 이벤트를 이미 놓쳤다 — 현재 페이즈로 음악을 맞춘다.
@@ -167,6 +180,24 @@ void UFAAudioSubsystem::PlayMusic(FName SoundId, float FadeTime)
 	{
 		MusicComponent->FadeIn(FMath::Max(0.0f, FadeTime), Row->VolumeMultiplier);
 	}
+}
+
+void UFAAudioSubsystem::EnterFinalCountdown()
+{
+	if (bFinalCountdownActive || !CanPlay())
+	{
+		return;
+	}
+
+	const FFASoundRow* Row = UFAAudioSettings::FindSound(FAAudioIds::BgmRoundFinal);
+	if (!Row || Row->Sound.IsNull())
+	{
+		return;
+	}
+
+	bFinalCountdownActive = true;
+
+	PlayMusic(FAAudioIds::BgmRoundFinal, FAAudioIds::FinalMusicFadeSeconds);
 }
 
 void UFAAudioSubsystem::StopMusic(float FadeTime)
@@ -256,6 +287,8 @@ UAudioComponent* UFAAudioSubsystem::PlayLoopAtLocation(FName SoundId, FVector Lo
 
 void UFAAudioSubsystem::UpdateMusicForPhase(EFARoundPhase Phase)
 {
+	bFinalCountdownActive = false;
+
 	switch (Phase)
 	{
 	// 로비가 별도 레벨로 분리된 뒤로, 매치 레벨의 WaitingToStart 는 '인원 차기를 기다리는 몇 초'다.
@@ -293,6 +326,12 @@ void UFAAudioSubsystem::UpdateTensionLayer()
 
 	// 긴장 레이어는 라운드가 도는 동안에만 의미가 있다.
 	if (GameState->GetRoundPhase() != EFARoundPhase::InProgress)
+	{
+		StopMusicLayer();
+		return;
+	}
+
+	if (bFinalCountdownActive)
 	{
 		StopMusicLayer();
 		return;

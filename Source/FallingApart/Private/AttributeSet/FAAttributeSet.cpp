@@ -15,7 +15,8 @@ UFAAttributeSet::UFAAttributeSet()
 	InitAirControl(0.35f);
 	InitTurnRateScale(1.0f);
 	InitWaterMoveSpeedMultiplier(1.0f);
-	InitJumpZVelocity(420.0f);
+	InitGambleSpeedMultiplier(1.0f);
+	InitRuleJumpZVelocity (420.0f);
 
 	// 스태미나
 	InitMaxStamina(5.0f);
@@ -30,8 +31,11 @@ UFAAttributeSet::UFAAttributeSet()
 	// 10.0 → 5.0. 이제 이 값은 '인질이 전혀 저항하지 않았을 때' 의 감염 시간이다.
 	// 저항(WASD 연타)이 최대면 UFAGA_Grab::MaxResistTimeMultiplier 만큼 늘어난다 — 기본 3배라 15초.
 	InitInfectDuration(5.0f);
+	// 일반 포획은 최대 저항 시 기본 감염 시간의 3배.
+	InitMaxResistTimeMultiplier(3.0f);
 	InitRescueDuration(0.0f);
 	InitContestGauge(50.0f);
+	InitBiteCooldown(3.0f);
 }
 
 void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,float& NewValue)
@@ -62,6 +66,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,5.0f);
 	}
+	else if (Attribute == GetGambleSpeedMultiplierAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue,0.5f,1.5f);
+	}
 	else if (Attribute == GetStaminaAttribute())
 	{
 		// 현재 스태미나 는 최대 스태미나에서 0 사이로 설정
@@ -90,6 +98,12 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 		// 여기서 다루는 건 저항 0 기준값이라, 실제 최대 감염 시간은 여기에 저항 배수가 한 번 더 곱해진다.
 		NewValue = FMath::Clamp(NewValue, 0.5f, 15.0f);
 	}
+	else if (Attribute == GetMaxResistTimeMultiplierAttribute())
+	{
+		// 최소 1배: 최대 저항이 감염을 오히려 빠르게 만들면 안 된다.
+		// 상한 10배는 잘못된 GE 설정에 대한 안전장치.
+		NewValue = FMath::Clamp(NewValue, 1.0f, 10.0f);
+	}
 	else if (Attribute == GetRescueDurationAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 5.0f);
@@ -98,9 +112,13 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
-	else if (Attribute == GetJumpZVelocityAttribute())
+	else if (Attribute == GetRuleJumpZVelocityAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue,0.0f,2000.0f);
+	}
+	else if (Attribute == GetBiteCooldownAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 20.0f);
 	}
 }
 
@@ -134,6 +152,10 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		SetWaterMoveSpeedMultiplier(FMath::Clamp(GetWaterMoveSpeedMultiplier(),0.0f,5.0f));
 	}
+	else if (ChangedAttribute == GetGambleSpeedMultiplierAttribute())
+	{
+		SetGambleSpeedMultiplier(FMath::Clamp(GetGambleSpeedMultiplier(),0.5f,1.5f));
+	}
 	else if (ChangedAttribute ==GetStaminaAttribute())
 	{
 		SetStamina(FMath::Clamp(GetStamina(),0.0f,GetMaxStamina()));
@@ -155,7 +177,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	}
 	else if (ChangedAttribute ==GetFieldOfViewAttribute())
 	{
-		SetVisionRange(FMath::Clamp(GetFieldOfView(),0.0f,6000.0f));
+		SetFieldOfView(FMath::Clamp(GetFieldOfView(),0.0f,90.0f));
 	}
 	else if (ChangedAttribute == GetGrabRangeAttribute())
 	{
@@ -165,13 +187,21 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	{
 		SetInfectDuration(FMath::Clamp(GetInfectDuration(), 0.5f, 15.0f));
 	}
+	else if (ChangedAttribute ==GetMaxResistTimeMultiplierAttribute())
+	{
+		SetMaxResistTimeMultiplier(FMath::Clamp(GetMaxResistTimeMultiplier(),1.0f,10.0f));
+	}
 	else if (ChangedAttribute == GetRescueDurationAttribute())
 	{
 		SetRescueDuration(FMath::Clamp(GetRescueDuration(), 0.0f, 5.0f));
 	}
-	else if (ChangedAttribute == GetJumpZVelocityAttribute())
+	else if (ChangedAttribute == GetRuleJumpZVelocityAttribute())
 	{
-		SetJumpZVelocity(FMath::Clamp(GetJumpZVelocity(), 0.0f, 2000.0f));
+		SetRuleJumpZVelocity(FMath::Clamp(GetRuleJumpZVelocity(), 0.0f, 2000.0f));
+	}
+	else if (ChangedAttribute == GetBiteCooldownAttribute())
+	{
+		SetBiteCooldown(FMath::Clamp(GetBiteCooldown(), 0.0f, 20.0f));
 	}
 }
 
@@ -185,14 +215,17 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,AirControl,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,TurnRateScale,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,WaterMoveSpeedMultiplier,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,GambleSpeedMultiplier,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,Stamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxStamina,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,VisionRange,COND_None,REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, GrabRange, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, InfectDuration, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, RescueDuration, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, ContestGauge, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet, JumpZVelocity, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,GrabRange, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,InfectDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,RescueDuration, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,ContestGauge, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,RuleJumpZVelocity, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,BiteCooldown,COND_None,REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -225,6 +258,11 @@ void UFAAttributeSet::OnRep_WaterMoveSpeedMultiplier(const FGameplayAttributeDat
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,WaterMoveSpeedMultiplier,OldValue);
 }
 
+void UFAAttributeSet::OnRep_GambleSpeedMultiplier(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,GambleSpeedMultiplier,OldValue);
+}
+
 void UFAAttributeSet::OnRep_Stamina(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,Stamina,OldValue);
@@ -254,6 +292,11 @@ void UFAAttributeSet::OnRep_InfectDuration(const FGameplayAttributeData& OldValu
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, InfectDuration, OldValue);
 }
 
+void UFAAttributeSet::OnRep_MaxResistTimeMultiplier(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,OldValue);
+}
+
 void UFAAttributeSet::OnRep_RescueDuration(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, RescueDuration, OldValue);
@@ -264,7 +307,12 @@ void UFAAttributeSet::OnRep_ContestGauge(const FGameplayAttributeData& OldValue)
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, ContestGauge, OldValue);
 }
 
-void UFAAttributeSet::OnRep_JumpZVelocity(const FGameplayAttributeData& OldValue)
+void UFAAttributeSet::OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldValue)
 {
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, JumpZVelocity, OldValue);
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, RuleJumpZVelocity, OldValue);
+}
+
+void UFAAttributeSet::OnRep_BiteCooldown(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, BiteCooldown, OldValue);
 }

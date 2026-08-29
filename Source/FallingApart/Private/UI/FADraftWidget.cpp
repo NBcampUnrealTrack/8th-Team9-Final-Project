@@ -221,6 +221,8 @@ FFADraftCardInfo UFADraftWidget::MakeCardInfo(FName RuleId)
 		Info.Tier = Row->Tier;
 		Info.Type = Row->Type;
 		Info.Icon = Row->Icon;
+		Info.BackgroundImage = Row->BackgroundImage;
+		Info.CardBackgroundImage = Row->CardBackgroundImage;
 		Info.bFoundInTable = true;
 
 		if (Info.DisplayName.IsEmpty())
@@ -354,12 +356,6 @@ TSharedRef<SWidget> UFADraftWidget::RebuildWidget()
 		return Super::RebuildWidget();
 	}
 
-	// WBP 를 상속해 만들면 RootWidget 이 이미 차 있다 — 그때는 디자이너가 만든 트리를 그대로 쓴다.
-	if (WidgetTree && !WidgetTree->RootWidget)
-	{
-		BuildFallbackLayout();
-	}
-
 	GatherCardWidgets();
 	RefreshCards();
 
@@ -374,7 +370,8 @@ void UFADraftWidget::GatherCardWidgets()
 	CardNameTexts = { Txt_Card0Name, Txt_Card1Name, Txt_Card2Name };
 	CardDescTexts = { Txt_Card0Desc, Txt_Card1Desc, Txt_Card2Desc };
 	CardMetaTexts = { Txt_Card0Meta, Txt_Card1Meta, Txt_Card2Meta };
-	CardIcons = { Img_Card0Icon, Img_Card1Icon, Img_Card2Icon };
+	SlotBackgrounds = { Img_Slot0Background, Img_Slot1Background, Img_Slot2Background };
+	SlotIcons = { Img_Slot0Icon, Img_Slot1Icon, Img_Slot2Icon };
 
 	static_assert(MaxCards == 3, "카드 슬롯 수를 바꾸면 CardN 변수와 HandleCardNClicked 도 같이 늘려야 한다");
 }
@@ -446,9 +443,56 @@ void UFADraftWidget::RefreshCards()
 			CardRoot->SetVisibility(ESlateVisibility::Visible);
 		}
 
-		if (CardButtons[Index] && (bTintCardButtonsByTier || bUsingFallbackLayout))
+		if (CardButtons.IsValidIndex(Index))
 		{
-			CardButtons[Index]->SetBackgroundColor(FADraftUI::TierToColor(Card.Tier));
+			if (UButton* CardBtn = CardButtons[Index].Get())
+			{
+				if (UTexture2D* CardBgTex = Card.CardBackgroundImage.IsNull() ? nullptr : Card.CardBackgroundImage.LoadSynchronous())
+				{
+					FButtonStyle NewStyle = CardBtn->GetStyle();
+					NewStyle.Normal.SetResourceObject(CardBgTex);
+					NewStyle.Hovered.SetResourceObject(CardBgTex);
+					NewStyle.Pressed.SetResourceObject(CardBgTex);
+					CardBtn->SetStyle(NewStyle);
+				}
+				
+				if (bTintCardButtonsByTier || bUsingFallbackLayout)
+				{
+					CardBtn->SetBackgroundColor(FADraftUI::TierToColor(Card.Tier));
+				}
+			}
+		}
+		
+		if (SlotBackgrounds.IsValidIndex(Index))
+		{
+			if (UImage* BgImg = SlotBackgrounds[Index].Get())
+			{
+				if (UTexture2D* BgTexture = Card.BackgroundImage.IsNull() ? nullptr : Card.BackgroundImage.LoadSynchronous())
+				{
+					BgImg->SetBrushFromTexture(BgTexture, true);
+					BgImg->SetVisibility(ESlateVisibility::HitTestInvisible);
+				}
+				else
+				{
+					BgImg->SetVisibility(ESlateVisibility::Collapsed);
+				}
+			}
+		}
+		
+		if (SlotIcons.IsValidIndex(Index))
+		{
+			if (UImage* IconImg = SlotIcons[Index].Get())
+			{
+				if (UTexture2D* IconTexture = Card.Icon.IsNull() ? nullptr : Card.Icon.LoadSynchronous())
+				{
+					IconImg->SetBrushFromTexture(IconTexture, true);
+					IconImg->SetVisibility(ESlateVisibility::HitTestInvisible);
+				}
+				else
+				{
+					IconImg->SetVisibility(ESlateVisibility::Collapsed);
+				}
+			}
 		}
 
 		if (CardNameTexts[Index])
@@ -469,21 +513,6 @@ void UFADraftWidget::RefreshCards()
 				*FADraftUI::TierToString(Card.Tier),
 				*FADraftUI::TeamToString(Card.Team))));
 		}
-
-		if (UImage* Icon = CardIcons[Index])
-		{
-			// 카드가 3장뿐이라 동기 로드로 충분하다. 아이콘이 없는 룰은 이미지 칸을 숨긴다.
-			UTexture2D* IconTexture = Card.Icon.IsNull() ? nullptr : Card.Icon.LoadSynchronous();
-			if (IconTexture)
-			{
-				Icon->SetBrushFromTexture(IconTexture, true);
-				Icon->SetVisibility(ESlateVisibility::Visible);
-			}
-			else
-			{
-				Icon->SetVisibility(ESlateVisibility::Hidden);
-			}
-		}
 	}
 }
 
@@ -491,136 +520,8 @@ void UFADraftWidget::RefreshTimerText(int32 WholeSeconds)
 {
 	if (Txt_Timer)
 	{
-		Txt_Timer->SetText(FText::FromString(FString::Printf(TEXT("%d s"), FMath::Max(0, WholeSeconds))));
+		Txt_Timer->SetText(FText::FromString(FString::Printf(TEXT("%d"), FMath::Max(0, WholeSeconds))));
 	}
-}
-
-//~ ---------------- WBP 가 없을 때 쓰는 임시 레이아웃 ----------------
-
-void UFADraftWidget::BuildFallbackLayout()
-{
-	UCanvasPanel* RootCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
-	WidgetTree->RootWidget = RootCanvas;
-
-	UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Panel->SetBrushColor(FLinearColor(0.02f, 0.02f, 0.03f, 0.85f));
-	Panel->SetPadding(FMargin(20.0f, 14.0f));
-
-	UCanvasPanelSlot* PanelSlot = RootCanvas->AddChildToCanvas(Panel);
-	PanelSlot->SetAnchors(FAnchors(0.5f, 1.0f));
-	PanelSlot->SetAlignment(FVector2D(0.5f, 1.0f));
-	PanelSlot->SetAutoSize(true);
-	PanelSlot->SetPosition(FVector2D(0.0f, -90.0f));
-
-	UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	Panel->SetContent(Column);
-
-	Txt_Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Txt_Title->SetFont(FADraftUI::MakeFont(20, true));
-	Txt_Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-	if (UVerticalBoxSlot* TitleSlot = Column->AddChildToVerticalBox(Txt_Title))
-	{
-		TitleSlot->SetHorizontalAlignment(HAlign_Center);
-		TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 2.0f));
-	}
-
-	Txt_Timer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Txt_Timer->SetFont(FADraftUI::MakeFont(16, false));
-	Txt_Timer->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.8f, 1.0f)));
-	if (UVerticalBoxSlot* TimerSlot = Column->AddChildToVerticalBox(Txt_Timer))
-	{
-		TimerSlot->SetHorizontalAlignment(HAlign_Center);
-		TimerSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
-	}
-
-	UHorizontalBox* CardRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Column->AddChildToVerticalBox(CardRow);
-
-	// 카드 1장씩 만들어 Card0 / Btn_Card0 … 에 그대로 넣는다 — 채우는 코드는 WBP 와 완전히 같다.
-	TArray<UWidget*> BuiltRoots;
-	TArray<UButton*> BuiltButtons;
-	TArray<UTextBlock*> BuiltNames;
-	TArray<UTextBlock*> BuiltDescs;
-	TArray<UTextBlock*> BuiltMetas;
-
-	for (int32 Index = 0; Index < MaxCards; ++Index)
-	{
-		USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		CardSize->SetWidthOverride(230.0f);
-		CardSize->SetHeightOverride(150.0f);
-
-		if (UHorizontalBoxSlot* CardSlot = CardRow->AddChildToHorizontalBox(CardSize))
-		{
-			CardSlot->SetPadding(FMargin(6.0f, 0.0f));
-		}
-
-		UButton* CardButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
-		CardSize->SetContent(CardButton);
-
-		UVerticalBox* CardColumn = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		CardButton->SetContent(CardColumn);
-
-		UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		NameText->SetFont(FADraftUI::MakeFont(18, true));
-		NameText->SetJustification(ETextJustify::Center);
-		NameText->SetAutoWrapText(true);
-		if (UVerticalBoxSlot* NameSlot = CardColumn->AddChildToVerticalBox(NameText))
-		{
-			NameSlot->SetHorizontalAlignment(HAlign_Fill);
-			NameSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
-		}
-
-		UTextBlock* DescText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		DescText->SetFont(FADraftUI::MakeFont(13, false));
-		DescText->SetJustification(ETextJustify::Center);
-		DescText->SetAutoWrapText(true);
-		DescText->SetColorAndOpacity(FSlateColor(FLinearColor(0.9f, 0.9f, 0.9f, 1.0f)));
-		if (UVerticalBoxSlot* DescSlot = CardColumn->AddChildToVerticalBox(DescText))
-		{
-			DescSlot->SetHorizontalAlignment(HAlign_Fill);
-		}
-
-		// 한글 폰트가 깨지더라도 무엇을 뽑았는지는 알 수 있게, ID·티어·진영은 ASCII 로 따로 찍는다.
-		UTextBlock* MetaText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		MetaText->SetFont(FADraftUI::MakeFont(11, false));
-		MetaText->SetJustification(ETextJustify::Center);
-		MetaText->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.75f, 1.0f)));
-		if (UVerticalBoxSlot* MetaSlot = CardColumn->AddChildToVerticalBox(MetaText))
-		{
-			MetaSlot->SetHorizontalAlignment(HAlign_Fill);
-			MetaSlot->SetPadding(FMargin(0.0f, 6.0f, 0.0f, 0.0f));
-		}
-
-		BuiltRoots.Add(CardSize);
-		BuiltButtons.Add(CardButton);
-		BuiltNames.Add(NameText);
-		BuiltDescs.Add(DescText);
-		BuiltMetas.Add(MetaText);
-	}
-
-	Card0 = BuiltRoots[0];
-	Card1 = BuiltRoots[1];
-	Card2 = BuiltRoots[2];
-
-	Btn_Card0 = BuiltButtons[0];
-	Btn_Card1 = BuiltButtons[1];
-	Btn_Card2 = BuiltButtons[2];
-
-	Txt_Card0Name = BuiltNames[0];
-	Txt_Card1Name = BuiltNames[1];
-	Txt_Card2Name = BuiltNames[2];
-
-	Txt_Card0Desc = BuiltDescs[0];
-	Txt_Card1Desc = BuiltDescs[1];
-	Txt_Card2Desc = BuiltDescs[2];
-
-	Txt_Card0Meta = BuiltMetas[0];
-	Txt_Card1Meta = BuiltMetas[1];
-	Txt_Card2Meta = BuiltMetas[2];
-
-	bUsingFallbackLayout = true;
-
-	BindCardButtons();
 }
 
 void UFADraftWidget::HandleCard0Clicked()

@@ -20,6 +20,7 @@ void AFAGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AFAGameState, CurrentRound);
 	DOREPLIFETIME(AFAGameState, MaxRound);
 	DOREPLIFETIME(AFAGameState, LastRoundResult);
+	DOREPLIFETIME(AFAGameState, RoundResultSnapshot);
 	DOREPLIFETIME(AFAGameState, RoundStartServerTime);
 	DOREPLIFETIME(AFAGameState, RoundDuration);
 	DOREPLIFETIME(AFAGameState, DraftInterval);
@@ -105,40 +106,14 @@ void AFAGameState::GetRankedPlayerStates(TArray<AFAPlayerState*>& OutRanked) con
 
 bool AFAGameState::CompareRank(const AFAPlayerState& A, const AFAPlayerState& B)
 {
-	// 1차 — 누적 총점
-	const int32 TotalA = A.GetMatchTotalScore();
-	const int32 TotalB = B.GetMatchTotalScore();
-	if (TotalA != TotalB)
+	// 1~3차 — 총점 · 진영 기여도 · 생존 시간.
+	if (FFAPlayerScore::CompareByRankRules(A.GetMatchScore(), B.GetMatchScore()))
 	{
-		return TotalA > TotalB;
+		return true;
 	}
-
-	// 2차 — 진영 기여도. 주 진영이 같으면 절대값, 다르면 기여 비율로 비교 (GDD 5.3).
-	if (A.GetMainSide() == B.GetMainSide())
+	if (FFAPlayerScore::CompareByRankRules(B.GetMatchScore(), A.GetMatchScore()))
 	{
-		const int32 SideScoreA = A.GetMainSideScore();
-		const int32 SideScoreB = B.GetMainSideScore();
-		if (SideScoreA != SideScoreB)
-		{
-			return SideScoreA > SideScoreB;
-		}
-	}
-	else
-	{
-		const float RatioA = A.GetMainSideRatio();
-		const float RatioB = B.GetMainSideRatio();
-		if (!FMath::IsNearlyEqual(RatioA, RatioB, 0.0001f))
-		{
-			return RatioA > RatioB;
-		}
-	}
-
-	// 3차 — 누적 생존 시간
-	const float SurvivalA = A.GetMatchSurvivalTime();
-	const float SurvivalB = B.GetMatchSurvivalTime();
-	if (!FMath::IsNearlyEqual(SurvivalA, SurvivalB, 0.01f))
-	{
-		return SurvivalA > SurvivalB;
+		return false;
 	}
 
 	// 4차 — 데스매치 결과. 값이 붙는 건 1등 완전 동점자뿐이라 미참가자(0)와 섞이지 않는다.
@@ -187,6 +162,16 @@ void AFAGameState::SetMaxRound(int32 InMaxRound)
 	}
 
 	MaxRound = FMath::Max(1, InMaxRound);
+}
+
+void AFAGameState::SetRoundResultSnapshot(const FFARoundResultSnapshot& InSnapshot)
+{
+	if (!ensure(HasAuthority()))
+	{
+		return;
+	}
+
+	RoundResultSnapshot = InSnapshot;
 }
 
 void AFAGameState::SetLastRoundResult(EFARoundResult InResult)

@@ -3,8 +3,10 @@
 #include "Voice/FAVoiceStatics.h"
 
 #include "Components/AudioComponent.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
@@ -17,6 +19,7 @@
 #include "OnlineSubsystemUtils.h"
 #include "UObject/UObjectIterator.h"
 #include "VoipListenerSynthComponent.h"
+#include "Voice/FAVoiceComponent.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTypes.h"
 
@@ -27,6 +30,17 @@ namespace FAVoiceStaticsInternal
 	{
 		return IConsoleManager::Get().FindConsoleVariable(TEXT("FAVoice.OutputVolume"));
 	}
+
+	/**
+	 * 마이크 방식(0 = 오픈 마이크, 1 = 푸시투토크).
+	 *
+	 * 새로 스폰되는 UFAVoiceComponent 가 BeginPlay 에서 이 값을 집어간다.
+	 */
+	static TAutoConsoleVariable<int32> CVarPushToTalk(
+		TEXT("FAVoice.PushToTalk"),
+		0,
+		TEXT("내 마이크를 누르는 동안만 열지 여부 (사용자 설정). 0 = 오픈 마이크, 1 = 푸시투토크"),
+		ECVF_Default);
 }
 
 void UFAVoiceStatics::SetMicThreshold(float Threshold)
@@ -47,6 +61,50 @@ float UFAVoiceStatics::GetVoiceOutputVolume()
 {
 	const IConsoleVariable* CVar = FAVoiceStaticsInternal::FindOutputVolumeCVar();
 	return CVar != nullptr ? CVar->GetFloat() : 1.f;
+}
+
+void UFAVoiceStatics::SetPushToTalkEnabled(const UObject* WorldContextObject, bool bEnabled)
+{
+	FAVoiceStaticsInternal::CVarPushToTalk->Set(bEnabled ? 1 : 0, ECVF_SetByGameSetting);
+
+	// 앞으로 스폰될 Pawn 은 CVar 을 보고 시작하고, 지금 말하고 있는 Pawn 은 여기서 바로 바뀐다.
+	if (UFAVoiceComponent* VoiceComponent = GetLocalVoiceComponent(WorldContextObject))
+	{
+		VoiceComponent->SetPushToTalkEnabled(bEnabled);
+	}
+}
+
+bool UFAVoiceStatics::IsPushToTalkEnabled()
+{
+	return FAVoiceStaticsInternal::CVarPushToTalk.GetValueOnGameThread() != 0;
+}
+
+UFAVoiceComponent* UFAVoiceStatics::GetLocalVoiceComponent(const UObject* WorldContextObject)
+{
+	const UWorld* World = GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	if (World == nullptr)
+	{
+		return nullptr;
+	}
+
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APlayerController* PlayerController = It->Get();
+		if (PlayerController == nullptr || !PlayerController->IsLocalController())
+		{
+			continue;
+		}
+
+		// 캐릭터인지 관전 Pawn 인지 묻지 않는다 — 둘 다 같은 컴포넌트를 달고 있다.
+		if (const APawn* Pawn = PlayerController->GetPawn())
+		{
+			return Pawn->FindComponentByClass<UFAVoiceComponent>();
+		}
+	}
+
+	return nullptr;
 }
 
 FName UFAVoiceStatics::GetVoiceBackendName()
@@ -218,11 +276,34 @@ namespace FAVoiceDebug
 				continue;
 			}
 
-			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s"),
+			// 개별 배수(설정창 접속자 목록)는 이미 Talker 의 배수에 곱해져 있다.
+			// 따로 찍어 주지 않으면 "왜 이 사람만 작지" 의 답이 로그에 안 남는다.
+			const UFAVoiceComponent* VoiceComponent = Talker->GetOwner() != nullptr
+				? Talker->GetOwner()->FindComponentByClass<UFAVoiceComponent>()
+				: nullptr;
+			const float ListenerScale = VoiceComponent != nullptr ? VoiceComponent->GetListenerVolumeScale() : 1.f;
+
+			FString ListenerNote;
+			if (ListenerScale <= 0.f)
+			{
+				ListenerNote = TEXT("   (내가 음소거함)");
+			}
+			else if (!FMath::IsNearlyEqual(ListenerScale, 1.f))
+			{
+				ListenerNote = FString::Printf(TEXT("   (내가 개별 x%.2f)"), ListenerScale);
+			}
+
+			// 엔진 VoiceTalkerMap 에서 밀려나 있으면 재생 자체가 이 화자를 안 거친다 —
+			// 즉 위에 찍힌 배수·뮤트가 전부 무의미하다. "뮤트가 안 먹는다" 의 첫 확인 지점.
+			const bool bRegistered = Talker->IsRegisteredWithVoiceEngine();
+
+			UE_LOG(LogFAVoice, Display, TEXT("  화자 %-24s 배수 %.2f → 최종 %.2f%s%s%s"),
 				*GetNameSafe(Talker->GetOwner()),
 				Talker->GetPlaybackVolumeMultiplier(),
 				Talker->GetEffectivePlaybackVolume(),
-				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""));
+				*ListenerNote,
+				Talker->IsTalking() ? TEXT("   (발화 중)") : TEXT(""),
+				bRegistered ? TEXT("") : TEXT("   <<< 엔진 등록 풀림. 음량·뮤트·감쇠 안 먹는다"));
 		}
 
 		UE_LOG(LogFAVoice, Display, TEXT("======================================"));

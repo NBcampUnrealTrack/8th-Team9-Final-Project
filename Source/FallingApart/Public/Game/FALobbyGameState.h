@@ -26,6 +26,8 @@ class FALLINGAPART_API AFALobbyGameState : public AGameStateBase
 	GENERATED_BODY()
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void AddPlayerState(APlayerState* PlayerState) override;
+	virtual void RemovePlayerState(APlayerState* PlayerState) override;
 	
 	int32 GetConnectedPlayerCount() const;
 	
@@ -72,6 +74,7 @@ public:
 
 	
 protected:
+	
 	//로비 상태 변경
 	UFUNCTION()
 	void OnRep_LobbyState();

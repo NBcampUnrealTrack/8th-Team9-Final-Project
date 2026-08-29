@@ -15,6 +15,7 @@ struct FFASessionCreateRequest
 	int32 MaxConnections = 8;
 	FString ServerName;
 	FString Password;
+	FString Nickname;
 };
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnCreateSessionRequested, const FFASessionCreateRequest& Request);
@@ -47,6 +48,8 @@ private:
 	int32 GetMaxConnections() const;
 	
 	FString GetPasswordString() const;
+	
+	FString GetNickname() const;
 
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> NicknameInput;

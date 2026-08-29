@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -71,6 +71,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Audio|Music")
 	void StopMusic(float FadeTime = 1.5f);
 
+	/**
+	 * 라운드 막판 구간에 들어섰다는 신호 — BGM 을 최종 곡(BGM_Round_Final)으로 갈아끼운다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Audio|Music")
+	void EnterFinalCountdown();
+
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Audio|Music")
 	FName GetCurrentMusicId() const { return CurrentMusicId; }
 
@@ -126,6 +132,11 @@ private:
 	TWeakObjectPtr<AFAGameState> BoundGameState;
 
 	/**
+	 * 위 GameState 에 델리게이트를 걸어둔 상태인가.
+	 */
+	bool bBoundGameState = false;
+
+	/**
 	 * 이 월드에는 AFAGameState 가 없다고 판단한 상태.
 	 * 메인 메뉴·로비는 각자 다른 GameState 를 쓰므로, 없는 걸 계속 기다리며 틱을 돌면 안 된다.
 	 */
@@ -146,6 +157,11 @@ private:
 
 	FName CurrentMusicId;
 	FName CurrentMusicLayerId;
+
+	/**
+	 * 막판 곡으로 갈아끼운 상태. 이 동안에는 긴장 레이어를 얹지 않는다
+	 */
+	bool bFinalCountdownActive = false;
 
 	/**
 	 * 재생 직전 공통 처리 — 행 조회, 음원 로드, 쿨다운 판정, 피치 랜덤.

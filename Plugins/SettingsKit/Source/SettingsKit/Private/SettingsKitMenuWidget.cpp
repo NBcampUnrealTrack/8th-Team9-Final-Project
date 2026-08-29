@@ -1,8 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "SettingsKitMenuWidget.h"
 
 #include "SettingsKitLog.h"
+#include "SettingsKitPluginSettings.h"
 #include "SettingsKitSubsystem.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -15,6 +16,7 @@
 #include "Components/ComboBoxString.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/Slider.h"
@@ -43,6 +45,9 @@ namespace SKMenu
 	static const float  FrameLimitValues[] = { 30.f, 60.f, 120.f, 144.f, 0.f };
 
 	static const TCHAR* ColorblindLabels[] = { TEXT("없음"), TEXT("녹색맹"), TEXT("적색맹"), TEXT("청색맹") };
+
+	// 인덱스 = ESKVoiceMicMode (0=OpenMic, 1=PushToTalk)
+	static const TCHAR* MicModeLabels[] = { TEXT("항상 켜기"), TEXT("누르는 동안만") };
 
 	struct FLangOption { const TCHAR* Label; const TCHAR* Culture; };
 	static const FLangOption Languages[] = {
@@ -99,6 +104,7 @@ void USKSettingsMenuWidget::NativeConstruct()
 	// 그 시점엔 붙일 위젯이 아직 없다.
 	ApplySliderRanges();
 	BindCallbacks();
+	BuildTabExtensions();
 
 	OpenSettings();
 }
@@ -215,6 +221,7 @@ void USKSettingsMenuWidget::BindCallbacks()
 	if (Sld_VoiceInput)  Sld_VoiceInput->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceInputChanged);
 	if (Sld_VoiceGate)   Sld_VoiceGate->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceGateChanged);
 	if (Chk_VoiceMute)   Chk_VoiceMute->OnCheckStateChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMuteChanged);
+	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMicModeSelected);
 
 	// 화면
 	if (Cmb_Resolution)    Cmb_Resolution->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleResolutionSelected);
@@ -311,6 +318,15 @@ void USKSettingsMenuWidget::PopulateStaticCombos()
 			Cmb_Language->AddOption(Option.Label);
 		}
 	}
+	if (Cmb_VoiceMicMode)
+	{
+		Cmb_VoiceMicMode->ClearOptions();
+		for (const TCHAR* Label : SKMenu::MicModeLabels)
+		{
+			Cmb_VoiceMicMode->AddOption(Label);
+		}
+	}
+
 	if (Cmb_Colorblind)
 	{
 		Cmb_Colorblind->ClearOptions();
@@ -389,6 +405,7 @@ void USKSettingsMenuWidget::PopulateFromSettings()
 	if (Sld_VoiceInput)  Sld_VoiceInput->SetValue(V.VoiceInputGain);
 	if (Sld_VoiceGate)   Sld_VoiceGate->SetValue(V.VoiceGateThreshold);
 	if (Chk_VoiceMute)   Chk_VoiceMute->SetIsChecked(V.bVoiceMuted);
+	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->SetSelectedIndex(static_cast<int32>(V.MicMode));
 	SetPercentLabel(Txt_VoiceOutputValue, V.VoiceOutputVolume);
 	SetPercentLabel(Txt_VoiceInputValue, V.VoiceInputGain);
 	SetPercentLabel(Txt_VoiceGateValue, V.VoiceGateThreshold);
@@ -519,6 +536,18 @@ void USKSettingsMenuWidget::HandleVoiceGateChanged(float V)
 void USKSettingsMenuWidget::HandleVoiceMuteChanged(bool bChecked)
 {
 	if (USKSettingsSubsystem* Settings = GetSettings()) { Settings->SetVoiceMuted(bChecked); }
+}
+
+void USKSettingsMenuWidget::HandleVoiceMicModeSelected(FString Item, ESelectInfo::Type Type)
+{
+	if (bPopulating || Type == ESelectInfo::Direct || !Cmb_VoiceMicMode) { return; }
+
+	if (USKSettingsSubsystem* Settings = GetSettings())
+	{
+		const int32 Index = FMath::Clamp(Cmb_VoiceMicMode->GetSelectedIndex(), 0,
+			static_cast<int32>(UE_ARRAY_COUNT(SKMenu::MicModeLabels)) - 1);
+		Settings->SetVoiceMicMode(static_cast<ESKVoiceMicMode>(Index));
+	}
 }
 
 // ============================================================
@@ -908,6 +937,9 @@ void USKSettingsMenuWidget::CloseInternal()
 	}
 	bClosing = true;
 
+	// 슬라이드 아웃과 같은 프레임에 알린다 — 닫히는 소리는 연출 시작에 맞아야 한다.
+	OnSettingsClosed.Broadcast();
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RevertTimerHandle);
@@ -1164,6 +1196,83 @@ void USKSettingsMenuWidget::PlayHoverSound()
 	if (USKSettingsSubsystem* Settings = GetSettings())
 	{
 		Settings->RequestUISound(HoverSoundId);
+	}
+}
+
+
+// ============================================================
+// 게임 전용 확장 — 탭 안에 게임 쪽 위젯을 끼워 넣는다
+// ============================================================
+UPanelWidget* USKSettingsMenuWidget::GetTabExtensionBox(ESKSettingsTab Tab) const
+{
+	switch (Tab)
+	{
+	case ESKSettingsTab::Audio:    return Box_AudioExtra;
+	case ESKSettingsTab::Voice:    return Box_VoiceExtra;
+	case ESKSettingsTab::Video:    return Box_VideoExtra;
+	case ESKSettingsTab::Controls: return Box_ControlsExtra;
+	default:                       return nullptr;
+	}
+}
+
+void USKSettingsMenuWidget::BuildTabExtensions()
+{
+	if (IsDesignTime())
+	{
+		return;
+	}
+	
+	for (UUserWidget* Existing : TabExtensionWidgets)
+	{
+		if (Existing != nullptr)
+		{
+			Existing->RemoveFromParent();
+		}
+	}
+	TabExtensionWidgets.Reset();
+
+	const USKPluginSettings* PluginSettings = USKPluginSettings::Get();
+	if (PluginSettings == nullptr)
+	{
+		return;
+	}
+
+	for (const FSKTabExtension& Extension : PluginSettings->TabExtensions)
+	{
+		if (Extension.WidgetClass.IsNull())
+		{
+			continue;
+		}
+
+		UPanelWidget* Box = GetTabExtensionBox(Extension.Tab);
+		if (Box == nullptr)
+		{
+			// 자리를 안 놓았을 때 조용히 사라지면 원인을 찾기 어렵다. 놓아야 할 이름을 그대로 알려준다.
+			static const TCHAR* BoxNames[] = { TEXT("Box_AudioExtra"), TEXT("Box_VoiceExtra"), TEXT("Box_VideoExtra"), TEXT("Box_ControlsExtra") };
+			const int32 TabIndex = static_cast<int32>(Extension.Tab);
+			UE_LOG(LogSettingsKit, Warning,
+				TEXT("[SettingsKit] 확장 위젯 %s 를 넣을 자리가 없다 — 설정창 WBP 의 해당 탭에 패널(Vertical Box 등)을 놓고 이름을 %s 로 지을 것."),
+				*Extension.WidgetClass.ToString(),
+				BoxNames[FMath::Clamp(TabIndex, 0, UE_ARRAY_COUNT(BoxNames) - 1)]);
+			continue;
+		}
+
+		UClass* WidgetClass = Extension.WidgetClass.LoadSynchronous();
+		if (WidgetClass == nullptr)
+		{
+			UE_LOG(LogSettingsKit, Warning, TEXT("[SettingsKit] 확장 위젯 클래스를 로드하지 못했다: %s"),
+				*Extension.WidgetClass.ToString());
+			continue;
+		}
+
+		UUserWidget* ExtensionWidget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
+		if (ExtensionWidget == nullptr)
+		{
+			continue;
+		}
+
+		Box->AddChild(ExtensionWidget);
+		TabExtensionWidgets.Add(ExtensionWidget);
 	}
 }
 
