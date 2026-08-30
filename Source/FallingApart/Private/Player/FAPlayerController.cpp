@@ -201,6 +201,59 @@ namespace FAVoiceTuning
 	}
 }
 
+void AFAPlayerController::FAInfect(const FString& PlayerNameFragment)
+{
+	if (!HasAuthority())
+	{
+		ClientMessage(TEXT("[FAInfect] 서버에서만 쓸 수 있다 (PIE 는 호스트 창에서 입력할 것)"));
+		return;
+	}
+
+	AFAGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AFAGameMode>() : nullptr;
+	if (!GameMode)
+	{
+		return;
+	}
+
+	// 인자가 없으면 나를 감염시킨다
+	AFAPlayerState* Victim = Cast<AFAPlayerState>(PlayerState);
+
+	if (!PlayerNameFragment.IsEmpty())
+	{
+		Victim = nullptr;
+
+		if (const AGameStateBase* GameState = GetWorld()->GetGameState())
+		{
+			for (APlayerState* Each : GameState->PlayerArray)
+			{
+				if (Each != nullptr && Each->GetPlayerName().Contains(PlayerNameFragment, ESearchCase::IgnoreCase))
+				{
+					Victim = Cast<AFAPlayerState>(Each);
+					break;
+				}
+			}
+		}
+	}
+
+	if (!Victim)
+	{
+		ClientMessage(FString::Printf(TEXT("[FAInfect] '%s' 를 찾지 못했다"), *PlayerNameFragment));
+		return;
+	}
+
+	if (!Victim->IsHuman())
+	{
+		ClientMessage(FString::Printf(TEXT("[FAInfect] %s 는 이미 좀비다"), *Victim->GetPlayerName()));
+		return;
+	}
+
+	// 감염시킨 쪽은 없는 것으로 넘긴다
+	GameMode->HandleInfection(Victim, nullptr);
+
+	ClientMessage(FString::Printf(TEXT("[FAInfect] %s 감염 — 전환 연출과 연속 드래프트가 시작된다"),
+		*Victim->GetPlayerName()));
+}
+
 void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)
 {
 	ClientMessage(TEXT("[FAVoiceGate] 현재 값:"));

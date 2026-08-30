@@ -597,8 +597,6 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 		{
 			Draft->StartChainDraft(Victim, RemovedRuleCount);
 		}
-
-		// TODO: 암전 · 시야 필터 전환 연출(PlayInfectionSequence)은 캐릭터 담당자 작업 후 연결.
 	}
 
 	UpdateTeamCounts();
