@@ -658,12 +658,9 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 	const UWorld* World = GetWorld();
 	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
 
-	float Scale = 1.0f;
-	bool bAbbreviated = false;
-	
-	//이름이 출력되는 위치 임시
+	//이름이 출력되는 위치, 캐릭터의 Capsule HalfHeight+10
 	FVector NameLocation = GetActorLocation() + FVector(0.0f, 0.0f, 80.0f);
-	//발 위치
+	//발 위치. 캐릭터의 Capsule HalfHeight * -1
 	FVector FootLocation = GetActorLocation() + FVector(0.0f, 0.0f, -70.0f);
 	if (LocalController)
 	{
@@ -680,7 +677,6 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 	
 		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("이름표 거리제한"));
 			return false;
 		}
 		
@@ -689,7 +685,6 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		const FVector CameraForward = ViewRotation.Vector();
 		if (FVector::DotProduct(CameraForward, ToTarget) < FMath::Cos(FMath::DegreesToRadians(90.0f/2)))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("이름표 시야각 제한"));
 			return false;
 		}
 		
@@ -698,8 +693,6 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		if (!LocalController->ProjectWorldLocationToScreen(
 				NameLocation, ScreenPosition, false))
 		{
-			
-			UE_LOG(LogTemp, Warning, TEXT("이름표 좌표 화면내 존재하지않음."));
 			return false;
 		}
 
@@ -719,7 +712,6 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 
 		if (!bInsideSafeArea)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("이름표 위치 화면 가장자리 제외됨."));
 			return false;
 		}
 		
@@ -1241,6 +1233,7 @@ void AFACharacter::Tick(float DeltaTime)
 	UpdateRuleMarker(DeltaTime);
 	
 	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
+	//ShouldShowOverheadWidget의 내용과 UpdateRuleMarkerOcclusion의 내용 팀원과 확인 후 병합작업 필요.
 	NicknameMarkerOcclusionTimer += DeltaTime;
 	if (NicknameMarker && NicknameMarkerOcclusionTimer >= 0.1f)
 	{	
