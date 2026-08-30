@@ -1166,9 +1166,15 @@ void AFACharacter::Tick(float DeltaTime)
 		}
 	}
 
-	if (!bIsFirstPerson && !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+	if (!bIsFirstPerson)
 	{
 		UpdateCameraCollision(DeltaTime);
+	}
+
+	bool bShouldHideMesh = (CameraBoom->TargetArmLength < 40.f);
+	if (GetMesh()->bOwnerNoSee != bShouldHideMesh)
+	{
+		GetMesh()->SetOwnerNoSee(bShouldHideMesh);
 	}
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
@@ -1656,19 +1662,28 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
 void AFACharacter::UpdatePerspectiveCamera()
 {
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
-	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
 	float TargetOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
-
-	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
 	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, TargetOffsetZ, DeltaTime, CameraInterpSpeed);
 
-	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
-
-	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.f))
+	if (bIsFirstPerson)
 	{
-		CameraBoom->TargetArmLength = TargetArmLength;
-		CameraBoom->TargetOffset.Z = TargetOffsetZ;
-		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, 0.f, DeltaTime, CameraInterpSpeed);
+
+		if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, 0.f, 1.f) &&
+			FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetArmLength = 0.f;
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
+	}
+	else
+	{
+		if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
 	}
 }
 
@@ -1689,18 +1704,7 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 	FCollisionQueryParams QueryParams(FName("CameraCollision"), false, this);
 	QueryParams.AddIgnoredActor(this);
 
-
-	bool bHit = GetWorld()->SweepSingleByChannel(
-		HitResult,
-		Start,
-		End,
-		FQuat::Identity,
-		ECC_Visibility,
-		FCollisionShape::MakeSphere(CameraBoom->ProbeSize),
-		QueryParams
-	);
-
-	if (bHit)
+	if (GetWorld()->SweepSingleByChannel(HitResult, Start, End, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(CameraBoom->ProbeSize), QueryParams))
 	{
 		TargetArmLength = FMath::Clamp(HitResult.Distance - CameraBoom->ProbeSize, 30.f, ThirdPersonArmLength);
 	}
