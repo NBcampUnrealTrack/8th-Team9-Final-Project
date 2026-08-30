@@ -78,6 +78,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Voice")
 	void SetVoiceMuted(bool bNewMuted);
 
+	/** 오픈 마이크 / 푸시투토크. 실제 마이크 제어는 게임이 OnSettingsChanged 를 받아서 한다. */
+	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Voice")
+	void SetVoiceMicMode(ESKVoiceMicMode NewMode);
+
 	//~ ---------------- 화면 ----------------
 
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Video")

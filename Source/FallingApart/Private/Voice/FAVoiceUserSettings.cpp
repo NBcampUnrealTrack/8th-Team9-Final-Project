@@ -41,7 +41,7 @@ FString UFAVoiceUserSettings::MakePlayerKey(const APlayerState* PlayerState)
 		return FString();
 	}
 
-	return NetId->ToString();
+	return SanitizeKey(NetId->ToString());
 }
 
 void UFAVoiceUserSettings::Initialize(FSubsystemCollectionBase& Collection)
@@ -232,7 +232,8 @@ void UFAVoiceUserSettings::SaveToConfig()
 			continue;
 		}
 
-		const FString Key = SanitizeKey(Pair.Key);
+		// MakePlayerKey 가 이미 정제된 키를 준다. 여기서 또 바꾸면 읽기/쓰기 규칙이 갈라진다.
+		const FString& Key = Pair.Key;
 
 		GConfig->SetFloat(FAVoiceUserSettingsInternal::VolumeSection, *Key, Pair.Value.Volume, GGameUserSettingsIni);
 

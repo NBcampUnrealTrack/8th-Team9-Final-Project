@@ -25,9 +25,14 @@ public class FallingApart : ModuleRules
 		// VoiceInterface 를 직접 잡아야 한다. 엔진은 이걸 자동으로 해주지 않는다.
 		// AudioMixer — UFAVoiceStatics 가 월드 정리 때 UVoipListenerSynthComponent(USynthComponent 파생)의
 		// Stop()/GetAudioComponent() 를 직접 불러 등록을 푼다.
+		// AudioCaptureCore / SignalProcessing — UFAVoiceCalibration 이 마이크 잡음을 재는 데 쓴다.
+		// 엔진의 IVoiceCapture 인스턴스는 FVoiceEngineImpl 안에 protected 로 갇혀 있어서
+		// 게임 코드가 진폭을 못 읽는다. 그래서 측정용 스트림을 따로 연다.
+		// 실제 캡처 구현(RtAudio/Wasapi)은 AudioCapture 플러그인이 런타임에 등록한다.
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"CoreOnline", "OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer",
+			"AudioCaptureCore", "SignalProcessing",
 			//스팀 연동을 위한 모듈 포함
 			"OnlineSubsystemSteam"
 		});

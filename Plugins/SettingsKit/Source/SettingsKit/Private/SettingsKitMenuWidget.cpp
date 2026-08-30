@@ -46,6 +46,9 @@ namespace SKMenu
 
 	static const TCHAR* ColorblindLabels[] = { TEXT("없음"), TEXT("녹색맹"), TEXT("적색맹"), TEXT("청색맹") };
 
+	// 인덱스 = ESKVoiceMicMode (0=OpenMic, 1=PushToTalk)
+	static const TCHAR* MicModeLabels[] = { TEXT("항상 켜기"), TEXT("누르는 동안만") };
+
 	struct FLangOption { const TCHAR* Label; const TCHAR* Culture; };
 	static const FLangOption Languages[] = {
 		{ TEXT("시스템 기본"), TEXT("") },
@@ -218,6 +221,7 @@ void USKSettingsMenuWidget::BindCallbacks()
 	if (Sld_VoiceInput)  Sld_VoiceInput->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceInputChanged);
 	if (Sld_VoiceGate)   Sld_VoiceGate->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceGateChanged);
 	if (Chk_VoiceMute)   Chk_VoiceMute->OnCheckStateChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMuteChanged);
+	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMicModeSelected);
 
 	// 화면
 	if (Cmb_Resolution)    Cmb_Resolution->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleResolutionSelected);
@@ -314,6 +318,15 @@ void USKSettingsMenuWidget::PopulateStaticCombos()
 			Cmb_Language->AddOption(Option.Label);
 		}
 	}
+	if (Cmb_VoiceMicMode)
+	{
+		Cmb_VoiceMicMode->ClearOptions();
+		for (const TCHAR* Label : SKMenu::MicModeLabels)
+		{
+			Cmb_VoiceMicMode->AddOption(Label);
+		}
+	}
+
 	if (Cmb_Colorblind)
 	{
 		Cmb_Colorblind->ClearOptions();
@@ -392,6 +405,7 @@ void USKSettingsMenuWidget::PopulateFromSettings()
 	if (Sld_VoiceInput)  Sld_VoiceInput->SetValue(V.VoiceInputGain);
 	if (Sld_VoiceGate)   Sld_VoiceGate->SetValue(V.VoiceGateThreshold);
 	if (Chk_VoiceMute)   Chk_VoiceMute->SetIsChecked(V.bVoiceMuted);
+	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->SetSelectedIndex(static_cast<int32>(V.MicMode));
 	SetPercentLabel(Txt_VoiceOutputValue, V.VoiceOutputVolume);
 	SetPercentLabel(Txt_VoiceInputValue, V.VoiceInputGain);
 	SetPercentLabel(Txt_VoiceGateValue, V.VoiceGateThreshold);
@@ -522,6 +536,18 @@ void USKSettingsMenuWidget::HandleVoiceGateChanged(float V)
 void USKSettingsMenuWidget::HandleVoiceMuteChanged(bool bChecked)
 {
 	if (USKSettingsSubsystem* Settings = GetSettings()) { Settings->SetVoiceMuted(bChecked); }
+}
+
+void USKSettingsMenuWidget::HandleVoiceMicModeSelected(FString Item, ESelectInfo::Type Type)
+{
+	if (bPopulating || Type == ESelectInfo::Direct || !Cmb_VoiceMicMode) { return; }
+
+	if (USKSettingsSubsystem* Settings = GetSettings())
+	{
+		const int32 Index = FMath::Clamp(Cmb_VoiceMicMode->GetSelectedIndex(), 0,
+			static_cast<int32>(UE_ARRAY_COUNT(SKMenu::MicModeLabels)) - 1);
+		Settings->SetVoiceMicMode(static_cast<ESKVoiceMicMode>(Index));
+	}
 }
 
 // ============================================================

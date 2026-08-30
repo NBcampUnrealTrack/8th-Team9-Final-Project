@@ -108,6 +108,12 @@ void USKSettingsSubsystem::SetVoiceMuted(bool bNewMuted)
 	NotifyChanged(ESKSettingsTab::Voice);
 }
 
+void USKSettingsSubsystem::SetVoiceMicMode(ESKVoiceMicMode NewMode)
+{
+	Values.MicMode = NewMode;
+	NotifyChanged(ESKSettingsTab::Voice);
+}
+
 // ============================================================
 // 화면
 // ============================================================
@@ -234,6 +240,7 @@ void USKSettingsSubsystem::ResetCategoryToDefaults(ESKSettingsTab Category)
 		Values.VoiceInputGain     = Defaults.VoiceInputGain;
 		Values.VoiceGateThreshold = Defaults.VoiceGateThreshold;
 		Values.bVoiceMuted        = Defaults.bVoiceMuted;
+		Values.MicMode            = Defaults.MicMode;
 		break;
 
 	case ESKSettingsTab::Video:

@@ -13,6 +13,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Sound/SoundAttenuation.h"
 #include "TimerManager.h"
+#include "Voice/FAVoiceStatics.h"
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTransport.h"
 #include "Voice/FAVoiceUserSettings.h"
@@ -24,6 +25,12 @@ namespace FAVoice
 	/** PlayerState / UniqueNetId 복제를 기다리는 재시도 간격과 횟수 (= 최대 10초). */
 	static constexpr float RegisterRetryInterval = 0.5f;
 	static constexpr int32 MaxRegisterAttempts = 20;
+
+	/**
+	 * 엔진 VoiceTalkerMap 에서 내 화자가 밀려나지 않았는지 확인하는 주기(초).
+	 * TMap 조회 한 번이라 8인 방에서도 무시할 만한 비용이다.
+	 */
+	static constexpr float RegistrationWatchdogInterval = 1.f;
 }
 
 UFAVoiceComponent::UFAVoiceComponent()
@@ -53,6 +60,9 @@ void UFAVoiceComponent::BeginPlay()
 			this, &UFAVoiceComponent::HandlePlayerVoiceSettingsChanged);
 	}
 
+	// 마이크 방식의 주인은 사용자 설정이다.
+	bPushToTalk = UFAVoiceStatics::IsPushToTalkEnabled();
+
 	SetupVoiceSource();
 	SetupListenerAnchor();
 	SetupSpeakingIndicator();
@@ -75,6 +85,7 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RegisterRetryTimerHandle);
+		World->GetTimerManager().ClearTimer(RegistrationWatchdogTimerHandle);
 	}
 
 	if (APlayerController* PlayerController = GetOwningPlayerController())
@@ -327,7 +338,8 @@ void UFAVoiceComponent::TryRegisterTalker()
 	RefreshListenerVolumeScale();
 
 	ApplyTalkerSettings();
-	Talker->RegisterWithPlayerState(PlayerState);
+	Talker->RegisterForPlayer(PlayerState);
+	StartRegistrationWatchdog();
 
 	if (VoiceChannel == EFAVoiceChannel::Proximity)
 	{
@@ -348,6 +360,37 @@ void UFAVoiceComponent::TryRegisterTalker()
 	{
 		StartTalking();
 	}
+}
+
+void UFAVoiceComponent::StartRegistrationWatchdog()
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr || RegistrationWatchdogTimerHandle.IsValid())
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(RegistrationWatchdogTimerHandle, this, &UFAVoiceComponent::EnsureTalkerRegistration,
+		FAVoice::RegistrationWatchdogInterval, true);
+}
+
+void UFAVoiceComponent::EnsureTalkerRegistration()
+{
+	if (Talker == nullptr || Talker->IsRegisteredWithVoiceEngine())
+	{
+		return;
+	}
+
+	APlayerState* PlayerState = GetOwningPlayerState();
+	if (PlayerState == nullptr || !PlayerState->GetUniqueId().IsValid())
+	{
+		return;
+	}
+
+	UE_LOG(LogFAVoice, Warning, TEXT("%s: VOIP 화자 등록이 풀려 있어 다시 등록합니다."), *GetNameSafe(GetOwner()));
+
+	Talker->RegisterForPlayer(PlayerState);
+	ApplyTalkerSettings();
 }
 
 void UFAVoiceComponent::SetupVoiceSource()

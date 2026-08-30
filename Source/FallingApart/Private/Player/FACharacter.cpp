@@ -959,8 +959,79 @@ void AFACharacter::BindTeamNotify()
 
 void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 {
+	// 감염은 되돌아오지 않는다 — Human -> Zombie 전환이 곧 "감염됐다" 는 신호다.
+	if (bHasTeamBaseline && LastKnownTeam == EFATeam::Human && NewTeam == EFATeam::Zombie)
+	{
+		StartInfectionSequence();
+	}
+
+	LastKnownTeam = NewTeam;
+	bHasTeamBaseline = true;
+
 	ApplyTeamMaterial(NewTeam);
 	UpdateGrowlLoop(NewTeam);
+}
+
+void AFACharacter::StartInfectionSequence()
+{
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	InfectionSequenceStartTime = World->GetTimeSeconds();
+	bInfectionSequenceActive = true;
+
+	// 첫 프레임부터 화면이 검어야 한다.
+	InfectionDarkenAmount = 1.0f;
+	InfectionRedAmount = InfectionRedTintStrength;
+
+	if (InfectionGetUpMontage)
+	{
+		PlayAnimMontage(InfectionGetUpMontage);
+	}
+}
+
+void AFACharacter::UpdateInfectionSequence()
+{
+	if (!bInfectionSequenceActive)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	const float Elapsed = World->GetTimeSeconds() - InfectionSequenceStartTime;
+
+	// 1단계 — 완전 암전. 빨강은 이미 최대치로 깔아 둔다(밝아질 때 빨강부터 드러나도록).
+	if (Elapsed < InfectionBlackoutHoldSeconds)
+	{
+		InfectionDarkenAmount = 1.0f;
+		InfectionRedAmount = InfectionRedTintStrength;
+		return;
+	}
+
+	// 2단계 — 암전이 풀리고 빨강이 빠진다. 둘은 같은 시점에 시작하지만 길이가 달라서,
+	// 화면이 먼저 밝아지고 그 뒤로 붉은 기가 천천히 가신다.
+	const float SinceBlackout = Elapsed - InfectionBlackoutHoldSeconds;
+
+	InfectionDarkenAmount = InfectionDarkenReleaseSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionDarkenReleaseSeconds, 0.0f, 1.0f)
+		: 0.0f;
+
+	InfectionRedAmount = InfectionRedFadeSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionRedFadeSeconds, 0.0f, 1.0f) * InfectionRedTintStrength
+		: 0.0f;
+
+	if (InfectionDarkenAmount <= 0.0f && InfectionRedAmount <= 0.0f)
+	{
+		bInfectionSequenceActive = false;
+	}
 }
 
 void AFACharacter::ApplyTeamMaterial(EFATeam NewTeam)
@@ -1252,6 +1323,9 @@ void AFACharacter::Tick(float DeltaTime)
 		ApplyHideState();
 	}
 
+	// 시야 효과보다 먼저 계산한다
+	UpdateInfectionSequence();
+
 	UpdateVisionEffects();
 }
 
@@ -1337,6 +1411,13 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		{
 			HandleResistInput(MovementVector);
 		}
+	}
+
+	// 감염 전환 연출 중에는 움직이지 않는다
+	// 화면이 다 밝아지는 순간(InfectionDarkenAmount == 0) 조작이 돌아온다.
+	if (bInfectionSequenceActive && InfectionDarkenAmount > 0.0f)
+	{
+		return;
 	}
 
 	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.
@@ -1582,8 +1663,10 @@ void AFACharacter::UpdateVisionEffects()
 	SetVisionBlendableActive(VisionNarrowFOVMID, NarrowAmount > 0.0f);
 
 	// 흑백 (Vision.Desaturate) — Attribute 없이 태그 유무로만 켜고 끈다.
-	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bDesaturate;
-	if (bDesaturate)
+	// 단, 감염 전환 연출이 도는 몇 초 동안은 비켜준다.
+	const bool bApplyDesaturate = bDesaturate && InfectionRedAmount <= 0.0f;
+	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bApplyDesaturate;
+	if (bApplyDesaturate)
 	{
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
@@ -1629,22 +1712,28 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 3초 주기로 0.4초간 완전 암전.
+	// 5초 주기로 1초간 완전 암전.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 3.0f;
-		constexpr float BlackoutFlashDuration = 0.4f;
+		constexpr float BlackoutPeriod = 5.0f;
+		constexpr float BlackoutFlashDuration = 1.0f;
 
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
-	// 안개와 암전, 화면을 어둡게 만드는 두 효과를 ColorGain 하나로 합쳐서 적용 — 서로 override 값을 덮어쓰지 않게.
-	const float DarkenAmount = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
+	// 화면을 어둡게 만드는 세 효과(안개 · 명멸 룰 · 감염 연출)를 ColorGain 하나로 합쳐서 적용
+	const float DarkenAmount = FMath::Max3(FogAmount * 0.25f, BlackoutAmount, InfectionDarkenAmount);
+
+	// ColorGain 은 XYZ = RGB 배수, W = 전체 밝기다. 감염 연출의 빨강은 초록·파랑을 눌러서 만들고 암전은 W 로
 	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = false;
-	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f;
-	FollowCamera->PostProcessSettings.ColorGain = FVector4(1.0f, 1.0f, 1.0f, 1.0f - DarkenAmount);
+	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessSettings.ColorGain = FVector4(
+		1.0f,
+		1.0f - InfectionRedAmount,
+		1.0f - InfectionRedAmount,
+		1.0f - DarkenAmount);
 
 	// 1인칭 강제 (Vision.ForceFPS)
 	if (bForceFirstPerson && !bIsFirstPerson)
@@ -1661,9 +1750,11 @@ void AFACharacter::UpdateVisionEffects()
 		}
 	}
 
-	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 네 효과(흑백·안개·암전·시야축소) 중 하나라도 켜져 있으면 블렌드.
-	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f || NarrowAmount > 0.0f;
-	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 효과(흑백·안개·암전·시야축소·감염 연출)
+	// 중 하나라도 켜져 있으면 블렌드. 감염 연출을 빠뜨리면 값만 넣고 화면에는 아무것도 안 나온다.
+	const bool bAnyVisualEffectActive = bApplyDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f
+		|| NarrowAmount > 0.0f || InfectionDarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessBlendWeight = bAnyVisualEffectActive ? 1.0f : 0.0f;
 }
 
 void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)

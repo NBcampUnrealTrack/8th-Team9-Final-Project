@@ -180,6 +180,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UCheckBox> Chk_VoiceMute;
 
+	/** 오픈 마이크 / 푸시투토크. 항목 순서 = ESKVoiceMicMode 의 값 순서다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UComboBoxString> Cmb_VoiceMicMode;
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UTextBlock> Txt_VoiceOutputValue;
 
@@ -387,6 +391,7 @@ private:
 	UFUNCTION() void HandleVoiceInputChanged(float V);
 	UFUNCTION() void HandleVoiceGateChanged(float V);
 	UFUNCTION() void HandleVoiceMuteChanged(bool bChecked);
+	UFUNCTION() void HandleVoiceMicModeSelected(FString Item, ESelectInfo::Type Type);
 
 	//~ 화면 콜백
 	UFUNCTION() void HandleResolutionSelected(FString Item, ESelectInfo::Type Type);
