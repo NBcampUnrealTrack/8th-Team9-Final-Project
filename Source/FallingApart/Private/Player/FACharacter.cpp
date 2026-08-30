@@ -99,6 +99,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	CameraBoom->bDoCollisionTest = false;
 	CameraBoom->bEnableCameraLag = true;
 	CameraBoom->CameraLagSpeed = CameraInterpSpeed;
+	CameraBoom->ProbeSize = 20.0f;
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -114,7 +115,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
-	CharacterStatusComponent =CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
@@ -710,7 +711,7 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
-	
+
 	if (FollowCamera)
 	{
 		// Vision.NarrowFOV 계산의 기준값. 이후로는 이 값을 실제 FOV로 되돌리지 않는다 — 카메라 FOV는 고정.
@@ -1165,9 +1166,15 @@ void AFACharacter::Tick(float DeltaTime)
 		}
 	}
 
-	if (!bIsFirstPerson && !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+	if (!bIsFirstPerson)
 	{
 		UpdateCameraCollision(DeltaTime);
+	}
+
+	bool bShouldHideMesh = (CameraBoom->TargetArmLength < 40.f);
+	if (GetMesh()->bOwnerNoSee != bShouldHideMesh)
+	{
+		GetMesh()->SetOwnerNoSee(bShouldHideMesh);
 	}
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
@@ -1417,11 +1424,12 @@ void AFACharacter::ToggleCrouch()
 
 void AFACharacter::UpdateCrouchCamera()
 {
-	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, 0.f, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
+	float BaseZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, BaseZ, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
 
-	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, 0.f, 1.f))
+	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, BaseZ, 1.f))
 	{
-		CameraBoom->TargetOffset.Z = 0.f;
+		CameraBoom->TargetOffset.Z = BaseZ;
 		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 	}
 }
@@ -1654,19 +1662,28 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
 void AFACharacter::UpdatePerspectiveCamera()
 {
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
-	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
-	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	float TargetOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, TargetOffsetZ, DeltaTime, CameraInterpSpeed);
 
-	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
-	CameraBoom->SocketOffset.Z = FMath::FInterpTo(CameraBoom->SocketOffset.Z, TargetSocketOffsetZ, DeltaTime, CameraInterpSpeed);
-
-	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
-
-	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.f))
+	if (bIsFirstPerson)
 	{
-		CameraBoom->TargetArmLength = TargetArmLength;
-		CameraBoom->SocketOffset.Z = TargetSocketOffsetZ;
-		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, 0.f, DeltaTime, CameraInterpSpeed);
+
+		if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, 0.f, 1.f) &&
+			FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetArmLength = 0.f;
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
+	}
+	else
+	{
+		if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
 	}
 }
 
@@ -1687,18 +1704,7 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 	FCollisionQueryParams QueryParams(FName("CameraCollision"), false, this);
 	QueryParams.AddIgnoredActor(this);
 
-
-	bool bHit = GetWorld()->SweepSingleByChannel(
-		HitResult,
-		Start,
-		End,
-		FQuat::Identity,
-		ECC_Visibility,
-		FCollisionShape::MakeSphere(CameraBoom->ProbeSize),
-		QueryParams
-	);
-
-	if (bHit)
+	if (GetWorld()->SweepSingleByChannel(HitResult, Start, End, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(CameraBoom->ProbeSize), QueryParams))
 	{
 		TargetArmLength = FMath::Clamp(HitResult.Distance - CameraBoom->ProbeSize, 30.f, ThirdPersonArmLength);
 	}
@@ -2167,8 +2173,8 @@ void AFACharacter::ApplyHideCamera(bool bHiding)
 	// 숨어 있는 동안 시점 토글이나 Vision.ForceFPS 로 bIsFirstPerson 이 바뀌었을 수 있다.
 	// 저장해둔 값이 아니라 지금 상태가 요구하는 값으로 되돌린다.
 	CameraBoom->TargetArmLength = bIsFirstPerson ? 0.0f : ThirdPersonArmLength;
-	CameraBoom->SocketOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
-	CameraBoom->TargetOffset = FVector::ZeroVector;
+	CameraBoom->SocketOffset = FVector::ZeroVector;
+	CameraBoom->TargetOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
 
 	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.0f);
 }
