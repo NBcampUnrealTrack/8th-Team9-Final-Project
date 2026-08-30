@@ -14,6 +14,7 @@
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
+#include "UI/FAUIMessageSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "PrototypeMainMenu"
 
@@ -306,13 +307,17 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 
 	if (Result != EFASessionRequestResult::Success)
 	{
+		const FText ErrorMessage = Result == EFASessionRequestResult::InvalidPassword
+			? LOCTEXT("InvalidSessionPassword", "비밀번호가 올바르지 않습니다.")
+			: LOCTEXT("JoinSessionFailed", "선택한 방에 참가하지 못했습니다.");
 		if (SessionJoinWidget)
 		{
-			const FText ErrorMessage = Result == EFASessionRequestResult::InvalidPassword
-				? LOCTEXT("InvalidSessionPassword", "The session password is incorrect.")
-				: LOCTEXT("JoinSessionFailed", "Failed to join the selected session.");
 			SessionJoinWidget->ShowStatusMessage(ErrorMessage);
 		}
+		UFAUIMessageSubsystem::ShowMessage(
+			this,
+			LOCTEXT("JoinSessionErrorTitle", "접속 실패"),
+			ErrorMessage);
 		// 비밀번호 오류가 제일 흔하다 — 메시지를 안 보고 있어도 실패했다는 건 알아야 한다.
 		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
 
