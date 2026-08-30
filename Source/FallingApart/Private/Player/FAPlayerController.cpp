@@ -3,6 +3,7 @@
 #include "Player/FAPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameMapsSettings.h"
 #include "Audio/FAAudioSettings.h"
@@ -21,6 +22,7 @@
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Rule/FARuleDraftSubsystem.h"
 #include "Voice/FAVoiceComponent.h"
+#include "Voice/FAVoiceStatics.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUD.h"
 #include "UI/FAMatchResultWidget.h"
@@ -46,6 +48,7 @@ AFAPlayerController::AFAPlayerController()
 	// WBP 가 없어도 임시 레이아웃으로 뜬다 — UI 담당이 WBP 를 만들면 BP_FAPlayerController 에서 갈아끼울 것.
 	RoundResultWidgetClass = UFARoundResultWidget::StaticClass();
 	PauseMenuKeys.Add(EKeys::Escape);
+	PushToTalkKeys.Add(EKeys::Tilde);
 }
 
 void AFAPlayerController::FADraft(int32 DraftIndex)
@@ -198,6 +201,59 @@ namespace FAVoiceTuning
 	}
 }
 
+void AFAPlayerController::FAInfect(const FString& PlayerNameFragment)
+{
+	if (!HasAuthority())
+	{
+		ClientMessage(TEXT("[FAInfect] 서버에서만 쓸 수 있다 (PIE 는 호스트 창에서 입력할 것)"));
+		return;
+	}
+
+	AFAGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AFAGameMode>() : nullptr;
+	if (!GameMode)
+	{
+		return;
+	}
+
+	// 인자가 없으면 나를 감염시킨다
+	AFAPlayerState* Victim = Cast<AFAPlayerState>(PlayerState);
+
+	if (!PlayerNameFragment.IsEmpty())
+	{
+		Victim = nullptr;
+
+		if (const AGameStateBase* GameState = GetWorld()->GetGameState())
+		{
+			for (APlayerState* Each : GameState->PlayerArray)
+			{
+				if (Each != nullptr && Each->GetPlayerName().Contains(PlayerNameFragment, ESearchCase::IgnoreCase))
+				{
+					Victim = Cast<AFAPlayerState>(Each);
+					break;
+				}
+			}
+		}
+	}
+
+	if (!Victim)
+	{
+		ClientMessage(FString::Printf(TEXT("[FAInfect] '%s' 를 찾지 못했다"), *PlayerNameFragment));
+		return;
+	}
+
+	if (!Victim->IsHuman())
+	{
+		ClientMessage(FString::Printf(TEXT("[FAInfect] %s 는 이미 좀비다"), *Victim->GetPlayerName()));
+		return;
+	}
+
+	// 감염시킨 쪽은 없는 것으로 넘긴다
+	GameMode->HandleInfection(Victim, nullptr);
+
+	ClientMessage(FString::Printf(TEXT("[FAInfect] %s 감염 — 전환 연출과 연속 드래프트가 시작된다"),
+		*Victim->GetPlayerName()));
+}
+
 void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)
 {
 	ClientMessage(TEXT("[FAVoiceGate] 현재 값:"));
@@ -208,16 +264,17 @@ void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThr
 
 void AFAPlayerController::FAPushToTalk(bool bEnabled)
 {
-	const AFACharacter* FACharacter = Cast<AFACharacter>(GetPawn());
-	UFAVoiceComponent* Voice = FACharacter ? FACharacter->GetVoiceComponent() : nullptr;
-	if (!Voice)
+	// 설정창과 같은 통로로 넣는다 — 컴포넌트에 직접 넣으면 리스폰 한 번에 되돌아간다.
+	UFAVoiceStatics::SetPushToTalkEnabled(this, bEnabled);
+
+	if (UFAVoiceStatics::GetLocalVoiceComponent(this) == nullptr)
 	{
-		ClientMessage(TEXT("[FAPushToTalk] 보이스 컴포넌트를 찾을 수 없다 (폰 없음/관전 중?)"));
-		return;
+		ClientMessage(TEXT("[FAPushToTalk] 지금은 보이스 컴포넌트가 없다 (폰 없음?). 다음에 스폰될 폰부터 적용된다."));
 	}
 
-	Voice->SetPushToTalkEnabled(bEnabled);
-	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s"), bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크")));
+	ClientMessage(FString::Printf(TEXT("[FAPushToTalk] %s (키: %s)"),
+		bEnabled ? TEXT("켜짐 — 누를 때만 전송") : TEXT("꺼짐 — 오픈 마이크"),
+		PushToTalkKeys.IsEmpty() ? TEXT("없음") : *PushToTalkKeys[0].GetDisplayName().ToString()));
 }
 
 void AFAPlayerController::BeginPlay()
@@ -257,6 +314,42 @@ void AFAPlayerController::SetupInputComponent()
 		{
 			InputComponent->BindKey(Key, IE_Pressed, this, &AFAPlayerController::TogglePauseMenu);
 		}
+	}
+
+	for (const FKey& Key : PushToTalkKeys)
+	{
+		if (Key.IsValid())
+		{
+			InputComponent->BindKey(Key, IE_Pressed, this, &AFAPlayerController::StartPushToTalk);
+			InputComponent->BindKey(Key, IE_Released, this, &AFAPlayerController::StopPushToTalk);
+		}
+	}
+}
+
+void AFAPlayerController::StartPushToTalk()
+{
+	// 오픈 마이크일 때는 손대지 않는다 — 특히 뗄 때. 안 그러면 이 키가 마이크를 꺼버린다.
+	if (!UFAVoiceStatics::IsPushToTalkEnabled())
+	{
+		return;
+	}
+
+	if (UFAVoiceComponent* Voice = UFAVoiceStatics::GetLocalVoiceComponent(this))
+	{
+		Voice->StartTalking();
+	}
+}
+
+void AFAPlayerController::StopPushToTalk()
+{
+	if (!UFAVoiceStatics::IsPushToTalkEnabled())
+	{
+		return;
+	}
+
+	if (UFAVoiceComponent* Voice = UFAVoiceStatics::GetLocalVoiceComponent(this))
+	{
+		Voice->StopTalking();
 	}
 }
 
@@ -341,6 +434,16 @@ void AFAPlayerController::ShowPauseMenu()
 
 	PauseMenuWidget->SetIsFocusable(true);
 	PauseMenuWidget->AddToViewport(PauseMenuZOrder);
+
+	FocusPauseMenu();
+}
+
+void AFAPlayerController::FocusPauseMenu()
+{
+	if (!IsLocalController() || !IsPauseMenuOpen())
+	{
+		return;
+	}
 
 	// 멀티플레이라 게임을 멈추지는 않는다. 대신 메뉴가 입력을 독점한다.
 	FInputModeUIOnly InputMode;
@@ -479,6 +582,30 @@ void AFAPlayerController::Client_HideRoundResult_Implementation()
 	}
 }
 
+void AFAPlayerController::ReturnToLobby()
+{
+	Server_RequestReturnToLobby();
+}
+
+void AFAPlayerController::Server_RequestReturnToLobby_Implementation()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* FAGameMode = World->GetAuthGameMode<AFAGameMode>())
+		{
+			FAGameMode->RequestReturnToLobbyNow();
+		}
+	}
+}
+
+void AFAPlayerController::Client_NotifyReturnToLobbyFailed_Implementation()
+{
+	if (MatchResultWidget)
+	{
+		MatchResultWidget->NotifyReturnToLobbyFailed();
+	}
+}
+
 void AFAPlayerController::ReturnToMainMenu()
 {
 	if (bReturningToMainMenu)
@@ -549,4 +676,29 @@ void AFAPlayerController::TravelToMainMenu()
 void AFAPlayerController::QuitGame()
 {
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
+}
+
+// ============================================================
+// 콘솔에서 ESC 메뉴 열기
+// ============================================================
+namespace FAPauseMenuDebug
+{
+	static void TogglePauseMenuCommand(UWorld* World)
+	{
+		APlayerController* PlayerController = GEngine != nullptr ? GEngine->GetFirstLocalPlayerController(World) : nullptr;
+		AFAPlayerController* FAPlayerController = Cast<AFAPlayerController>(PlayerController);
+
+		if (FAPlayerController == nullptr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("FA.PauseMenu: 로컬 플레이어 컨트롤러가 없다. 아직 맵에 들어오지 않았을 수 있다."));
+			return;
+		}
+
+		FAPlayerController->TogglePauseMenu();
+	}
+
+	static FAutoConsoleCommandWithWorld TogglePauseMenuConsoleCommand(
+		TEXT("FA.PauseMenu"),
+		TEXT("ESC 메뉴를 연다/닫는다. PIE 에서 Esc 가 플레이를 멈춰 버릴 때 쓴다."),
+		FConsoleCommandWithWorldDelegate::CreateStatic(&TogglePauseMenuCommand));
 }

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 //
 // WBP 를 지정하지 않았을 때 C++ 이 조립하는 임시 설정창.
 // UI 담당이 WBP 를 만들면 이 파일의 코드는 한 줄도 돌지 않는다 — 같은 이름의 위젯을
@@ -184,6 +184,20 @@ UComboBoxString* USKSettingsMenuWidget::AddFallbackCombo(UVerticalBox* Column, c
 // ============================================================
 // 전체 조립
 // ============================================================
+/**
+ * 게임 전용 확장 위젯이 들어갈 빈 자리를 탭 맨 아래에 만든다.
+ * WBP 를 쓰면 같은 이름의 패널이 대신 물린다(BindWidgetOptional).
+ */
+UVerticalBox* USKSettingsMenuWidget::MakeFallbackExtensionBox(UVerticalBox* Tab)
+{
+	UVerticalBox* Box = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	if (UVerticalBoxSlot* BoxSlot = Tab->AddChildToVerticalBox(Box))
+	{
+		BoxSlot->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
+	}
+	return Box;
+}
+
 void USKSettingsMenuWidget::BuildFallbackLayout()
 {
 	bUsingFallbackLayout = true;
@@ -250,6 +264,7 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		Sld_SFX    = AddFallbackSlider(Tab, LOCTEXT("SFX", "효과음"), 0.f, 1.f, Txt_SFXValue);
 		Sld_UI     = AddFallbackSlider(Tab, LOCTEXT("UISound", "UI"), 0.f, 1.f, Txt_UIValue);
 		Chk_Mute   = AddFallbackCheckBox(Tab, LOCTEXT("Mute", "전체 음소거"));
+		Box_AudioExtra = MakeFallbackExtensionBox(Tab);
 	}
 
 	//~ ---------------- 보이스 탭 ----------------
@@ -262,12 +277,15 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		{
 			SecSlot->SetPadding(FMargin(0.f, 16.f, 0.f, 10.f));
 		}
+		Cmb_VoiceMicMode = AddFallbackCombo(Tab, LOCTEXT("VoiceMicMode", "마이크 방식"));
 		Sld_VoiceInput = AddFallbackSlider(Tab, LOCTEXT("VoiceIn", "입력 감도"), 0.f, 1.f, Txt_VoiceInputValue);
 		Sld_VoiceGate  = AddFallbackSlider(Tab, LOCTEXT("VoiceGate", "잡음 차단"), 0.f, 1.f, Txt_VoiceGateValue);
 
 		Tab->AddChildToVerticalBox(MakeFallbackText(
 			LOCTEXT("VoiceHint", "잡음 차단을 올리면 작은 소리가 잘립니다. 숨소리·키보드 소리가 들어가면 올리세요."),
 			11, SKFallback::LabelColor));
+
+		Box_VoiceExtra = MakeFallbackExtensionBox(Tab);
 	}
 
 	//~ ---------------- 화면 탭 ----------------
@@ -315,6 +333,8 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		Cmb_Colorblind    = AddFallbackCombo(Tab, LOCTEXT("Colorblind", "색약 보정"));
 		Chk_Subtitles     = AddFallbackCheckBox(Tab, LOCTEXT("Subtitles", "자막"));
 		Sld_SubtitleScale = AddFallbackSlider(Tab, LOCTEXT("SubtitleScale", "자막 크기"), 0.5f, 2.f, Txt_SubtitleScaleValue);
+
+		Box_VideoExtra = MakeFallbackExtensionBox(Tab);
 	}
 
 	//~ ---------------- 조작 탭 ----------------
@@ -344,6 +364,8 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 			ResetSlot->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
 			ResetSlot->SetHorizontalAlignment(HAlign_Left);
 		}
+
+		Box_ControlsExtra = MakeFallbackExtensionBox(Tab);
 	}
 
 	// 하단 바.

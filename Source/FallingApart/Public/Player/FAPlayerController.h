@@ -64,9 +64,23 @@ public:
 	UFUNCTION(Exec)
 	void FAVoiceGate(float SilenceThreshold = -1.0f, float NoiseGateThreshold = -1.0f);
 
-	/** 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구. */
+	/**
+	 * 감염을 즉시 한 번 일으킨다. 감염 전환 연출(암전 → 붉은 화면 → 기상)과 연속 드래프트
+	 */
+	UFUNCTION(Exec)
+	void FAInfect(const FString& PlayerNameFragment);
+
+	/**
+	 * 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구.
+	 */
 	UFUNCTION(Exec)
 	void FAPushToTalk(bool bEnabled = true);
+
+	//~ ---------------- 푸시투토크 ----------------
+
+	/** 눌린 동안만 마이크를 연다. 오픈 마이크 상태에서는 아무 일도 하지 않는다. */
+	void StartPushToTalk();
+	void StopPushToTalk();
 
 	//~ ---------------- 일시정지 메뉴 (ESC) ----------------
 	// 로비 · 인게임 공통
@@ -79,6 +93,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void HidePauseMenu();
+
+	/**
+	 * 키보드 포커스와 입력 모드를 일시정지 메뉴로 되돌린다.
+	 *
+	 * 설정창처럼 메뉴 위에 겹쳐 뜬 창이 닫힌 뒤에 부른다. ESC 로 메뉴를 닫는 것은
+	 * UFAPauseMenuWidget::NativeOnKeyDown 이라 포커스가 메뉴에 없으면 키가 아무 데도 안 간다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void FocusPauseMenu();
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|PauseMenu")
 	bool IsPauseMenuOpen() const;
@@ -100,6 +123,22 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Result")
 	bool IsMatchResultOpen() const;
+
+	/**
+	 * 최종 순위표의 '로비로 나가기'.
+	 *
+	 * ReturnToMainMenu() 와 달리 세션을 부수지 않는다. 혼자 빠져나가는 게 아니라
+	 * 서버가 세션을 다시 열고 다 같이 로비 레벨로 ServerTravel 하도록 요청
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Result")
+	void ReturnToLobby();
+
+	UFUNCTION(Server, Reliable)
+	void Server_RequestReturnToLobby();
+
+	/** 서버가 로비 복귀에 실패했다 — 결과창의 버튼을 되살린다. */
+	UFUNCTION(Client, Reliable)
+	void Client_NotifyReturnToLobbyFailed();
 
 	//~ ---------------- 라운드 결과 화면 ----------------
 
@@ -163,6 +202,15 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|PauseMenu")
 	TArray<FKey> PauseMenuKeys;
+
+	/**
+	 * 푸시투토크 키. 기본은 ` (EKeys::Tilde).
+	 *
+	 * Enhanced Input 을 거치지 않고 직접 잡는다(ESC 와 같은 방식) — 마이크는 캐릭터를 조종할 수
+	 * 없는 상태(관전·연출 중)에서도 열려야 하는데, IMC 는 그때 빠져 있을 수 있다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Voice")
+	TArray<FKey> PushToTalkKeys;
 
 	/**
 	 * 돌아갈 메인 메뉴 레벨. 비워두면 프로젝트 설정의 Game Default Map

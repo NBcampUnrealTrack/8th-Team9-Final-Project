@@ -132,6 +132,11 @@ private:
 	TWeakObjectPtr<AFAGameState> BoundGameState;
 
 	/**
+	 * 위 GameState 에 델리게이트를 걸어둔 상태인가.
+	 */
+	bool bBoundGameState = false;
+
+	/**
 	 * 이 월드에는 AFAGameState 가 없다고 판단한 상태.
 	 * 메인 메뉴·로비는 각자 다른 GameState 를 쓰므로, 없는 걸 계속 기다리며 틱을 돌면 안 된다.
 	 */

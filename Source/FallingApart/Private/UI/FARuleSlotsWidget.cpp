@@ -94,7 +94,8 @@ void UFARuleSlotsWidget::RefreshBinding()
 		NewASC = Cast<UFAAbilitySystemComponent>(AsInterface->GetAbilitySystemComponent());
 	}
 
-	UFAAbilitySystemComponent* OldASC = BoundASC.Get();
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다. 
+	UFAAbilitySystemComponent* OldASC = BoundASC.Get(/*bEvenIfGarbage=*/true);
 	if (NewASC == OldASC)
 	{
 		return;

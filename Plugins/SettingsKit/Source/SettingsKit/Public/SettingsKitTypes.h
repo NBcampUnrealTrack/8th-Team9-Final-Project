@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "SettingsKitTypes.generated.h"
 
+class UUserWidget;
+
 /** 설정창 탭. 위젯 스위처의 인덱스와 같은 순서다. */
 UENUM(BlueprintType)
 enum class ESKSettingsTab : uint8
@@ -25,6 +27,16 @@ enum class ESKColorblindType : uint8
 	Deuteranope UMETA(DisplayName = "녹색맹"),
 	Protanope   UMETA(DisplayName = "적색맹"),
 	Tritanope   UMETA(DisplayName = "청색맹")
+};
+
+UENUM(BlueprintType)
+enum class ESKVoiceMicMode : uint8
+{
+	/** 항상 열려 있다. 말하면 바로 나간다. */
+	OpenMic    UMETA(DisplayName = "오픈 마이크"),
+
+	/** 지정한 키를 누르고 있는 동안에만 나간다. */
+	PushToTalk UMETA(DisplayName = "푸시투토크")
 };
 
 /** 조작 탭의 키바인딩 한 행. WBP 가 목록을 그릴 때 쓴다. */
@@ -107,6 +119,13 @@ struct SETTINGSKIT_API FSKSettingsValues
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
 	bool bVoiceMuted = false;
 
+	/**
+	 * 마이크를 항상 열어 둘지(오픈 마이크), 키를 누르는 동안만 열지(푸시투토크).
+	 * 기본은 오픈 마이크 — 푸시투토크는 키를 모르면 아예 말을 못 하는 상태가 된다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
+	ESKVoiceMicMode MicMode = ESKVoiceMicMode::OpenMic;
+
 	//~ ---------------- 화면 (엔진 GameUserSettings 에 없는 것만) ----------------
 
 	/** 감마. 2.2 가 표준. */
@@ -138,4 +157,21 @@ struct SETTINGSKIT_API FSKSettingsValues
 
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Controls")
 	bool bInvertYAxis = false;
+};
+
+/**
+ * 게임 전용 위젯을 설정창 탭 안에 끼워 넣는 지정.
+ */
+USTRUCT(BlueprintType)
+struct FSKTabExtension
+{
+	GENERATED_BODY()
+
+	/** 어느 탭에 넣을 것인가. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SettingsKit")
+	ESKSettingsTab Tab = ESKSettingsTab::Audio;
+
+	/** 넣을 위젯. WBP 여도 되고 C++ 위젯 클래스여도 된다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SettingsKit", meta = (MetaClass = "/Script/UMG.UserWidget"))
+	TSoftClassPtr<UUserWidget> WidgetClass;
 };

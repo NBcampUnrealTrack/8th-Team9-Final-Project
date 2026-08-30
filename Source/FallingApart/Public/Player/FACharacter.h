@@ -27,6 +27,7 @@ class UWidgetComponent;
 class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
+class UAnimMontage;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -207,9 +208,17 @@ protected:
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
 
-	/** 진영에 딸린 연출(외형 · 그르렁 루프)을 현재 진영에 맞춘다. */
+	/** 진영에 딸린 연출(외형 · 그르렁 루프 · 감염 전환)을 현재 진영에 맞춘다. */
 	UFUNCTION()
 	void HandleTeamChanged(EFATeam NewTeam);
+
+	/** 감염 전환 연출을 시작한다. 진영이 Human -> Zombie 로 바뀐 순간에만 불린다. */
+	void StartInfectionSequence();
+
+	/**
+	 * 연출의 화면 효과 값을 지금 시각 기준으로 다시 계산한다. 다 끝났으면 스스로 꺼진다.
+	 */
+	void UpdateInfectionSequence();
 
 	/**
 	 * 진영에 맞는 머티리얼을 메시 전 슬롯에 적용한다.
@@ -218,6 +227,13 @@ protected:
 
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
+
+public:
+	/** 감염 전환 연출이 도는 중인가. 화면이 아직 어두운 동안은 이동 입력을 받지 않는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Infection")
+	bool IsPlayingInfectionSequence() const { return bInfectionSequenceActive; }
+
+protected:
 
 	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
 	void UpdateWadeLoop(bool bInWater);
@@ -288,6 +304,13 @@ protected:
 
 	/** 등반 입력 — Move() 가 사다리 위에서는 여기로 넘긴다. */
 	void ClimbMove(const FVector2D& MovementVector);
+
+	/**
+	 * 사다리에서 오르내림과 뛰어내리기를 막아야 하는가.
+	 *
+	 * 포획·줄다리기가 걸린 동안은 좀비와 인질이 그 자리에 함께 묶여야 한다
+	 */
+	bool IsLadderMovementLocked() const;
 
 	/** GA_Jump 를 통해 점프한다 — 점프 불가 룰(Z01/H01)이 여기서 걸린다. */
 	void Input_Jump();
@@ -473,6 +496,34 @@ public:
 	/** 좀비(감염) 외형. MI_CharacterInfected. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
 	TObjectPtr<UMaterialInterface> ZombieMaterial;
+
+	//~ ---------------- 감염 전환 연출 ----------------
+	//~ 인간 -> 좀비 로 진영이 바뀐 순간 한 번 돈다. 암전 → 빨강에서 정상으로 → 기상.
+
+	/**
+	 * 쓰러진 자세에서 일어나는 몽타주. 비워두면 화면 효과만 돌고 캐릭터는 그대로 서 있는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection")
+	TObjectPtr<UAnimMontage> InfectionGetUpMontage;
+
+	/** 화면이 완전히 검은 채로 머무는 시간(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionBlackoutHoldSeconds = 1.0f;
+
+	/** 암전이 풀리며 밝아지는 데 걸리는 시간(초). 이 시간이 끝나야 이동 입력이 돌아온다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionDarkenReleaseSeconds = 0.6f;
+
+	/**
+	 * 빨간 화면이 정상 색으로 돌아오는 데 걸리는 시간(초).
+	 * 암전 해제와 같은 시점에 시작해서 더 길게 끈다 — 밝아지고 나서도 한동안 붉게 남는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionRedFadeSeconds = 2.5f;
+
+	/** 빨강의 최대 강도(0~1). 1 이면 초록·파랑이 완전히 죽어 순수 빨강만 남는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ClampMax = "1"))
+	float InfectionRedTintStrength = 0.85f;
 
 	//~ ---------------- 머리 위 감염 게이지 ----------------
 
@@ -663,6 +714,24 @@ private:
 	 */
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
+
+	//~ 감염 전환 연출의 진행 상태. 전부 로컬 표현이라 복제하지 않는다.
+
+	bool bInfectionSequenceActive = false;
+
+	/** 연출이 시작된 월드 시각. 연출이 안 도는 동안에는 의미 없는 값이다. */
+	float InfectionSequenceStartTime = 0.0f;
+
+	/** 이번 프레임의 연출 화면 값. Tick 이 계산하고 UpdateVisionEffects 가 읽어 간다. */
+	float InfectionDarkenAmount = 0.0f;
+	float InfectionRedAmount = 0.0f;
+
+	/**
+	 * 마지막으로 본 진영. Human -> Zombie 로 '바뀌는 순간' 만 잡아내려고 들고 있는다.
+	 * 첫 호출은 기준만 잡는다
+	 */
+	EFATeam LastKnownTeam = EFATeam::None;
+	bool bHasTeamBaseline = false;
 
 	/**
 	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.

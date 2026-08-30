@@ -16,6 +16,7 @@ class USlider;
 class UTextBlock;
 class UVerticalBox;
 class UWidget;
+class UPanelWidget;
 class UWidgetSwitcher;
 class USKSettingsMenuWidget;
 
@@ -83,6 +84,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit")
 	void SetTab(ESKSettingsTab Tab);
+
+	/**
+	 * 그 탭의 게임 전용 확장 위젯이 들어가는 자리. 없으면 nullptr.
+	 * WBP 에 `Box_VoiceExtra` 같은 이름의 패널을 놓으면 물린다.
+	 */
+	UPanelWidget* GetTabExtensionBox(ESKSettingsTab Tab) const;
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
@@ -172,6 +179,10 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UCheckBox> Chk_VoiceMute;
+
+	/** 오픈 마이크 / 푸시투토크. 항목 순서 = ESKVoiceMicMode 의 값 순서다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UComboBoxString> Cmb_VoiceMicMode;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UTextBlock> Txt_VoiceOutputValue;
@@ -267,6 +278,20 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UTextBlock> Txt_KeybindWarning;
 
+	//~ ---------------- 게임 전용 확장 자리 ----------------
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UPanelWidget> Box_AudioExtra;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UPanelWidget> Box_VoiceExtra;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UPanelWidget> Box_VideoExtra;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UPanelWidget> Box_ControlsExtra;
+
 	//~ ---------------- 하단 바 ----------------
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
@@ -334,6 +359,9 @@ private:
 	//~ 초기화
 	void BindCallbacks();
 
+	/** USKPluginSettings::TabExtensions 의 위젯을 만들어 각 탭의 자리에 붙인다. */
+	void BuildTabExtensions();
+
 	/**
 	 * 슬라이더의 최소·최대를 코드가 못박는다. WBP 로 만들든 임시 레이아웃이든 똑같이 적용된다.
 	 *
@@ -363,6 +391,7 @@ private:
 	UFUNCTION() void HandleVoiceInputChanged(float V);
 	UFUNCTION() void HandleVoiceGateChanged(float V);
 	UFUNCTION() void HandleVoiceMuteChanged(bool bChecked);
+	UFUNCTION() void HandleVoiceMicModeSelected(FString Item, ESelectInfo::Type Type);
 
 	//~ 화면 콜백
 	UFUNCTION() void HandleResolutionSelected(FString Item, ESelectInfo::Type Type);
@@ -413,6 +442,10 @@ private:
 	void FinishRevert(bool bKeep);
 
 	//~ 공통
+	/** 확장 위젯. 설정창이 살아 있는 동안 붙잡아 둔다. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UUserWidget>> TabExtensionWidgets;
+
 	UFUNCTION() void PlayHoverSound();
 	void PlayClickSound();
 	void ApplyAll();
@@ -434,6 +467,9 @@ private:
 	USlider* AddFallbackSlider(UVerticalBox* Column, const FText& Label, float Min, float Max, TObjectPtr<UTextBlock>& OutValueLabel);
 	UCheckBox* AddFallbackCheckBox(UVerticalBox* Column, const FText& Label);
 	UComboBoxString* AddFallbackCombo(UVerticalBox* Column, const FText& Label);
+
+	/** 게임 전용 확장 위젯이 들어갈 빈 자리를 탭 맨 아래에 만든다. */
+	UVerticalBox* MakeFallbackExtensionBox(UVerticalBox* Tab);
 	UButton* MakeFallbackButton(class UPanelWidget* Parent, const FText& Label);
 	UTextBlock* MakeFallbackText(const FText& Text, int32 FontSize, const FLinearColor& Color) const;
 

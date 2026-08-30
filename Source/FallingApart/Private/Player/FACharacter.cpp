@@ -187,6 +187,15 @@ void AFACharacter::BeginCaptureState(bool bInIsVictim)
 	ResistLevel = 0.0f;
 	LastResistInputTime = -1.0f;
 	LastResistDirection = 0;
+
+	// 사다리 위에서 잡혔다면 남아 있던 등반 속도를 여기서 끊는다.
+	if (IsClimbing())
+	{
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+		}
+	}
 }
 
 void AFACharacter::UpdateCaptureProgress(float Progress, float RatePerSecond)
@@ -783,8 +792,8 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	UpdateWadeLoop(/*bInWater=*/false);
 
-	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 점유가 남는다.
-	// AFAInteractableActor 의 감시 타이머가 결국 풀어주지만, 여기서 바로 놓는 편이 빠르다.
+	// 사다리를 탄 채 사라지면(감염 · 접속 끊김) 등반 상태가 남는다.
+	// 사다리는 점유를 쓰지 않으므로 감시 타이머가 대신 치워주지 않는다 — 여기서 직접 놓는다.
 	if (HasAuthority() && ClimbingLadder)
 	{
 		ServerStopClimbing(/*bLaunchOverLedge=*/false);
@@ -800,13 +809,14 @@ void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AFACharacter::BindTeamNotify()
 {
+	// GC 로 파괴 예약된 오브젝트도 그대로 돌려받아야 한다.
 	AFAPlayerState* FAPlayerState = GetPlayerState<AFAPlayerState>();
-	if (!FAPlayerState || TeamNotifySource.Get() == FAPlayerState)
+	if (!FAPlayerState || TeamNotifySource.Get(/*bEvenIfGarbage=*/true) == FAPlayerState)
 	{
 		return;
 	}
 
-	if (AFAPlayerState* PreviousState = TeamNotifySource.Get())
+	if (AFAPlayerState* PreviousState = TeamNotifySource.Get(/*bEvenIfGarbage=*/true))
 	{
 		PreviousState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
 	}
@@ -820,8 +830,79 @@ void AFACharacter::BindTeamNotify()
 
 void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 {
+	// 감염은 되돌아오지 않는다 — Human -> Zombie 전환이 곧 "감염됐다" 는 신호다.
+	if (bHasTeamBaseline && LastKnownTeam == EFATeam::Human && NewTeam == EFATeam::Zombie)
+	{
+		StartInfectionSequence();
+	}
+
+	LastKnownTeam = NewTeam;
+	bHasTeamBaseline = true;
+
 	ApplyTeamMaterial(NewTeam);
 	UpdateGrowlLoop(NewTeam);
+}
+
+void AFACharacter::StartInfectionSequence()
+{
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	InfectionSequenceStartTime = World->GetTimeSeconds();
+	bInfectionSequenceActive = true;
+
+	// 첫 프레임부터 화면이 검어야 한다.
+	InfectionDarkenAmount = 1.0f;
+	InfectionRedAmount = InfectionRedTintStrength;
+
+	if (InfectionGetUpMontage)
+	{
+		PlayAnimMontage(InfectionGetUpMontage);
+	}
+}
+
+void AFACharacter::UpdateInfectionSequence()
+{
+	if (!bInfectionSequenceActive)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	const float Elapsed = World->GetTimeSeconds() - InfectionSequenceStartTime;
+
+	// 1단계 — 완전 암전. 빨강은 이미 최대치로 깔아 둔다(밝아질 때 빨강부터 드러나도록).
+	if (Elapsed < InfectionBlackoutHoldSeconds)
+	{
+		InfectionDarkenAmount = 1.0f;
+		InfectionRedAmount = InfectionRedTintStrength;
+		return;
+	}
+
+	// 2단계 — 암전이 풀리고 빨강이 빠진다. 둘은 같은 시점에 시작하지만 길이가 달라서,
+	// 화면이 먼저 밝아지고 그 뒤로 붉은 기가 천천히 가신다.
+	const float SinceBlackout = Elapsed - InfectionBlackoutHoldSeconds;
+
+	InfectionDarkenAmount = InfectionDarkenReleaseSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionDarkenReleaseSeconds, 0.0f, 1.0f)
+		: 0.0f;
+
+	InfectionRedAmount = InfectionRedFadeSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionRedFadeSeconds, 0.0f, 1.0f) * InfectionRedTintStrength
+		: 0.0f;
+
+	if (InfectionDarkenAmount <= 0.0f && InfectionRedAmount <= 0.0f)
+	{
+		bInfectionSequenceActive = false;
+	}
 }
 
 void AFACharacter::ApplyTeamMaterial(EFATeam NewTeam)
@@ -1101,6 +1182,9 @@ void AFACharacter::Tick(float DeltaTime)
 		ApplyHideState();
 	}
 
+	// 시야 효과보다 먼저 계산한다
+	UpdateInfectionSequence();
+
 	UpdateVisionEffects();
 }
 
@@ -1188,6 +1272,13 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		}
 	}
 
+	// 감염 전환 연출 중에는 움직이지 않는다
+	// 화면이 다 밝아지는 순간(InfectionDarkenAmount == 0) 조작이 돌아온다.
+	if (bInfectionSequenceActive && InfectionDarkenAmount > 0.0f)
+	{
+		return;
+	}
+
 	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.
 	if (IsHiding())
 	{
@@ -1255,7 +1346,11 @@ void AFACharacter::Input_Jump()
 	// 사다리에 붙어 있으면 점프는 '뛰어내리기' 다. 서버만 상태를 바꿀 수 있으므로 요청만 보낸다.
 	if (IsClimbing())
 	{
-		Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		// 잡힌 채로 뛰어내리면 그게 곧 포획 탈출이 된다 — 저항으로 시간을 버는 것 말고는 못 벗어난다.
+		if (!IsLadderMovementLocked())
+		{
+			Server_RequestStopClimbing(/*bLaunchOverLedge=*/false);
+		}
 		return;
 	}
 
@@ -1427,8 +1522,10 @@ void AFACharacter::UpdateVisionEffects()
 	SetVisionBlendableActive(VisionNarrowFOVMID, NarrowAmount > 0.0f);
 
 	// 흑백 (Vision.Desaturate) — Attribute 없이 태그 유무로만 켜고 끈다.
-	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bDesaturate;
-	if (bDesaturate)
+	// 단, 감염 전환 연출이 도는 몇 초 동안은 비켜준다.
+	const bool bApplyDesaturate = bDesaturate && InfectionRedAmount <= 0.0f;
+	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bApplyDesaturate;
+	if (bApplyDesaturate)
 	{
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
@@ -1474,22 +1571,28 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 3초 주기로 0.4초간 완전 암전.
+	// 5초 주기로 1초간 완전 암전.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 3.0f;
-		constexpr float BlackoutFlashDuration = 0.4f;
+		constexpr float BlackoutPeriod = 5.0f;
+		constexpr float BlackoutFlashDuration = 1.0f;
 
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
-	// 안개와 암전, 화면을 어둡게 만드는 두 효과를 ColorGain 하나로 합쳐서 적용 — 서로 override 값을 덮어쓰지 않게.
-	const float DarkenAmount = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
+	// 화면을 어둡게 만드는 세 효과(안개 · 명멸 룰 · 감염 연출)를 ColorGain 하나로 합쳐서 적용
+	const float DarkenAmount = FMath::Max3(FogAmount * 0.25f, BlackoutAmount, InfectionDarkenAmount);
+
+	// ColorGain 은 XYZ = RGB 배수, W = 전체 밝기다. 감염 연출의 빨강은 초록·파랑을 눌러서 만들고 암전은 W 로
 	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = false;
-	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f;
-	FollowCamera->PostProcessSettings.ColorGain = FVector4(1.0f, 1.0f, 1.0f, 1.0f - DarkenAmount);
+	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessSettings.ColorGain = FVector4(
+		1.0f,
+		1.0f - InfectionRedAmount,
+		1.0f - InfectionRedAmount,
+		1.0f - DarkenAmount);
 
 	// 1인칭 강제 (Vision.ForceFPS)
 	if (bForceFirstPerson && !bIsFirstPerson)
@@ -1506,9 +1609,11 @@ void AFACharacter::UpdateVisionEffects()
 		}
 	}
 
-	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 네 효과(흑백·안개·암전·시야축소) 중 하나라도 켜져 있으면 블렌드.
-	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f || NarrowAmount > 0.0f;
-	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 효과(흑백·안개·암전·시야축소·감염 연출)
+	// 중 하나라도 켜져 있으면 블렌드. 감염 연출을 빠뜨리면 값만 넣고 화면에는 아무것도 안 나온다.
+	const bool bAnyVisualEffectActive = bApplyDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f
+		|| NarrowAmount > 0.0f || InfectionDarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessBlendWeight = bAnyVisualEffectActive ? 1.0f : 0.0f;
 }
 
 void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
@@ -1697,6 +1802,12 @@ void AFACharacter::ServerStopClimbing(bool bLaunchOverLedge)
 
 void AFACharacter::Server_RequestStopClimbing_Implementation(bool bLaunchOverLedge)
 {
+	// 클라이언트가 보내는 유일한 하차 경로다.
+	if (IsLadderMovementLocked())
+	{
+		return;
+	}
+
 	ServerStopClimbing(bLaunchOverLedge);
 }
 
@@ -1780,9 +1891,22 @@ void AFACharacter::ApplyClimbState()
 	}
 }
 
+bool AFACharacter::IsLadderMovementLocked() const
+{
+	// 포획은 좀비·인질 양쪽에 CaptureState 를 켜므로 한 번의 검사로 둘 다 묶인다.
+	return CaptureState.IsActive() || ContestState.IsActive();
+}
+
 void AFACharacter::ClimbMove(const FVector2D& MovementVector)
 {
 	if (!ClimbingLadder)
+	{
+		return;
+	}
+
+	// 잡힌 채로 계속 오를 수 있으면 인질이 거리를 벌려 포획을 스스로 푼다.
+	// 이때의 WASD 는 Move() 앞단에서 이미 저항 입력으로 소비된 뒤다.
+	if (IsLadderMovementLocked())
 	{
 		return;
 	}
