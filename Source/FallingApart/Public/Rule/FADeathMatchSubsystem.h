@@ -15,8 +15,9 @@ class APlayerStart;
  * 최종 순위는 AFAPlayerState::SetDeathMatchPlacement() 로 기록하고,
  * AFAGameState::CompareRank() 4차(완전 동점 단계)가 이 값을 읽어서 승부를 가른다.
  *
- * 3인 데스매치(좀비1 vs 인간2)는 GDD 상 "권장안 · 확정 필요" 항목 — 아래 승패/순위 해석은
- * 기획 확정 전까지 쓰는 임시 규칙이다.
+ * 3인 데스매치(좀비1 vs 인간2)는 팀 회의로 확정(2026-08-31). 진영은 3명 중 1명을 랜덤으로
+ * 좀비로 뽑는다. 데스매치 중 난입은 AFAGameMode::MustSpectate_Implementation() 이 막고,
+ * 이탈은 NotifyContenderDisconnected() 가 즉시 패배 처리한다.
  */
 UCLASS()
 class FALLINGAPART_API UFADeathMatchSubsystem : public UWorldSubsystem
@@ -32,6 +33,13 @@ public:
 	 * 1분이 지나기 전에 호출되면 좀비 승으로 즉시 종료.
 	 */
 	void NotifyContenderCaught(AFAPlayerState* CaughtHuman);
+
+	/**
+	 * 데스매치 참가자가 접속을 끊었을 때 호출 (AFAGameMode::Logout() 이 페이즈를 보고 호출).
+	 * 이탈 = 즉시 패배 처리. 좀비가 나가면 남은 인간 전원 승, 인간이 나가면
+	 * 그 인간만 최하위로 확정되고 — 3인 케이스라 인간이 더 남아 있으면 — 매치는 계속된다.
+	 */
+	void NotifyContenderDisconnected(AFAPlayerState* Contender);
 
 	/** 데스매치가 진행 중인가 (좀비·인간이 최소 1명씩 확정되어 타이머가 도는 상태). */
 	bool IsDeathMatchActive() const { return ActiveZombie.IsValid() && ActiveHumans.Num() > 0; }
@@ -91,7 +99,7 @@ private:
 
 	TWeakObjectPtr<AFAPlayerState> ActiveZombie;
 
-	// 2인이면 1명, 3인이면 2명 (GDD "좀비1 vs 인간2", 권장안 · 확정 필요).
+	// 2인이면 1명, 3인이면 2명.
 	TArray<TWeakObjectPtr<AFAPlayerState>> ActiveHumans;
 
 	FTimerHandle DeathMatchTimerHandle;
