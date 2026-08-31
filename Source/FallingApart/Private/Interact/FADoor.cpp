@@ -4,6 +4,9 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Player/FACharacter.h"
+#include "CollisionQueryParams.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
 AFADoor::AFADoor()
@@ -70,6 +73,7 @@ void AFADoor::BeginPlay()
 	}
 
 	bLastSoundedOpenState = bIsOpen;
+	SavedPawnCollisionResponse = DoorMesh->GetCollisionResponseToChannel(ECC_Pawn);
 }
 
 void AFADoor::Tick(float DeltaTime)
@@ -82,14 +86,84 @@ void AFADoor::Tick(float DeltaTime)
 	}
 
 	const FRotator Current = HingePivot->GetRelativeRotation();
-	if (Current.Equals(TargetPivotRotation, 0.05f))
+	const bool bMoving = !Current.Equals(TargetPivotRotation, 0.05f);
+
+	if (bMoving)
+	{
+		// 각속도 고정 보간.
+		const FRotator Next = FMath::RInterpConstantTo(Current, TargetPivotRotation, DeltaTime, OpenSpeedDegreesPerSecond);
+		HingePivot->SetRelativeRotation(Next);
+	}
+
+	// 멈춘 뒤에도 충돌을 되살릴 때까지는 계속 봐야 하므로 위에서 일찍 빠져나가지 않는다.
+	UpdatePawnCollisionForMotion(DeltaTime, bMoving);
+}
+
+void AFADoor::UpdatePawnCollisionForMotion(float DeltaTime, bool bMoving)
+{
+	if (!bDisablePawnCollisionWhileMoving)
+	{
+		// 도중에 옵션을 꺼도 문이 통과 상태로 남지 않게 한다.
+		SetPawnCollisionSuppressed(false);
+		return;
+	}
+
+	if (bMoving)
+	{
+		SetPawnCollisionSuppressed(true);
+		PawnCollisionSuppressedSeconds = 0.0f;
+		return;
+	}
+
+	if (!bPawnCollisionSuppressed)
 	{
 		return;
 	}
 
-	// 각속도 고정 보간. RInterpTo(지수 감속)를 쓰면 마지막 몇 도가 한없이 느려진다.
-	const FRotator Next = FMath::RInterpConstantTo(Current, TargetPivotRotation, DeltaTime, OpenSpeedDegreesPerSecond);
-	HingePivot->SetRelativeRotation(Next);
+	PawnCollisionSuppressedSeconds += DeltaTime;
+	if (PawnCollisionSuppressedSeconds < PawnCollisionRestoreGraceSeconds && IsPawnOverlappingDoorMesh())
+	{
+		return;
+	}
+
+	SetPawnCollisionSuppressed(false);
+}
+
+void AFADoor::SetPawnCollisionSuppressed(bool bSuppress)
+{
+	if (bPawnCollisionSuppressed == bSuppress || !DoorMesh)
+	{
+		return;
+	}
+
+	bPawnCollisionSuppressed = bSuppress;
+	PawnCollisionSuppressedSeconds = 0.0f;
+
+	// Pawn 채널만 손댄다.
+	DoorMesh->SetCollisionResponseToChannel(ECC_Pawn, bSuppress ? ECR_Ignore : SavedPawnCollisionResponse.GetValue());
+}
+
+bool AFADoor::IsPawnOverlappingDoorMesh() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !DoorMesh)
+	{
+		return false;
+	}
+
+	const FBoxSphereBounds MeshBounds = DoorMesh->Bounds;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FADoorPawnClearance), /*bTraceComplex=*/false, this);
+	FCollisionObjectQueryParams ObjectParams(ECC_Pawn);
+
+	TArray<FOverlapResult> Overlaps;
+	return World->OverlapMultiByObjectType(
+		Overlaps,
+		MeshBounds.Origin,
+		FQuat::Identity,
+		ObjectParams,
+		FCollisionShape::MakeBox(MeshBounds.BoxExtent),
+		Params);
 }
 
 float AFADoor::GetMirrorSign() const

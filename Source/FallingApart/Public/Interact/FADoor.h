@@ -71,6 +71,14 @@ protected:
 	/** 거울 배치 보정 배수. 정상 배치면 1, Scale 부호가 뒤집힌 배치면 -1. */
 	float GetMirrorSign() const;
 
+	/** 회전 중에는 문짝의 Pawn 충돌을 끄고, 멈추면 되살린다. 서버·클라가 각자 로컬로 한다. */
+	void UpdatePawnCollisionForMotion(float DeltaTime, bool bMoving);
+
+	void SetPawnCollisionSuppressed(bool bSuppress);
+
+	/** 문짝 자리에 캐릭터가 들어와 있는가. 충돌을 되살리는 순간 밀어내는 것을 막기 위한 검사. */
+	bool IsPawnOverlappingDoorMesh() const;
+
 public:
 	//~ ---------------- 컴포넌트 ----------------
 
@@ -119,6 +127,22 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door")
 	bool bStartLocked = false;
+
+	//~ ---------------- 충돌 ----------------
+
+	/**
+	 * 여닫는 동안 문짝이 캐릭터를 밀지 않게 한다(Pawn 채널만 끈다 — 총알·시야는 그대로 막는다).
+	 * 회전이 끝나면 되살리되, 문짝 자리에 사람이 서 있으면 비켜날 때까지 기다린다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Collision")
+	bool bDisablePawnCollisionWhileMoving = true;
+
+	/**
+	 * 회전이 끝난 뒤 사람이 안 비켜도 충돌을 되살리기까지의 시간(초).
+	 * 0 이면 즉시 되살린다(엔진이 밀어낸다). 문틈에 서서 통과하는 것을 막는 안전장치다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Collision", meta = (ClampMin = "0.0"))
+	float PawnCollisionRestoreGraceSeconds = 2.0f;
 
 	//~ ---------------- 캐릭터 애니메이션 ----------------
 
@@ -178,4 +202,12 @@ private:
 
 	/** 소리를 낸 마지막 개폐 상태. 접속 직후 초기 복제로 소리가 나는 것을 막는다. */
 	bool bLastSoundedOpenState = false;
+
+	/** 배치 당시 문짝의 Pawn 채널 응답. 충돌을 되살릴 때 이 값으로 돌린다. */
+	TEnumAsByte<ECollisionResponse> SavedPawnCollisionResponse = ECR_Block;
+
+	bool bPawnCollisionSuppressed = false;
+
+	/** 회전이 멈춘 뒤 아직 충돌을 못 되살린 채 흐른 시간. */
+	float PawnCollisionSuppressedSeconds = 0.0f;
 };
