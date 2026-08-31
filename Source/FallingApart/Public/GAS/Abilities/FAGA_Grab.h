@@ -54,6 +54,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Animation")
 	TObjectPtr<UAnimMontage> GrabAttemptMontage;
 
+	/** 공격 몽타주 재생 속도. 1.0은 원본 속도다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Animation",
+		meta = (ClampMin = "0.1"))
+	float GrabMontagePlayRate = 1.0f;
+
 	/**
 	 * 몽타주 시작 후 실제 포획 판정을 실행할 시점(초).
 	 * 애니메이션 Notify 에 판정을 의존하지 않아 Dedicated Server 에서도 동일하게 동작한다.
