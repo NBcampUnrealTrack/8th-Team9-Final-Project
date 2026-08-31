@@ -507,6 +507,23 @@ void AFACharacter::SetupNicknameMarker()
 	NicknameMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 	NicknameMarker->SetRelativeLocation(NicknameMarkerOffset);
 	NicknameMarker->SetVisibility(true);
+	NicknameMarker->InitWidget();
+	RefreshNicknameMarker();
+}
+
+void AFACharacter::RefreshNicknameMarker()
+{
+	if (!NicknameMarker)
+	{
+		return;
+	}
+
+	// PlayerState는 Pawn보다 늦게 복제될 수 있다. 같은 캐릭터를 다시 주입하면 이름도 함께 갱신된다.
+	NicknameMarker->InitWidget();
+	if (UFAOverHeadWidget* OverHeadWidget = Cast<UFAOverHeadWidget>(NicknameMarker->GetUserWidgetObject()))
+	{
+		OverHeadWidget->SetTargetCharacter(this);
+	}
 }
 bool AFACharacter::ShouldShowRuleMarker() const
 {
@@ -866,6 +883,7 @@ void AFACharacter::PossessedBy(AController* NewController)
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshNicknameMarker();
 	RefreshInteractionTick();
 }
 
@@ -875,6 +893,7 @@ void AFACharacter::OnRep_PlayerState()
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshNicknameMarker();
 	RefreshInteractionTick();
 }
 
