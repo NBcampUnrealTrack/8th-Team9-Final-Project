@@ -100,13 +100,14 @@ void UFAGA_Grab::ActivateAbility(
 		}
 		return;
 	}
+	const float MontagePlayRate = FMath::Max(0.1f, GrabMontagePlayRate);
 
 	UAbilityTask_PlayMontageAndWait* MontageTask =
 		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this,
 			TEXT("GrabAttemptMontage"),
 			GrabAttemptMontage,
-			1.0f,
+			MontagePlayRate,
 			NAME_None,
 			/*bStopWhenAbilityEnds=*/true);
 
@@ -131,7 +132,14 @@ void UFAGA_Grab::ActivateAbility(
 	}
 
 	// 서버의 월드 타이머를 판정 기준으로 삼는다. Dedicated Server 의 Mesh Tick/Notify 설정과 무관하다.
-	const float ImpactDelay = FMath::Clamp(GrabImpactDelay, 0.0f, GrabAttemptMontage->GetPlayLength());
+	const float MontageDuration =
+		GrabAttemptMontage->GetPlayLength() / MontagePlayRate;
+
+	const float ImpactDelay = FMath::Clamp(
+		GrabImpactDelay / MontagePlayRate,
+		0.0f,
+		MontageDuration);
+
 	if (ImpactDelay <= 0.0f)
 	{
 		ResolveGrabAttempt();
