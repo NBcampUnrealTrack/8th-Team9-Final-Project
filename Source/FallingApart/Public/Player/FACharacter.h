@@ -365,7 +365,11 @@ protected:
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
 	
+	/** 머리 위 닉네임 위젯을 만들고 이 캐릭터를 표시 대상으로 주입한다. */
 	void SetupNicknameMarker();
+
+	/** PlayerState 도착 또는 빙의 변경 후 닉네임 위젯의 표시 대상을 다시 갱신한다. */
+	void RefreshNicknameMarker();
 
 	/**
 	 * 이 프레임에 머리 위 룰 아이콘을 그려야 하는가.
