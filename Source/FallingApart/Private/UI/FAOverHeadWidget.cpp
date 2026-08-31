@@ -3,19 +3,36 @@
 
 #include "UI/FAOverHeadWidget.h"
 
-
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerState.h"
+#include "Player/FACharacter.h"
+
+void UFAOverHeadWidget::SetTargetCharacter(AFACharacter* InTargetCharacter)
+{
+	TargetCharacter = InTargetCharacter;
+	RefreshNickname();
+}
 
 void UFAOverHeadWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	
-	OwnerCharacter = GetOwningPlayerPawn();
-	if (APlayerState* PlayerState = OwnerCharacter->GetPlayerState())
+
+	// SetTargetCharacter()가 NativeConstruct보다 먼저 호출되는 구성도 안전하게 지원한다.
+	RefreshNickname();
+}
+
+void UFAOverHeadWidget::RefreshNickname()
+{
+	if (!Text_Nickname)
 	{
-		Text_Nickname->SetText(FText::FromString(PlayerState->GetPlayerName()));
+		return;
 	}
+
+	const AFACharacter* Character = TargetCharacter.Get();
+	const APlayerState* PlayerState = Character ? Character->GetPlayerState() : nullptr;
+	Text_Nickname->SetText(PlayerState
+		? FText::FromString(PlayerState->GetPlayerName())
+		: FText::GetEmpty());
 }
 
 void UFAOverHeadWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
