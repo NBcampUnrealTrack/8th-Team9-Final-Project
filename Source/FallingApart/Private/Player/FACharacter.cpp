@@ -689,9 +689,12 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		
 		//안개 디버프 먹었을때 제한할 필요가 있음.
 		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
-		float CullDistance = LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Fog)
-			? 800.0f
-			: RuleMarkerCullDistance;
+		float CullDistance = 4000.f;
+		if (LocalCharacter && LocalCharacter->GetAbilitySystemComponent() &&
+			LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Fog))
+		{
+			CullDistance = 800.f;
+		}
 	
 		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
 		{
@@ -764,7 +767,6 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
 		if (bHeadBlocked || bBodyBlocked)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("이름표 가려짐."));
 			return false;
 		}
 		return true;
