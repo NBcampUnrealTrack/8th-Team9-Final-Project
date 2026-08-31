@@ -91,6 +91,9 @@ protected:
 	virtual void Logout(AController* Exiting) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 
+	/** 데스매치 진행 중 접속한 플레이어는 관전만 시킨다. */
+	virtual bool MustSpectate_Implementation(APlayerController* NewPlayerController) const override;
+
 	/**
 	 * 첫 스폰 자리에 고정되지 않게 함
 	 */
