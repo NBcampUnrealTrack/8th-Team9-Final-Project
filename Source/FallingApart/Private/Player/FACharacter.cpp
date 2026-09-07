@@ -656,11 +656,11 @@ void AFACharacter::RefreshCustomDepth()
 		}
 	}
 
-	// [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있고 이 캐릭터(this)가 좀비면, 본체 렌더링은 끄고
-	// 아웃라인(실루엣)만 남긴다 — "발소리·실루엣만" 사양. 위 노출 판정과 별개로 항상 검사한다.
+	// [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있으면 좀비·인간 구분 없이 모든 상대를 실루엣만 보이게 한다.
+	// 좀비한테만 적용하면 실루엣 형태 자체가 "저게 좀비다"라는 정보가 되어버려서 전원 대상으로 바꿨다(팀 결정).
+	// 위 노출 판정과 별개로 항상 검사한다.
 	if (LocalCharacter && LocalCharacter != this && LocalCharacter->GetFAAbilitySystemComponent() &&
-		LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Vision_NoZombie) &&
-		AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie))
+		LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Vision_NoZombie))
 	{
 		bSilhouetteOnly = true;
 		bShouldReveal = true; // 실루엣을 그리려면 아웃라인 렌더 자체는 켜져 있어야 한다.
