@@ -208,7 +208,6 @@ public:
 
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
-
 	// ~ ====== State
 	// * H36 뿌리내림 /  */
 	FGameplayTag Rule_State_Camp;
@@ -220,6 +219,9 @@ public:
 	/** H38 유리 몸 — 일반 포획 저항 입력 무효, 구출 QTE는 정상 */
 	FGameplayTag Rule_State_NoStruggle;
 	FGameplayTag State_NoStruggle;
+
+	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
+	FGameplayTag Rule_State_Heartbeat;
 
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
@@ -254,10 +256,10 @@ public:
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
+	FGameplayTag State_Hidden;
+	
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;
-	FGameplayTag State_Hidden;
-
 #pragma endregion
 
 private:

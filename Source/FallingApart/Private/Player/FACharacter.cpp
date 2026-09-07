@@ -33,6 +33,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
 #include "UI/FAOverHeadWidget.h"
+#include "Player/FADetectionUnitComponent.h"
 
 namespace FACharacterAudio
 {
@@ -117,6 +118,8 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	
+	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
@@ -624,7 +627,7 @@ void AFACharacter::RefreshCustomDepth()
 	USkeletalMeshComponent* CharacterMesh = GetMesh();
 	if (!CharacterMesh || !AbilitySystemComponent) return;
 
-	bool bShouldReveal = false;
+	bool bShouldReveal = bHeartbeatRevealActive; // H41: 로컬 좀비에게 보유자 위치 점멸
 	bool bSilhouetteOnly = false; // [H23 투명한 적] 본체는 숨기고 아웃라인만 남긴다.
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
@@ -783,6 +786,16 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		return true;
 	}
 	return false;
+}
+
+void AFACharacter::SetHeartbeatRevealActive(bool bActive)
+{
+	if (bHeartbeatRevealActive == bActive)
+	{
+		return;
+	}
+	bHeartbeatRevealActive = bActive;
+	RefreshCustomDepth();
 }
 
 void AFACharacter::UpdateRuleMarker(float DeltaTime)

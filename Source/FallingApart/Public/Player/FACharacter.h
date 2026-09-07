@@ -29,7 +29,7 @@ class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
 class UAnimMontage;
-
+class UFADetectionUnitComponent;
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -632,6 +632,13 @@ public:
 	*/
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
 	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
+	
+	void SetHeartbeatRevealActive(bool bActive);
+	
+	UFADetectionUnitComponent* GetDetectionUnitComponent() const
+	{
+		return DetectionUnitComponent;
+	}
 
 private:
 	/**
@@ -812,4 +819,8 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
+	
+	bool bHeartbeatRevealActive = false;
+	UPROPERTY(VisibleAnywhere, Category = "FallingApart|Detection")
+	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
 };
