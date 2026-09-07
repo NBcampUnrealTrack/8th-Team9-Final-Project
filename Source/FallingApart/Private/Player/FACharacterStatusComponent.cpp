@@ -18,7 +18,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Player/FACharacter.h"
-#include "Player/FADetectionUnitComponent.h"
+#include "GameFramework/PlayerController.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -108,6 +108,8 @@ void UFACharacterStatusComponent::BeginPlay()
 	}
 	
 	
+	// 로컬 폰과 복제 태그가 늦게 준비되어도 다시 판정한다.
+	StartHeartbeatDetection();
 }
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -382,24 +384,14 @@ void UFACharacterStatusComponent::SetInputFlipActive(bool bActive)
 void UFACharacterStatusComponent::StartHeartbeatDetection()
 {
 	UWorld* World = GetWorld();
-	if (!World)
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
-
-	FTimerManager& TimerManager = World->GetTimerManager();
-	TimerManager.ClearTimer(HeartbeatDetectionTimerHandle);
-
-	// H41이 적용된 순간 즉시 한 번 탐색한다.
 	ScanHeartbeatTargets();
-
-	// 이후 설정된 간격마다 주변 좀비를 탐색한다.
-	TimerManager.SetTimer(
-		HeartbeatDetectionTimerHandle,
-		this,
-		&ThisClass::ScanHeartbeatTargets,
-		HeartbeatDetectionInterval,
-		true);
+	World->GetTimerManager().SetTimer(
+		HeartbeatDetectionTimerHandle, this, &ThisClass::ScanHeartbeatTargets,
+		FMath::Max(0.05f, HeartbeatDetectionInterval), true);
 }
 
 void UFACharacterStatusComponent::StopHeartbeatDetection()
@@ -408,117 +400,59 @@ void UFACharacterStatusComponent::StopHeartbeatDetection()
 	{
 		World->GetTimerManager().ClearTimer(HeartbeatDetectionTimerHandle);
 	}
-	// H41이 제거되거나 컴포넌트가 종료될 때
-	// 기존 감지 대상에 남아 있는 H41 아웃라인을 모두 해제한다.
-	for (const TWeakObjectPtr<AFACharacter>& ZombieKey :HeartbeatDetectedZombies)
+	HeartbeatRevealStartTime = -1.0;
+	if (AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter))
 	{
-		if (AFACharacter* Zombie = ZombieKey.Get())
-		{
-			Zombie->SetHeartbeatRevealActive(false);
-		}
+		Character->SetHeartbeatRevealActive(false);
 	}
-
-	// 아웃라인 연결 전에는 감지 목록만 정리한다.
-	HeartbeatDetectedZombies.Reset();
 }
 
 void UFACharacterStatusComponent::ScanHeartbeatTargets()
 {
 	AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
-	if (!Character || !Character->IsLocallyControlled())
+	UWorld* World = GetWorld();
+	if (!Character || !World || World->GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
 
+	// 표시 대상은 H41 보유자, 관찰자는 이 클라이언트의 좀비 플레이어다.
+	APlayerController* PC = World->GetFirstPlayerController();
+	AFACharacter* Viewer = PC && PC->IsLocalController()
+		? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
 	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	if (!ASC)
-	{
-		return;
-	}
-
+	UAbilitySystemComponent* ViewerASC = Viewer ? Viewer->GetAbilitySystemComponent() : nullptr;
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
-	if (!ASC->HasMatchingGameplayTag(Tags.Rule_State_Heartbeat))
+	const bool bInRange = Viewer && Viewer != Character && ASC && ViewerASC
+		&& ASC->HasMatchingGameplayTag(Tags.Rule_State_Heartbeat)
+		&& ASC->HasMatchingGameplayTag(Tags.State_Human)
+		&& ViewerASC->HasMatchingGameplayTag(Tags.State_Zombie)
+		&& FVector::DistSquared(Character->GetActorLocation(), Viewer->GetActorLocation())
+			<= FMath::Square(FMath::Max(0.0f, HeartbeatDetectionRadius));
+
+	if (!bInRange)
 	{
-		StopHeartbeatDetection();
+		HeartbeatRevealStartTime = -1.0;
+		Character->SetHeartbeatRevealActive(false);
 		return;
 	}
 
-	UFADetectionUnitComponent* Detection = Character->GetDetectionUnitComponent();
-	if (!Detection)
+	const double Now = World->GetTimeSeconds();
+	if (HeartbeatRevealStartTime < 0.0)
 	{
-		UE_LOG(LogTemp,Warning,TEXT("[H41] DetectionUnitComponent가 없습니다: %s"),*Character->GetName());
-		return;
+		HeartbeatRevealStartTime = Now;
 	}
-
-	TArray<AFACharacter*> NearbyZombies;
-	Detection->GetCharactersInRange(
-		Tags.Rule_Team_Zombie,
-		HeartbeatDetectionRadius,
-		NearbyZombies);
-
-	TSet<TWeakObjectPtr<AFACharacter>> CurrentZombies;
-	for (AFACharacter* Zombie : NearbyZombies)
-	{
-		if (!IsValid(Zombie))
-		{
-			continue;
-		}
-
-		const TWeakObjectPtr<AFACharacter> ZombieKey(Zombie);
-		CurrentZombies.Add(ZombieKey);
-
-		if (!HeartbeatDetectedZombies.Contains(ZombieKey))
-		{
-			const float DistanceMeters = FVector::Distance(
-				Character->GetActorLocation(),Zombie->GetActorLocation()) / 100.0f;
-
-			UE_LOG(LogTemp,Log,TEXT("[H41] 좀비 범위 진입: %s, 거리: %.2fm"),
-				*Zombie->GetName(),DistanceMeters);
-
-			Zombie->SetHeartbeatRevealActive(true);
-		}
-	}
-
-	for (const TWeakObjectPtr<AFACharacter>& ZombieKey : HeartbeatDetectedZombies)
-	{
-		if (CurrentZombies.Contains(ZombieKey))
-		{
-			continue;
-		}
-
-		if (AFACharacter* Zombie = ZombieKey.Get())
-		{
-			UE_LOG(LogTemp,Log,TEXT("[H41] 좀비 범위 이탈: %s"),*Zombie->GetName());
-
-			// 범위 밖으로 나간 좀비의 H41 아웃라인을 해제한다.
-			Zombie->SetHeartbeatRevealActive(false);
-		}
-	}
-
-	HeartbeatDetectedZombies = MoveTemp(CurrentZombies);
+	const double Period = FMath::Max(0.1f, HeartbeatBlinkPeriod);
+	const double VisibleDuration = FMath::Clamp(HeartbeatBlinkVisibleDuration, 0.0f, float(Period));
+	Character->SetHeartbeatRevealActive(
+		FMath::Fmod(Now - HeartbeatRevealStartTime, Period) < VisibleDuration);
 }
 
 void UFACharacterStatusComponent::HandleHeartbeatRuleChanged(
-	const FGameplayTag Tag,int32 NewCount)
+	const FGameplayTag Tag, int32 NewCount)
 {
-	(void)Tag;
-
-	AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
-	if (!Character || !Character->IsLocallyControlled())
-	{
-		return;
-	}
-
-	if (NewCount > 0)
-	{
-		UE_LOG(LogTemp,Log,TEXT("[H41] Rule.State.Heartbeat 활성화: %s"),*Character->GetName());
-		StartHeartbeatDetection();
-	}
-	else
-	{
-		UE_LOG(LogTemp,Log,TEXT("[H41] Rule.State.Heartbeat 제거: %s"),*Character->GetName());
-		StopHeartbeatDetection();
-	}
+	// 룰 제거는 즉시 반영하고 이동/진영 변경은 반복 타이머에서 갱신한다.
+	ScanHeartbeatTargets();
 }
 
 void UFACharacterStatusComponent::HandleLanded(const FHitResult& Hit)

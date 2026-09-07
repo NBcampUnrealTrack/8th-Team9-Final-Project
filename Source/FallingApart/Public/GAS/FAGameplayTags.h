@@ -220,7 +220,7 @@ public:
 	FGameplayTag Rule_State_NoStruggle;
 	FGameplayTag State_NoStruggle;
 
-	/** H41 — 15m 이내 모든 좀비의 위치를 감지한다. */
+	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
 	FGameplayTag Rule_State_Heartbeat;
 
 	// 4초 정지 조건을 충족한 상태

@@ -95,18 +95,17 @@ private:
 	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
 	/**
-	 * H41의 주기적인 주변 좀비 탐색을 시작한다.
+	 * 각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
 	 */
 	void StartHeartbeatDetection();
 
 	/**
-	 * H41 탐색을 중지하고 감지 목록을 정리한다.
+	 * H41 타이머를 중지하고 보유자의 로컬 아웃라인을 해제한다.
 	 */
 	void StopHeartbeatDetection();
 
 	/**
-	 * DetectionUnitComponent를 이용해
-	 * 15m 내 모든 Rule.Team.Zombie 캐릭터를 탐색한다.
+	 * 로컬 관찰자가 15m 이내 좀비이면 H41 보유자의 위치를 점멸 표시한다.
 	 */
 	void ScanHeartbeatTargets();
 	
@@ -176,8 +175,8 @@ private:
 	/** H41 주변 좀비 탐색 타이머 */
 	FTimerHandle HeartbeatDetectionTimerHandle;
 
-	/** 직전 탐색에서 15m 이내에 있던 모든 좀비 */
-	TSet<TWeakObjectPtr<AFACharacter>> HeartbeatDetectedZombies;
+	/** 로컬 좀비가 범위에 진입한 시각. 범위 밖에서는 -1. */
+	double HeartbeatRevealStartTime = -1.0;
 
 	/** H41 탐색 거리: 1500uu = 15m */
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.0"))
@@ -186,6 +185,13 @@ private:
 	/** H41 탐색 주기: 초당 5회 */
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.05"))
 	float HeartbeatDetectionInterval = 0.2f;
+
+	/** 위치 점멸 주기와 한 주기 내 표시 시간 (초). */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.1"))
+	float HeartbeatBlinkPeriod = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.0"))
+	float HeartbeatBlinkVisibleDuration = 0.4f;
 
 	// [H41 추가 끝]
 };
