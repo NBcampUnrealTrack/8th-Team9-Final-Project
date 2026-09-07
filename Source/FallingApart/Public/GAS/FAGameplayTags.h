@@ -79,6 +79,12 @@ public:
 	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
 	FGameplayTag Rule_Vision_FlipY;
 
+	/* H23 투명한 적 - 좀비가 보이지 않음 (발소리·실루엣만, CustomDepth 아웃라인으로 표시) */
+	FGameplayTag Rule_Vision_NoZombie;
+
+	/* H24 고독 - 다른 생존자(인간)가 보이지 않음 (완전히 숨김) */
+	FGameplayTag Rule_Vision_NoAlly;
+
 
 
 	//~ ========================= 상태 태그 =========================

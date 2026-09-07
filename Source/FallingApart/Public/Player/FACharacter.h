@@ -337,8 +337,11 @@ protected:
 	 */
 	void SetVisionBlendableActive(UMaterialInstanceDynamic* MID, bool bShouldBeActive) const;
 
-	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
-	void UpdateOpponentDistanceCulling(float FullDistance);
+	/**
+	 * FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음.
+	 * @param bHideAllies [H24 고독] true면 거리와 무관하게 다른 인간(State.Human)을 전부 숨긴다.
+	 */
+	void UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies);
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
@@ -388,7 +391,10 @@ protected:
 	void OnExposedTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void OnMutualSightTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 
-	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
+	/**
+	 * 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신.
+	 * [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있고 this 가 좀비면, 본체는 숨기고 아웃라인만 남긴다.
+	 */
 	void RefreshCustomDepth();
 	
 	bool ShouldShowOverheadWidget() const;
