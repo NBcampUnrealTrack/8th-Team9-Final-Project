@@ -32,7 +32,7 @@
 #include "Settings/FASettingsBridge.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
-#include "Player/FADetectionUnitComponent.h"
+#include "UI/FAOverHeadWidget.h"
 
 namespace FACharacterAudio
 {
@@ -100,6 +100,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	CameraBoom->bDoCollisionTest = false;
 	CameraBoom->bEnableCameraLag = true;
 	CameraBoom->CameraLagSpeed = CameraInterpSpeed;
+	CameraBoom->ProbeSize = 20.0f;
 
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -115,9 +116,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AbilitySystemComponent = CreateDefaultSubobject<UFAAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
-	CharacterStatusComponent =CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
-	
-	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
+	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
@@ -375,18 +374,6 @@ void AFACharacter::EndContestState()
 	ContestState = FFAContestState();
 }
 
-void AFACharacter::SetHeartbeatRevealActive(bool bActive)
-{
-	// 표시 상태가 같으면 불필요한 렌더링 갱신을 하지 않는다.
-	if (bHeartbeatRevealActive == bActive)
-	{
-		return;
-	}
-
-	bHeartbeatRevealActive = bActive;
-	RefreshCustomDepth();
-}
-
 bool AFACharacter::IsInRescueContest() const
 {
 	if (ContestState.IsActive())
@@ -503,7 +490,41 @@ void AFACharacter::SetupRuleMarker()
 	RuleMarker->SetRelativeLocation(RuleMarkerOffset);
 	RuleMarker->SetVisibility(false);
 }
+void AFACharacter::SetupNicknameMarker()
+{
+	if (OverHeadWidgetClass == nullptr || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
 
+	NicknameMarker = NewObject<UWidgetComponent>(this);
+	NicknameMarker->SetWidgetSpace(EWidgetSpace::Screen);
+	NicknameMarker->SetDrawAtDesiredSize(false);
+	NicknameMarker->SetDrawSize(RuleMarkerDrawSize);
+	NicknameMarker->SetWidgetClass(OverHeadWidgetClass);
+	NicknameMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	NicknameMarker->RegisterComponent();
+	NicknameMarker->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+	NicknameMarker->SetRelativeLocation(NicknameMarkerOffset);
+	NicknameMarker->SetVisibility(true);
+	NicknameMarker->InitWidget();
+	RefreshNicknameMarker();
+}
+
+void AFACharacter::RefreshNicknameMarker()
+{
+	if (!NicknameMarker)
+	{
+		return;
+	}
+
+	// PlayerState는 Pawn보다 늦게 복제될 수 있다. 같은 캐릭터를 다시 주입하면 이름도 함께 갱신된다.
+	NicknameMarker->InitWidget();
+	if (UFAOverHeadWidget* OverHeadWidget = Cast<UFAOverHeadWidget>(NicknameMarker->GetUserWidgetObject()))
+	{
+		OverHeadWidget->SetTargetCharacter(this);
+	}
+}
 bool AFACharacter::ShouldShowRuleMarker() const
 {
 	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
@@ -603,7 +624,7 @@ void AFACharacter::RefreshCustomDepth()
 	USkeletalMeshComponent* CharacterMesh = GetMesh();
 	if (!CharacterMesh || !AbilitySystemComponent) return;
 
-	bool bShouldReveal = bHeartbeatRevealActive;
+	bool bShouldReveal = false;
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
 	// [H36 뿌리내림] 기존 상시 노출과 같은 X-Ray 아웃라인 경로를 사용한다.
@@ -639,6 +660,118 @@ void AFACharacter::RefreshCustomDepth()
 
 	CharacterMesh->SetRenderCustomDepth(bShouldReveal);
 	CharacterMesh->SetCustomDepthStencilValue(bShouldReveal ? 1 : 0);
+}
+
+bool AFACharacter::ShouldShowOverheadWidget() const
+{
+	// 이름표, 이름 상단의 위젯이 보여야하는지 조건 체크.
+	// 가벼운 조건부터 체크하여, 무거운 라인트레이스를 마지막에 체크함.
+
+	//로컬에서 자신의 위젯을 보일 필요가 없음.
+	if (IsLocallyControlled() == true)
+	{
+		return false;
+	}
+	
+	const UWorld* World = GetWorld();
+	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
+
+	//이름이 출력되는 위치, 캐릭터의 Capsule HalfHeight+10
+	FVector NameLocation = GetActorLocation() + FVector(0.0f, 0.0f, 80.0f);
+	//발 위치. 캐릭터의 Capsule HalfHeight * -1
+	FVector FootLocation = GetActorLocation() + FVector(0.0f, 0.0f, -70.0f);
+	if (LocalController)
+	{
+		// 거리 제한, 룰마커와 동일한 거리값을 임시로 사용.
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+		
+		//안개 디버프 먹었을때 제한할 필요가 있음.
+		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
+		float CullDistance = 4000.f;
+		if (LocalCharacter && LocalCharacter->GetAbilitySystemComponent() &&
+			LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Fog))
+		{
+			CullDistance = 800.f;
+		}
+	
+		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
+		{
+			return false;
+		}
+		
+		//이름표가 보일 시야각의 제한, 임시 90도 사용.
+		const FVector ToTarget = (NameLocation - ViewLocation).GetSafeNormal();
+		const FVector CameraForward = ViewRotation.Vector();
+		if (FVector::DotProduct(CameraForward, ToTarget) < FMath::Cos(FMath::DegreesToRadians(90.0f/2)))
+		{
+			return false;
+		}
+		
+		//화면내 영역에서만 처리하도록 위치가 Viewport내에 존재하는지 확인. 사람마다 화면 비율이 다를수 있으므로, 시야각과 같이 더블체크함.
+		FVector2D ScreenPosition;
+		if (!LocalController->ProjectWorldLocationToScreen(
+				NameLocation, ScreenPosition, false))
+		{
+			return false;
+		}
+
+		int32 ViewportX;
+		int32 ViewportY;
+		LocalController->GetViewportSize(ViewportX, ViewportY);
+
+		//가장자리 비율을 제외함.
+		const float HorizontalMargin = ViewportX * 0.10f;
+		const float VerticalMargin   = ViewportY * 0.12f;
+
+		const bool bInsideSafeArea =
+			ScreenPosition.X >= HorizontalMargin &&
+			ScreenPosition.X <= ViewportX - HorizontalMargin &&
+			ScreenPosition.Y >= VerticalMargin &&
+			ScreenPosition.Y <= ViewportY - VerticalMargin;
+
+		if (!bInsideSafeArea)
+		{
+			return false;
+		}
+		
+		//계산이 무거운 라인트레이스를 마지막에 계산하도록 함.
+		FCollisionQueryParams Params(
+		SCENE_QUERY_STAT(FANameplateOcclusion),
+		false);
+		
+		Params.AddIgnoredActor(this);
+
+		if (const APawn* LocalPawn = LocalController->GetPawn())
+		{
+			Params.AddIgnoredActor(LocalPawn);
+		}
+
+		
+		
+		FHitResult Hit;
+		const bool bHeadBlocked = World->LineTraceSingleByChannel(
+			Hit,
+			ViewLocation,
+			NameLocation,
+			ECC_Visibility,
+			Params);
+		const bool bBodyBlocked = World->LineTraceSingleByChannel(
+			Hit,
+			ViewLocation,
+			FootLocation,
+			ECC_Visibility,
+			Params);
+		
+		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
+		if (bHeadBlocked || bBodyBlocked)
+		{
+			return false;
+		}
+		return true;
+	}
+	return false;
 }
 
 void AFACharacter::UpdateRuleMarker(float DeltaTime)
@@ -725,6 +858,7 @@ void AFACharacter::BeginPlay()
 
 	SetupCaptureMarker();
 	SetupRuleMarker();
+	SetupNicknameMarker();
 	
 	if (FollowCamera)
 	{
@@ -751,6 +885,7 @@ void AFACharacter::PossessedBy(AController* NewController)
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshNicknameMarker();
 	RefreshInteractionTick();
 }
 
@@ -760,6 +895,7 @@ void AFACharacter::OnRep_PlayerState()
 
 	InitializeAbilitySystem();
 	BindTeamNotify();
+	RefreshNicknameMarker();
 	RefreshInteractionTick();
 }
 
@@ -845,8 +981,79 @@ void AFACharacter::BindTeamNotify()
 
 void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 {
+	// 감염은 되돌아오지 않는다 — Human -> Zombie 전환이 곧 "감염됐다" 는 신호다.
+	if (bHasTeamBaseline && LastKnownTeam == EFATeam::Human && NewTeam == EFATeam::Zombie)
+	{
+		StartInfectionSequence();
+	}
+
+	LastKnownTeam = NewTeam;
+	bHasTeamBaseline = true;
+
 	ApplyTeamMaterial(NewTeam);
 	UpdateGrowlLoop(NewTeam);
+}
+
+void AFACharacter::StartInfectionSequence()
+{
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	InfectionSequenceStartTime = World->GetTimeSeconds();
+	bInfectionSequenceActive = true;
+
+	// 첫 프레임부터 화면이 검어야 한다.
+	InfectionDarkenAmount = 1.0f;
+	InfectionRedAmount = InfectionRedTintStrength;
+
+	if (InfectionGetUpMontage)
+	{
+		PlayAnimMontage(InfectionGetUpMontage);
+	}
+}
+
+void AFACharacter::UpdateInfectionSequence()
+{
+	if (!bInfectionSequenceActive)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	const float Elapsed = World->GetTimeSeconds() - InfectionSequenceStartTime;
+
+	// 1단계 — 완전 암전. 빨강은 이미 최대치로 깔아 둔다(밝아질 때 빨강부터 드러나도록).
+	if (Elapsed < InfectionBlackoutHoldSeconds)
+	{
+		InfectionDarkenAmount = 1.0f;
+		InfectionRedAmount = InfectionRedTintStrength;
+		return;
+	}
+
+	// 2단계 — 암전이 풀리고 빨강이 빠진다. 둘은 같은 시점에 시작하지만 길이가 달라서,
+	// 화면이 먼저 밝아지고 그 뒤로 붉은 기가 천천히 가신다.
+	const float SinceBlackout = Elapsed - InfectionBlackoutHoldSeconds;
+
+	InfectionDarkenAmount = InfectionDarkenReleaseSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionDarkenReleaseSeconds, 0.0f, 1.0f)
+		: 0.0f;
+
+	InfectionRedAmount = InfectionRedFadeSeconds > 0.0f
+		? FMath::Clamp(1.0f - SinceBlackout / InfectionRedFadeSeconds, 0.0f, 1.0f) * InfectionRedTintStrength
+		: 0.0f;
+
+	if (InfectionDarkenAmount <= 0.0f && InfectionRedAmount <= 0.0f)
+	{
+		bInfectionSequenceActive = false;
+	}
 }
 
 void AFACharacter::ApplyTeamMaterial(EFATeam NewTeam)
@@ -1109,15 +1316,33 @@ void AFACharacter::Tick(float DeltaTime)
 		}
 	}
 
-	if (!bIsFirstPerson && !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+	if (!bIsFirstPerson)
 	{
 		UpdateCameraCollision(DeltaTime);
+	}
+
+	bool bShouldHideMesh = (CameraBoom->TargetArmLength < 40.f);
+	if (GetMesh()->bOwnerNoSee != bShouldHideMesh)
+	{
+		GetMesh()->SetOwnerNoSee(bShouldHideMesh);
 	}
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
-
+	
+	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
+	//ShouldShowOverheadWidget의 내용과 UpdateRuleMarkerOcclusion의 내용 팀원과 확인 후 병합작업 필요.
+	NicknameMarkerOcclusionTimer += DeltaTime;
+	if (NicknameMarker && NicknameMarkerOcclusionTimer >= 0.1f)
+	{	
+		NicknameMarkerOcclusionTimer = 0.0f;
+		bool ShouldVisible = ShouldShowOverheadWidget();
+		if (ShouldVisible != NicknameMarker->IsVisible())
+		{
+			NicknameMarker->SetVisibility(ShouldVisible);
+		}
+	}
 	UpdateClimbing(DeltaTime);
 
 	// 캐비넷 액터가 파괴된 경우의 복구.
@@ -1125,6 +1350,9 @@ void AFACharacter::Tick(float DeltaTime)
 	{
 		ApplyHideState();
 	}
+
+	// 시야 효과보다 먼저 계산한다
+	UpdateInfectionSequence();
 
 	UpdateVisionEffects();
 }
@@ -1211,6 +1439,13 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		{
 			HandleResistInput(MovementVector);
 		}
+	}
+
+	// 감염 전환 연출 중에는 움직이지 않는다
+	// 화면이 다 밝아지는 순간(InfectionDarkenAmount == 0) 조작이 돌아온다.
+	if (bInfectionSequenceActive && InfectionDarkenAmount > 0.0f)
+	{
+		return;
 	}
 
 	// 캐비넷 안에서는 움직이지 않는다. 나가는 것은 상호작용 키(F)와 점프 키뿐이다.
@@ -1351,11 +1586,12 @@ void AFACharacter::ToggleCrouch()
 
 void AFACharacter::UpdateCrouchCamera()
 {
-	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, 0.f, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
+	float BaseZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, BaseZ, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
 
-	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, 0.f, 1.f))
+	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, BaseZ, 1.f))
 	{
-		CameraBoom->TargetOffset.Z = 0.f;
+		CameraBoom->TargetOffset.Z = BaseZ;
 		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
 	}
 }
@@ -1456,8 +1692,10 @@ void AFACharacter::UpdateVisionEffects()
 	SetVisionBlendableActive(VisionNarrowFOVMID, NarrowAmount > 0.0f);
 
 	// 흑백 (Vision.Desaturate) — Attribute 없이 태그 유무로만 켜고 끈다.
-	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bDesaturate;
-	if (bDesaturate)
+	// 단, 감염 전환 연출이 도는 몇 초 동안은 비켜준다.
+	const bool bApplyDesaturate = bDesaturate && InfectionRedAmount <= 0.0f;
+	FollowCamera->PostProcessSettings.bOverride_ColorSaturation = bApplyDesaturate;
+	if (bApplyDesaturate)
 	{
 		FollowCamera->PostProcessSettings.ColorSaturation = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
@@ -1514,11 +1752,17 @@ void AFACharacter::UpdateVisionEffects()
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
-	// 안개와 암전, 화면을 어둡게 만드는 두 효과를 ColorGain 하나로 합쳐서 적용 — 서로 override 값을 덮어쓰지 않게.
-	const float DarkenAmount = FMath::Max(FogAmount * 0.25f, BlackoutAmount);
+	// 화면을 어둡게 만드는 세 효과(안개 · 명멸 룰 · 감염 연출)를 ColorGain 하나로 합쳐서 적용
+	const float DarkenAmount = FMath::Max3(FogAmount * 0.25f, BlackoutAmount, InfectionDarkenAmount);
+
+	// ColorGain 은 XYZ = RGB 배수, W = 전체 밝기다. 감염 연출의 빨강은 초록·파랑을 눌러서 만들고 암전은 W 로
 	FollowCamera->PostProcessSettings.bOverride_SceneColorTint = false;
-	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f;
-	FollowCamera->PostProcessSettings.ColorGain = FVector4(1.0f, 1.0f, 1.0f, 1.0f - DarkenAmount);
+	FollowCamera->PostProcessSettings.bOverride_ColorGain = DarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessSettings.ColorGain = FVector4(
+		1.0f,
+		1.0f - InfectionRedAmount,
+		1.0f - InfectionRedAmount,
+		1.0f - DarkenAmount);
 
 	// 1인칭 강제 (Vision.ForceFPS)
 	if (bForceFirstPerson && !bIsFirstPerson)
@@ -1535,9 +1779,11 @@ void AFACharacter::UpdateVisionEffects()
 		}
 	}
 
-	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 네 효과(흑백·안개·암전·시야축소) 중 하나라도 켜져 있으면 블렌드.
-	const bool bAnyVisualRuleActive = bDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f || NarrowAmount > 0.0f;
-	FollowCamera->PostProcessBlendWeight = bAnyVisualRuleActive ? 1.0f : 0.0f;
+	// PostProcess 전체를 켤지는 맨 마지막에 한 번만 판단 — 위 효과(흑백·안개·암전·시야축소·감염 연출)
+	// 중 하나라도 켜져 있으면 블렌드. 감염 연출을 빠뜨리면 값만 넣고 화면에는 아무것도 안 나온다.
+	const bool bAnyVisualEffectActive = bApplyDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f
+		|| NarrowAmount > 0.0f || InfectionDarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
+	FollowCamera->PostProcessBlendWeight = bAnyVisualEffectActive ? 1.0f : 0.0f;
 }
 
 void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
@@ -1578,19 +1824,28 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
 void AFACharacter::UpdatePerspectiveCamera()
 {
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
-	float TargetArmLength = bIsFirstPerson ? 0.f : ThirdPersonArmLength;
-	float TargetSocketOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	float TargetOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, TargetOffsetZ, DeltaTime, CameraInterpSpeed);
 
-	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
-	CameraBoom->SocketOffset.Z = FMath::FInterpTo(CameraBoom->SocketOffset.Z, TargetSocketOffsetZ, DeltaTime, CameraInterpSpeed);
-
-	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.f);
-
-	if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetArmLength, 1.f))
+	if (bIsFirstPerson)
 	{
-		CameraBoom->TargetArmLength = TargetArmLength;
-		CameraBoom->SocketOffset.Z = TargetSocketOffsetZ;
-		GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, 0.f, DeltaTime, CameraInterpSpeed);
+
+		if (FMath::IsNearlyEqual(CameraBoom->TargetArmLength, 0.f, 1.f) &&
+			FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetArmLength = 0.f;
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
+	}
+	else
+	{
+		if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, TargetOffsetZ, 1.f))
+		{
+			CameraBoom->TargetOffset.Z = TargetOffsetZ;
+			GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
+		}
 	}
 }
 
@@ -1611,18 +1866,7 @@ void AFACharacter::UpdateCameraCollision(float DeltaTime)
 	FCollisionQueryParams QueryParams(FName("CameraCollision"), false, this);
 	QueryParams.AddIgnoredActor(this);
 
-
-	bool bHit = GetWorld()->SweepSingleByChannel(
-		HitResult,
-		Start,
-		End,
-		FQuat::Identity,
-		ECC_Visibility,
-		FCollisionShape::MakeSphere(CameraBoom->ProbeSize),
-		QueryParams
-	);
-
-	if (bHit)
+	if (GetWorld()->SweepSingleByChannel(HitResult, Start, End, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(CameraBoom->ProbeSize), QueryParams))
 	{
 		TargetArmLength = FMath::Clamp(HitResult.Distance - CameraBoom->ProbeSize, 30.f, ThirdPersonArmLength);
 	}
@@ -2091,8 +2335,8 @@ void AFACharacter::ApplyHideCamera(bool bHiding)
 	// 숨어 있는 동안 시점 토글이나 Vision.ForceFPS 로 bIsFirstPerson 이 바뀌었을 수 있다.
 	// 저장해둔 값이 아니라 지금 상태가 요구하는 값으로 되돌린다.
 	CameraBoom->TargetArmLength = bIsFirstPerson ? 0.0f : ThirdPersonArmLength;
-	CameraBoom->SocketOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
-	CameraBoom->TargetOffset = FVector::ZeroVector;
+	CameraBoom->SocketOffset = FVector::ZeroVector;
+	CameraBoom->TargetOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
 
 	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.0f);
 }

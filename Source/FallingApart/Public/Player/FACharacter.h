@@ -10,6 +10,7 @@
 #include "Rule/FARuleTypes.h"
 #include "FACharacter.generated.h"
 
+class UFAOverHeadWidget;
 class UFAAbilitySystemComponent;
 class UFACharacterMovementComponent;
 class UFAAttributeSet;
@@ -27,7 +28,8 @@ class UWidgetComponent;
 class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
-class UFADetectionUnitComponent;
+class UAnimMontage;
+
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -50,19 +52,6 @@ public:
 
 	/** 룰 Attribute 를 읽어 이동에 반영하는 CMC. */
 	UFACharacterMovementComponent* GetFAMovementComponent() const;
-	
-	UFUNCTION(BlueprintPure,Category = "FallingApart|Detection")
-	UFADetectionUnitComponent*GetDetectionUnitComponent() const
-	{
-		return DetectionUnitComponent;
-	}
-	
-	
-	/**
-	 * 주변 캐릭터 범위 탐색을 담당하는 범용 컴포넌트.
-	 */
-	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category = "FallingApart|Detection",meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
 
 	//~ 서버 권한 — 진영 배정 시 GameMode 가 호출.
 	/** State.Human / State.Zombie 를 갈아끼운다. 시야 필터·포획 대상 판정이 이 태그를 본다. */
@@ -193,7 +182,6 @@ public:
 
 	/** QTE 종료 — 승패 어느 쪽이든 반드시 불러야 프롬프트가 내려간다. */
 	void EndContestState();
-	void SetHeartbeatRevealActive(bool bActive);
 
 protected:
 	/** GameState 기준 서버 월드 시각. GameState 가 아직 없으면 로컬 시각으로 폴백. */
@@ -221,9 +209,17 @@ protected:
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
 
-	/** 진영에 딸린 연출(외형 · 그르렁 루프)을 현재 진영에 맞춘다. */
+	/** 진영에 딸린 연출(외형 · 그르렁 루프 · 감염 전환)을 현재 진영에 맞춘다. */
 	UFUNCTION()
 	void HandleTeamChanged(EFATeam NewTeam);
+
+	/** 감염 전환 연출을 시작한다. 진영이 Human -> Zombie 로 바뀐 순간에만 불린다. */
+	void StartInfectionSequence();
+
+	/**
+	 * 연출의 화면 효과 값을 지금 시각 기준으로 다시 계산한다. 다 끝났으면 스스로 꺼진다.
+	 */
+	void UpdateInfectionSequence();
 
 	/**
 	 * 진영에 맞는 머티리얼을 메시 전 슬롯에 적용한다.
@@ -232,6 +228,13 @@ protected:
 
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
+
+public:
+	/** 감염 전환 연출이 도는 중인가. 화면이 아직 어두운 동안은 이동 입력을 받지 않는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Infection")
+	bool IsPlayingInfectionSequence() const { return bInfectionSequenceActive; }
+
+protected:
 
 	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
 	void UpdateWadeLoop(bool bInWater);
@@ -361,6 +364,12 @@ protected:
 
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
+	
+	/** 머리 위 닉네임 위젯을 만들고 이 캐릭터를 표시 대상으로 주입한다. */
+	void SetupNicknameMarker();
+
+	/** PlayerState 도착 또는 빙의 변경 후 닉네임 위젯의 표시 대상을 다시 갱신한다. */
+	void RefreshNicknameMarker();
 
 	/**
 	 * 이 프레임에 머리 위 룰 아이콘을 그려야 하는가.
@@ -381,6 +390,9 @@ protected:
 
 	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
 	void RefreshCustomDepth();
+	
+	bool ShouldShowOverheadWidget() const;
+	
 	
 
 public:
@@ -496,6 +508,34 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
 	TObjectPtr<UMaterialInterface> ZombieMaterial;
 
+	//~ ---------------- 감염 전환 연출 ----------------
+	//~ 인간 -> 좀비 로 진영이 바뀐 순간 한 번 돈다. 암전 → 빨강에서 정상으로 → 기상.
+
+	/**
+	 * 쓰러진 자세에서 일어나는 몽타주. 비워두면 화면 효과만 돌고 캐릭터는 그대로 서 있는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection")
+	TObjectPtr<UAnimMontage> InfectionGetUpMontage;
+
+	/** 화면이 완전히 검은 채로 머무는 시간(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionBlackoutHoldSeconds = 1.0f;
+
+	/** 암전이 풀리며 밝아지는 데 걸리는 시간(초). 이 시간이 끝나야 이동 입력이 돌아온다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionDarkenReleaseSeconds = 0.6f;
+
+	/**
+	 * 빨간 화면이 정상 색으로 돌아오는 데 걸리는 시간(초).
+	 * 암전 해제와 같은 시점에 시작해서 더 길게 끈다 — 밝아지고 나서도 한동안 붉게 남는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionRedFadeSeconds = 2.5f;
+
+	/** 빨강의 최대 강도(0~1). 1 이면 초록·파랑이 완전히 죽어 순수 빨강만 남는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ClampMax = "1"))
+	float InfectionRedTintStrength = 0.85f;
+
 	//~ ---------------- 머리 위 감염 게이지 ----------------
 
 	/**
@@ -577,6 +617,14 @@ public:
 	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
 	float RuleMarkerOcclusionInterval = 0.2f;
+	
+	/**
+	 *	닉네임 컴포넌트 
+	 *	Rule과 마찬가지로 플레이어가 보일때만 가시성 활성.
+	 *	여건이 되면 위의 Rulemarker와 통합하는게 좋을듯?
+	*/
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
 
 private:
 	/**
@@ -608,6 +656,16 @@ private:
 	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> RuleMarker;
+	
+	/** 머리 닉네임 텍스트. 서버 전용 인스턴스에서는 만들지 않는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> NicknameMarker;
+	
+	/** 머리 위 닉네임 텍스트 거림 검사 시간 확인용. */
+	float NicknameMarkerOcclusionTimer = 0.0f;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	FVector NicknameMarkerOffset = FVector(0.0f, 0.0f, 80.0f);
 
 	/** 룰 아이콘에 넘길 표시 사본. 매 프레임 새로 만들지 않도록 보유 목록이 바뀔 때만 다시 채운다. */
 	UPROPERTY(Transient)
@@ -686,6 +744,24 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
 
+	//~ 감염 전환 연출의 진행 상태. 전부 로컬 표현이라 복제하지 않는다.
+
+	bool bInfectionSequenceActive = false;
+
+	/** 연출이 시작된 월드 시각. 연출이 안 도는 동안에는 의미 없는 값이다. */
+	float InfectionSequenceStartTime = 0.0f;
+
+	/** 이번 프레임의 연출 화면 값. Tick 이 계산하고 UpdateVisionEffects 가 읽어 간다. */
+	float InfectionDarkenAmount = 0.0f;
+	float InfectionRedAmount = 0.0f;
+
+	/**
+	 * 마지막으로 본 진영. Human -> Zombie 로 '바뀌는 순간' 만 잡아내려고 들고 있는다.
+	 * 첫 호출은 기준만 잡는다
+	 */
+	EFATeam LastKnownTeam = EFATeam::None;
+	bool bHasTeamBaseline = false;
+
 	/**
 	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.
 	 */
@@ -729,7 +805,4 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
-	
-	/** H41에 의해 현재 로컬 화면에서 감지된 상태 */
-	bool bHeartbeatRevealActive = false;
 };
