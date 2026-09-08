@@ -17,6 +17,8 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "Rule/FADeathMatchSubsystem.h"
+#include "Player/FACharacter.h"
+#include "Player/FADetectionUnitComponent.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -94,9 +96,14 @@ void UFACharacterStatusComponent::BeginPlay()
 		AddUObject(this,&ThisClass::HandleGambleBlinkRuleChanged);
 		
 		HandleGambleBlinkRuleChanged(GambleBlinkRuleTag,ASC->GetTagCount(GambleBlinkRuleTag));
+		
+		const FGameplayTag HeartbeatRuleTag =FAGameplayTags::Get().Rule_State_Heartbeat;
+
+		ASC->RegisterGameplayTagEvent(HeartbeatRuleTag,EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this,&ThisClass::HandleHeartbeatRuleChanged);
+
+		HandleHeartbeatRuleChanged(HeartbeatRuleTag,ASC->GetTagCount(HeartbeatRuleTag));
 	}
-	
-	
 }
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -122,12 +129,15 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Blink,
 		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Heartbeat,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
 	ClearGambleSpeed();
 	ClearGambleBlink();
+	StopHeartbeatDetection();
 	// 저게서 
 	SetGhostVisualActive(false);
 	GhostDynamicMaterials.Reset();
@@ -362,6 +372,83 @@ void UFACharacterStatusComponent::SetInputFlipActive(bool bActive)
 	else
 	{
 		ASC->RemoveLooseGameplayTag(StateTag,1,EGameplayTagReplicationState::CountToOwner);
+	}
+}
+
+void UFACharacterStatusComponent::StartHeartbeatDetection()
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	ScanHeartbeatTargets();
+	World->GetTimerManager().SetTimer(
+		HeartbeatDetectionTimerHandle, this, &ThisClass::ScanHeartbeatTargets,
+		FMath::Max(0.05f, HeartbeatDetectionInterval), true);
+}
+
+void UFACharacterStatusComponent::StopHeartbeatDetection()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HeartbeatDetectionTimerHandle);
+	}
+	HeartbeatRevealStartTime = -1.0;
+	if (AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter))
+	{
+		Character->SetHeartbeatRevealActive(false);
+	}
+}
+
+void UFACharacterStatusComponent::ScanHeartbeatTargets()
+{
+	AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
+	UWorld* World = GetWorld();
+	if (!Character || !World || World->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	// 표시 대상은 H41 보유자, 관찰자는 이 클라이언트의 좀비 플레이어다.
+	const UFADetectionUnitComponent* Detection = Character->GetDetectionUnitComponent();
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const bool bInRange = Detection && ASC
+		&& ASC->HasMatchingGameplayTag(Tags.Rule_State_Heartbeat)
+		&& ASC->HasMatchingGameplayTag(Tags.State_Human)
+		&& Detection->IsLocalPlayerInRange(Tags.State_Zombie, HeartbeatDetectionRadius);
+
+	if (!bInRange)
+	{
+		HeartbeatRevealStartTime = -1.0;
+		Character->SetHeartbeatRevealActive(false);
+		return;
+	}
+
+	const double Now = World->GetTimeSeconds();
+	if (HeartbeatRevealStartTime < 0.0)
+	{
+		HeartbeatRevealStartTime = Now;
+	}
+	const double Period = FMath::Max(0.1f, HeartbeatBlinkPeriod);
+	const double VisibleDuration = FMath::Clamp(HeartbeatBlinkVisibleDuration, 0.0f, float(Period));
+	Character->SetHeartbeatRevealActive(
+		FMath::Fmod(Now - HeartbeatRevealStartTime, Period) < VisibleDuration);
+}
+
+void UFACharacterStatusComponent::HandleHeartbeatRuleChanged(
+	const FGameplayTag Tag, int32 NewCount)
+{
+	if (NewCount > 0)
+	{
+		// H41 보유 중에는 로컬 폰과 진영 태그가 늦게 준비되어도 반복 판정한다.
+		StartHeartbeatDetection();
+	}
+	else
+	{
+		// 룰이 제거되면 타이머와 H41 아웃라인을 즉시 해제한다.
+		StopHeartbeatDetection();
 	}
 }
 

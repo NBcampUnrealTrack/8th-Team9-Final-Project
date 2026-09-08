@@ -29,6 +29,7 @@ class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
 class UAnimMontage;
+class UFADetectionUnitComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -337,8 +338,11 @@ protected:
 	 */
 	void SetVisionBlendableActive(UMaterialInstanceDynamic* MID, bool bShouldBeActive) const;
 
-	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
-	void UpdateOpponentDistanceCulling(float FullDistance);
+	/**
+	 * FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음.
+	 * @param bHideAllies [H24 고독] true면 거리와 무관하게 다른 인간(State.Human)을 전부 숨긴다.
+	 */
+	void UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies);
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
@@ -364,7 +368,7 @@ protected:
 
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
-	
+
 	/** 머리 위 닉네임 위젯을 만들고 이 캐릭터를 표시 대상으로 주입한다. */
 	void SetupNicknameMarker();
 
@@ -388,12 +392,16 @@ protected:
 	void OnExposedTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void OnMutualSightTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 
-	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
+	/**
+	 * 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신.
+	 * [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있으면 좀비·인간 구분 없이 this 의 본체는 숨기고
+	 * 아웃라인만 남긴다 — 좀비한테만 적용하면 실루엣 자체가 정체를 드러내므로 전원 대상으로 바꿨다.
+	 */
 	void RefreshCustomDepth();
-	
+
 	bool ShouldShowOverheadWidget() const;
-	
-	
+
+	void UpdateGroupRules();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -401,13 +409,13 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	class UMaterialInterface* VisionFogMaterial = nullptr;
 
 	UPROPERTY(Transient)
 	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
-	
+
 	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
 	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
@@ -617,14 +625,21 @@ public:
 	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
 	float RuleMarkerOcclusionInterval = 0.2f;
-	
+
 	/**
-	 *	닉네임 컴포넌트 
+	 *	닉네임 컴포넌트
 	 *	Rule과 마찬가지로 플레이어가 보일때만 가시성 활성.
 	 *	여건이 되면 위의 Rulemarker와 통합하는게 좋을듯?
 	*/
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
 	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
+
+	void SetHeartbeatRevealActive(bool bActive);
+
+	UFADetectionUnitComponent* GetDetectionUnitComponent() const
+	{
+		return DetectionUnitComponent;
+	}
 
 private:
 	/**
@@ -656,14 +671,14 @@ private:
 	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> RuleMarker;
-	
+
 	/** 머리 닉네임 텍스트. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> NicknameMarker;
-	
+
 	/** 머리 위 닉네임 텍스트 거림 검사 시간 확인용. */
 	float NicknameMarkerOcclusionTimer = 0.0f;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
 	FVector NicknameMarkerOffset = FVector(0.0f, 0.0f, 80.0f);
 
@@ -805,4 +820,11 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
+
+	bool bHeartbeatRevealActive = false;
+	UPROPERTY(VisibleAnywhere, Category = "FallingApart|Detection")
+	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
+
+	// 거리 기반 룰(무리 강박, 대인 기피) 검사용 타이머
+	FTimerHandle GroupRuleTimerHandle;
 };

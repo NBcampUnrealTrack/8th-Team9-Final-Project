@@ -79,6 +79,12 @@ public:
 	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
 	FGameplayTag Rule_Vision_FlipY;
 
+	/* H23 투명한 적 - 좀비가 보이지 않음 (발소리·실루엣만, CustomDepth 아웃라인으로 표시) */
+	FGameplayTag Rule_Vision_NoZombie;
+
+	/* H24 고독 - 다른 생존자(인간)가 보이지 않음 (완전히 숨김) */
+	FGameplayTag Rule_Vision_NoAlly;
+
 
 
 	//~ ========================= 상태 태그 =========================
@@ -112,6 +118,16 @@ public:
 
 	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
 	FGameplayTag State_Hiding;
+
+	//~ ========================= Group =========================
+
+	/* H34 무리 강박 . 가장 가까운 생존자와 15m 초과 시 이동속도 -40% */
+	FGameplayTag Rule_Group_Leash;
+	FGameplayTag State_Group_Leash;
+
+	/* H35 대인 기피 . 가장 가까운 생존자와 5m 이내 시 이동속도 -30% */
+	FGameplayTag Rule_Group_Repel;
+	FGameplayTag State_Group_Repel;
 
 	//~ ========================= Trade Tag =========================
 
@@ -202,7 +218,6 @@ public:
 
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
-
 	// ~ ====== State
 	// * H36 뿌리내림 /  */
 	FGameplayTag Rule_State_Camp;
@@ -214,6 +229,9 @@ public:
 	/** H38 유리 몸 — 일반 포획 저항 입력 무효, 구출 QTE는 정상 */
 	FGameplayTag Rule_State_NoStruggle;
 	FGameplayTag State_NoStruggle;
+
+	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
+	FGameplayTag Rule_State_Heartbeat;
 
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
@@ -248,10 +266,10 @@ public:
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
-	FGameplayTag Rule_Trade_SecondLife;
-	FGameplayTag State_SecondLife_Consumed;
 	FGameplayTag State_Hidden;
 
+	FGameplayTag Rule_Trade_SecondLife;
+	FGameplayTag State_SecondLife_Consumed;
 #pragma endregion
 
 private:

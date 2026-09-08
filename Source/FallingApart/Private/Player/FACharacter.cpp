@@ -33,6 +33,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
 #include "UI/FAOverHeadWidget.h"
+#include "Player/FADetectionUnitComponent.h"
 
 namespace FACharacterAudio
 {
@@ -117,6 +118,8 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+
+	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
 }
 
 UAbilitySystemComponent* AFACharacter::GetAbilitySystemComponent() const
@@ -624,8 +627,13 @@ void AFACharacter::RefreshCustomDepth()
 	USkeletalMeshComponent* CharacterMesh = GetMesh();
 	if (!CharacterMesh || !AbilitySystemComponent) return;
 
-	bool bShouldReveal = false;
+	bool bShouldReveal = bHeartbeatRevealActive; // H41: 로컬 좀비에게 보유자 위치 점멸
+	bool bSilhouetteOnly = false; // [H23 투명한 적] 본체는 숨기고 아웃라인만 남긴다.
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
+
+	const UWorld* World = GetWorld();
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	AFACharacter* LocalCharacter = PC ? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
 
 	// [H36 뿌리내림] 기존 상시 노출과 같은 X-Ray 아웃라인 경로를 사용한다.
 	if (AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Exposed) ||
@@ -633,33 +641,39 @@ void AFACharacter::RefreshCustomDepth()
 	{
 		bShouldReveal = true;
 	}
-	else
+	else if (LocalCharacter && LocalCharacter != this && LocalCharacter->GetFAAbilitySystemComponent())
 	{
-		const UWorld* World = GetWorld();
-		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-		AFACharacter* LocalCharacter = PC ? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
-
-		if (LocalCharacter && LocalCharacter != this && LocalCharacter->GetFAAbilitySystemComponent())
+		if (LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Trade_MutualSight))
 		{
-			if (LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Trade_MutualSight))
+			// 진영 비교
+			const bool bLocalIsHuman = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human);
+			const bool bThisIsZombie = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie);
+
+			const bool bLocalIsZombie = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Zombie);
+			const bool bThisIsHuman = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human);
+
+			if ((bLocalIsHuman && bThisIsZombie) || (bLocalIsZombie && bThisIsHuman))
 			{
-				// 진영 비교
-				const bool bLocalIsHuman = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human);
-				const bool bThisIsZombie = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie);
-
-				const bool bLocalIsZombie = LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Zombie);
-				const bool bThisIsHuman = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human);
-
-				if ((bLocalIsHuman && bThisIsZombie) || (bLocalIsZombie && bThisIsHuman))
-				{
-					bShouldReveal = true; // 다른 진영이므로 내 화면에 렌더링 갱신
-				}
+				bShouldReveal = true; // 다른 진영이므로 내 화면에 렌더링 갱신
 			}
 		}
 	}
 
+	// [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있으면 좀비·인간 구분 없이 모든 상대를 실루엣만 보이게 한다.
+	// 좀비한테만 적용하면 실루엣 형태 자체가 "저게 좀비다"라는 정보가 되어버려서 전원 대상으로 바꿨다(팀 결정).
+	// 위 노출 판정과 별개로 항상 검사한다.
+	if (LocalCharacter && LocalCharacter != this && LocalCharacter->GetFAAbilitySystemComponent() &&
+		LocalCharacter->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.Rule_Vision_NoZombie))
+	{
+		bSilhouetteOnly = true;
+		bShouldReveal = true; // 실루엣을 그리려면 아웃라인 렌더 자체는 켜져 있어야 한다.
+	}
+
 	CharacterMesh->SetRenderCustomDepth(bShouldReveal);
 	CharacterMesh->SetCustomDepthStencilValue(bShouldReveal ? 1 : 0);
+	// SetRenderInMainPass 도 렌더 패스만 뺀다 — 콜리전(캡슐 블로킹·메시 오버랩)은 그대로다.
+	// 실루엣만 보여도 부딪히고 잡히는 건 정상이어야 한다.
+	CharacterMesh->SetRenderInMainPass(!bSilhouetteOnly);
 }
 
 bool AFACharacter::ShouldShowOverheadWidget() const
@@ -672,7 +686,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 	{
 		return false;
 	}
-	
+
 	const UWorld* World = GetWorld();
 	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
 
@@ -686,7 +700,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		FVector ViewLocation;
 		FRotator ViewRotation;
 		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-		
+
 		//안개 디버프 먹었을때 제한할 필요가 있음.
 		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
 		float CullDistance = 4000.f;
@@ -695,12 +709,12 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			CullDistance = 800.f;
 		}
-	
+
 		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
 		{
 			return false;
 		}
-		
+
 		//이름표가 보일 시야각의 제한, 임시 90도 사용.
 		const FVector ToTarget = (NameLocation - ViewLocation).GetSafeNormal();
 		const FVector CameraForward = ViewRotation.Vector();
@@ -708,7 +722,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			return false;
 		}
-		
+
 		//화면내 영역에서만 처리하도록 위치가 Viewport내에 존재하는지 확인. 사람마다 화면 비율이 다를수 있으므로, 시야각과 같이 더블체크함.
 		FVector2D ScreenPosition;
 		if (!LocalController->ProjectWorldLocationToScreen(
@@ -735,12 +749,12 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			return false;
 		}
-		
+
 		//계산이 무거운 라인트레이스를 마지막에 계산하도록 함.
 		FCollisionQueryParams Params(
 		SCENE_QUERY_STAT(FANameplateOcclusion),
 		false);
-		
+
 		Params.AddIgnoredActor(this);
 
 		if (const APawn* LocalPawn = LocalController->GetPawn())
@@ -748,8 +762,8 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 			Params.AddIgnoredActor(LocalPawn);
 		}
 
-		
-		
+
+
 		FHitResult Hit;
 		const bool bHeadBlocked = World->LineTraceSingleByChannel(
 			Hit,
@@ -763,7 +777,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 			FootLocation,
 			ECC_Visibility,
 			Params);
-		
+
 		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
 		if (bHeadBlocked || bBodyBlocked)
 		{
@@ -772,6 +786,78 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		return true;
 	}
 	return false;
+}
+
+void AFACharacter::UpdateGroupRules()
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	const bool bHasLeash = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Leash);
+	const bool bHasRepel = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Repel);
+
+	// 두 룰(H34, H35) 모두 없다면 혹시 혹시 남아 있는 그룹 룰 태그 제거 후 종료
+	if (!bHasLeash && !bHasRepel)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
+		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+		return;
+	}
+
+	// 가장 가까운 생존자(인간)와의 거리 계산
+	float MinDistSq = MAX_flt;
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+
+		if (IsValid(Other) && Other != this && Other->GetFAAbilitySystemComponent())
+		{
+			if (Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+			{
+				const float DistSq = FVector::DistSquared(GetActorLocation(), Other->GetActorLocation());
+				MinDistSq = FMath::Min(MinDistSq, DistSq);
+			}
+		}
+	}
+
+	// H34 무리 강박 (15m = 1500uu 초과 시 태그 부여)
+	if (bHasLeash)
+	{
+		if (MinDistSq > FMath::Square(1500.0f))
+		{
+			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Leash);
+		}
+		else
+		{
+			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
+		}
+	}
+
+	// H35 대인 기피 (5m = 500uu 이내 시 태그 부여)
+	if (bHasRepel)
+	{
+		if (MinDistSq <= FMath::Square(500.0f))
+		{
+			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Repel);
+		}
+		else
+		{
+			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+		}
+	}
+}
+
+void AFACharacter::SetHeartbeatRevealActive(bool bActive)
+{
+	if (bHeartbeatRevealActive == bActive)
+	{
+		return;
+	}
+	bHeartbeatRevealActive = bActive;
+	RefreshCustomDepth();
 }
 
 void AFACharacter::UpdateRuleMarker(float DeltaTime)
@@ -859,7 +945,7 @@ void AFACharacter::BeginPlay()
 	SetupCaptureMarker();
 	SetupRuleMarker();
 	SetupNicknameMarker();
-	
+
 	if (FollowCamera)
 	{
 		// Vision.NarrowFOV 계산의 기준값. 이후로는 이 값을 실제 FOV로 되돌리지 않는다 — 카메라 FOV는 고정.
@@ -992,6 +1078,26 @@ void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 
 	ApplyTeamMaterial(NewTeam);
 	UpdateGrowlLoop(NewTeam);
+
+	if (HasAuthority())
+	{
+		if (NewTeam == EFATeam::Human)
+		{
+			// 인간 진영 배정 시 그룹 룰(H34, H35) 검사 시작
+			GetWorldTimerManager().SetTimer(GroupRuleTimerHandle, this, &AFACharacter::UpdateGroupRules, 0.5f, true);
+		}
+		else
+		{
+			// 좀비 진영 배정 시 혹시 남아 있는 그룹 룰 태그 제거
+			GetWorldTimerManager().ClearTimer(GroupRuleTimerHandle);
+
+			if (AbilitySystemComponent)
+			{
+				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Leash);
+				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Repel);
+			}
+		}
+	}
 }
 
 void AFACharacter::StartInfectionSequence()
@@ -1225,6 +1331,12 @@ void AFACharacter::InitializeAbilitySystem()
 		FAGameplayTags::Get().Rule_Trade_MutualSight, EGameplayTagEventType::NewOrRemoved
 	).AddUObject(this, &AFACharacter::OnMutualSightTagChanged);
 
+	// [H23 투명한 적] NoZombie 도 MutualSight 와 똑같이 "로컬 뷰어의 룰 태그가 바뀌면 맵 전체를 다시 그린다" 패턴이라
+	// 같은 핸들러를 재사용한다 — RefreshCustomDepth() 안에서 실제 판정을 한다.
+	AbilitySystemComponent->RegisterGameplayTagEvent(
+		FAGameplayTags::Get().Rule_Vision_NoZombie, EGameplayTagEventType::NewOrRemoved
+	).AddUObject(this, &AFACharacter::OnMutualSightTagChanged);
+
 	// [H36 뿌리내림] State.Camp 복제 시 각 클라이언트의 아웃라인을 즉시 갱신한다.
 	AbilitySystemComponent->RegisterGameplayTagEvent(
 		FAGameplayTags::Get().State_Camp, EGameplayTagEventType::NewOrRemoved
@@ -1330,12 +1442,12 @@ void AFACharacter::Tick(float DeltaTime)
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
-	
+
 	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
 	//ShouldShowOverheadWidget의 내용과 UpdateRuleMarkerOcclusion의 내용 팀원과 확인 후 병합작업 필요.
 	NicknameMarkerOcclusionTimer += DeltaTime;
 	if (NicknameMarker && NicknameMarkerOcclusionTimer >= 0.1f)
-	{	
+	{
 		NicknameMarkerOcclusionTimer = 0.0f;
 		bool ShouldVisible = ShouldShowOverheadWidget();
 		if (ShouldVisible != NicknameMarker->IsVisible())
@@ -1659,6 +1771,7 @@ void AFACharacter::UpdateVisionEffects()
 	const bool bForceFirstPerson = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_ForceFPS);
 	const bool bDesaturate = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Desaturate);
 	const bool bBlackout = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Blackout);
+	const bool bNoAlly = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_NoAlly); // [H24 고독]
 
 	// 시야각 축소 (Vision.NarrowFOV) — 카메라 실제 FOV는 더 이상 건드리지 않는다.
 	// 대신 화면 테두리를 검게 좁혀 "시야가 좁아진 것"처럼 보이게 하는 별도 PP 머티리얼(M_VisionNarrowFOV)을 쓴다.
@@ -1737,7 +1850,7 @@ void AFACharacter::UpdateVisionEffects()
 		// 주의: 0을 넘기면 FullDistanceSq가 0이 되어 오히려 전원이 컬링되는 정반대 버그가 나므로,
 		// "컬링 안 함"은 반드시 아주 큰 거리값으로 표현한다.
 		constexpr float NoCullingDistance = 1000000.0f; // 어떤 맵보다도 확실히 큰 값.
-		UpdateOpponentDistanceCulling(FogAmount > 0.0f ? FullDistance : NoCullingDistance);
+		UpdateOpponentDistanceCulling(FogAmount > 0.0f ? FullDistance : NoCullingDistance, bNoAlly);
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
@@ -1786,7 +1899,7 @@ void AFACharacter::UpdateVisionEffects()
 	FollowCamera->PostProcessBlendWeight = bAnyVisualEffectActive ? 1.0f : 0.0f;
 }
 
-void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
+void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies)
 {
 	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 수행한다.
 	TimeSinceLastOpponentCullCheck += GetWorld()->GetDeltaSeconds();
@@ -1796,6 +1909,7 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
 	}
 	TimeSinceLastOpponentCullCheck = 0.0f;
 
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
 	const FVector MyLocation = GetActorLocation();
 	const float FullDistanceSq = FMath::Square(FullDistance);
 
@@ -1814,7 +1928,14 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance)
 		}
 
 		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
-		const bool bShouldHide = DistSq > FullDistanceSq;
+		bool bShouldHide = DistSq > FullDistanceSq;
+
+		// [H24 고독] 다른 인간(생존자)은 거리와 상관없이 로컬 화면에서 완전히 숨긴다.
+		if (bHideAllies && Other->GetFAAbilitySystemComponent() &&
+			Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+		{
+			bShouldHide = true;
+		}
 
 		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
 		Other->GetMesh()->SetHiddenInGame(bShouldHide);
