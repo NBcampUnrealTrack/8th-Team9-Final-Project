@@ -119,6 +119,16 @@ public:
 	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
 	FGameplayTag State_Hiding;
 
+	//~ ========================= Group =========================
+
+	/* H34 무리 강박 . 가장 가까운 생존자와 15m 초과 시 이동속도 -40% */
+	FGameplayTag Rule_Group_Leash;
+	FGameplayTag State_Group_Leash;
+
+	/* H35 대인 기피 . 가장 가까운 생존자와 5m 이내 시 이동속도 -30% */
+	FGameplayTag Rule_Group_Repel;
+	FGameplayTag State_Group_Repel;
+
 	//~ ========================= Trade Tag =========================
 
 	/* H48 예지 / Z48 사냥꾼의 눈 - 상대 진영 전원 위치 표시, 내 위치 노출 */
@@ -257,7 +267,7 @@ public:
 
 	FGameplayTag Rule_Trade_Hide;
 	FGameplayTag State_Hidden;
-	
+
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;
 #pragma endregion
