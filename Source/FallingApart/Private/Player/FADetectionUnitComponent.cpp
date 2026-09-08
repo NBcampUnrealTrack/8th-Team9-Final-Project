@@ -4,6 +4,7 @@
 #include "Player/FADetectionUnitComponent.h"
 
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
 #include "GAS/FAAbilitySystemComponent.h"
 #include "Player/FACharacter.h"
 
@@ -63,7 +64,7 @@ void UFADetectionUnitComponent::GetCharactersInRange(const FGameplayTag& TeamTag
 		/**
 		 * 요청받은 팀 태그를 가진 캐릭터만 탐색한다.
 		 *
-		 * H41에서는 Rule.Team.Zombie를 전달한다.
+		 * 현재 좀비 진영을 찾을 때는 State.Zombie를 전달한다.
 		 */
 		if (!CandidateASC->HasMatchingGameplayTag(TeamTag))
 		{
@@ -86,6 +87,29 @@ bool UFADetectionUnitComponent::HasCharacterInRange(const FGameplayTag& TeamTag,
 	GetCharactersInRange(TeamTag,Radius,Characters);
 
 	return !Characters.IsEmpty();
+}
+
+bool UFADetectionUnitComponent::IsLocalPlayerInRange(const FGameplayTag& TeamTag, float Radius) const
+{
+	const AFACharacter* OwnerCharacter = GetOwnerCharacter();
+	const UWorld* World = GetWorld();
+	if (!IsValid(OwnerCharacter) || !World || World->GetNetMode() == NM_DedicatedServer || !TeamTag.IsValid())
+	{
+		return false;
+	}
+
+	const APlayerController* PC = World->GetFirstPlayerController();
+	const AFACharacter* Viewer = PC && PC->IsLocalController()
+		? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
+	if (!IsValid(Viewer) || Viewer == OwnerCharacter)
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* ViewerASC = Viewer->GetAbilitySystemComponent();
+	return ViewerASC && ViewerASC->HasMatchingGameplayTag(TeamTag)
+		&& FVector::DistSquared(OwnerCharacter->GetActorLocation(), Viewer->GetActorLocation())
+			<= FMath::Square(FMath::Max(0.0f, Radius));
 }
 
 AFACharacter* UFADetectionUnitComponent::GetOwnerCharacter() const

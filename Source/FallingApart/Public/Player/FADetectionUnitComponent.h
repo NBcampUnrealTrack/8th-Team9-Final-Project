@@ -25,7 +25,7 @@ public:
 	  *
 	  * @param TeamTag
 	  * 탐색 대상이 보유해야 하는 태그.
-	  * 예: Rule.Team.Zombie
+	  * 예: State.Zombie
 	  *
 	  * @param Radius
 	  * 탐색 반경. 언리얼 단위 기준:
@@ -35,10 +35,7 @@ public:
 	  * @param OutCharacters
 	  * 탐색 결과가 저장되는 배열.
 	  */
-	void GetCharactersInRange(
-		 const FGameplayTag& TeamTag,
-		 float Radius,
-		 TArray<AFACharacter*>& OutCharacters) const;
+	void GetCharactersInRange(const FGameplayTag& TeamTag,float Radius,TArray<AFACharacter*>& OutCharacters) const;
 	
 	/**
 	   * 지정한 팀 태그를 가진 캐릭터가
@@ -46,9 +43,9 @@ public:
 	   *
 	   * 대상 목록이 필요 없는 근접 룰에서 사용한다.
 	   */
-	bool HasCharacterInRange(
-		const FGameplayTag& TeamTag,
-		float Radius) const;
+	bool HasCharacterInRange(const FGameplayTag& TeamTag,float Radius) const;
+
+	bool IsLocalPlayerInRange(const FGameplayTag& TeamTag, float Radius) const;
 
 private:
 	/** 이 컴포넌트를 소유한 AFACharacter를 반환한다. */
