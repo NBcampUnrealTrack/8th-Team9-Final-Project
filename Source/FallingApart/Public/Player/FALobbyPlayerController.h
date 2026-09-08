@@ -37,12 +37,27 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_RequestStartCountdown();
 	
+	
+	UFUNCTION(BlueprintCallable, Category="FallingApart|Lobby")
+	void RequestSelectMap(FName MapId);
+	
+	UFUNCTION(Server, Reliable)
+	void Server_RequestSelectMap(FName MapId);
+	
+	UFUNCTION(BlueprintCallable)
+	UFALobbyMainWidget* GetLobbyMainWidget()
+	{
+		if (LobbyWidgetInstance)
+			return LobbyWidgetInstance;
+		return nullptr;
+	}
+	
 protected:
 	virtual void BeginPlay() override;
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-
+	
 private:
 	void CreateLobbyWidget();
 	

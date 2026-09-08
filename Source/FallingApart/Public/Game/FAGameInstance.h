@@ -30,4 +30,13 @@ public:
 private:
 	FDelegateHandle NetworkFailureDelegateHandle;// 접속 거부 핸들
 	FDelegateHandle TravelFailureDelegateHandle;// Travel 실패 핸들
+	
+public:
+	void SetLastSelectedMapId(FName MapId);
+	
+	FName GetLastSelectedMapId() const;
+	
+private:
+	UPROPERTY(Transient)
+	FName LastSelectedMapId;
 };
