@@ -18,7 +18,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Player/FACharacter.h"
-#include "GameFramework/PlayerController.h"
+#include "Player/FADetectionUnitComponent.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -102,14 +102,8 @@ void UFACharacterStatusComponent::BeginPlay()
 		ASC->RegisterGameplayTagEvent(HeartbeatRuleTag,EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this,&ThisClass::HandleHeartbeatRuleChanged);
 
-		// BeginPlay 시 이미 H41을 가지고 있는 경우
-		if (ASC->HasMatchingGameplayTag(HeartbeatRuleTag)){HandleHeartbeatRuleChanged(HeartbeatRuleTag,1);
-		}
+		HandleHeartbeatRuleChanged(HeartbeatRuleTag,ASC->GetTagCount(HeartbeatRuleTag));
 	}
-	
-	
-	// 로컬 폰과 복제 태그가 늦게 준비되어도 다시 판정한다.
-	StartHeartbeatDetection();
 }
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -417,18 +411,13 @@ void UFACharacterStatusComponent::ScanHeartbeatTargets()
 	}
 
 	// 표시 대상은 H41 보유자, 관찰자는 이 클라이언트의 좀비 플레이어다.
-	APlayerController* PC = World->GetFirstPlayerController();
-	AFACharacter* Viewer = PC && PC->IsLocalController()
-		? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
+	const UFADetectionUnitComponent* Detection = Character->GetDetectionUnitComponent();
 	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	UAbilitySystemComponent* ViewerASC = Viewer ? Viewer->GetAbilitySystemComponent() : nullptr;
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
-	const bool bInRange = Viewer && Viewer != Character && ASC && ViewerASC
+	const bool bInRange = Detection && ASC
 		&& ASC->HasMatchingGameplayTag(Tags.Rule_State_Heartbeat)
 		&& ASC->HasMatchingGameplayTag(Tags.State_Human)
-		&& ViewerASC->HasMatchingGameplayTag(Tags.State_Zombie)
-		&& FVector::DistSquared(Character->GetActorLocation(), Viewer->GetActorLocation())
-			<= FMath::Square(FMath::Max(0.0f, HeartbeatDetectionRadius));
+		&& Detection->IsLocalPlayerInRange(Tags.State_Zombie, HeartbeatDetectionRadius);
 
 	if (!bInRange)
 	{
@@ -451,8 +440,16 @@ void UFACharacterStatusComponent::ScanHeartbeatTargets()
 void UFACharacterStatusComponent::HandleHeartbeatRuleChanged(
 	const FGameplayTag Tag, int32 NewCount)
 {
-	// 룰 제거는 즉시 반영하고 이동/진영 변경은 반복 타이머에서 갱신한다.
-	ScanHeartbeatTargets();
+	if (NewCount > 0)
+	{
+		// H41 보유 중에는 로컬 폰과 진영 태그가 늦게 준비되어도 반복 판정한다.
+		StartHeartbeatDetection();
+	}
+	else
+	{
+		// 룰이 제거되면 타이머와 H41 아웃라인을 즉시 해제한다.
+		StopHeartbeatDetection();
+	}
 }
 
 void UFACharacterStatusComponent::HandleLanded(const FHitResult& Hit)
