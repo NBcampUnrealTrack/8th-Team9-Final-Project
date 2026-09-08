@@ -150,7 +150,6 @@ public:
 	ESessionOperationState GetCurrentOperationState() const;
 	
 	FNamedOnlineSession* GetCurrentSession() const;
-	TSoftObjectPtr<UWorld> ResolveMap(FName GetSelectedMapId);
 
 	// 각각 콜백 등록용
 	

@@ -546,17 +546,6 @@ FNamedOnlineSession* UFAOnlineSessionSubsystem::GetCurrentSession() const
 	return nullptr;
 }
 
-TSoftObjectPtr<UWorld> UFAOnlineSessionSubsystem::ResolveMap(FName GetSelectedMapId)
-{
-	FString PathString = FString::Printf(TEXT("/Game/FallingApart/Level/%s.%s"), *GetSelectedMapId.ToString(), *GetSelectedMapId.ToString());
-
-	FSoftObjectPath SoftPath(PathString);
-
-	TSoftObjectPtr<UWorld> WorldSoftPtr(SoftPath);
-	
-	return WorldSoftPtr;
-}
-
 FUniqueNetIdRepl UFAOnlineSessionSubsystem::GetLocalUniqueNetId()
 {
 	const ULocalPlayer* LocalPlayer = GetWorld() ? GetWorld()->GetFirstLocalPlayerFromController() : nullptr;
