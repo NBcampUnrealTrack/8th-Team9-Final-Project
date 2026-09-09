@@ -1865,6 +1865,38 @@ void AFACharacter::UpdateVisionEffects()
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
+	// 심박 왜곡 (Vision.Shake, Z25) — 가장 가까운 인간까지 거리가 가까울수록 화면을 흔든다.
+	// 카메라 셰이크 애셋 없이 FollowCamera 의 RelativeRotation 을 직접 흔든다.
+	const bool bShake = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Shake);
+	float ShakeAlpha = 0.0f;
+	if (bShake)
+	{
+		UpdateClosestHumanDistance();
+
+		const float ClosestDistance = FMath::Sqrt(ClosestHumanDistanceSq);
+		// ShakeMinDistance 이하면 1(최대), ShakeMaxDistance 이상이면 0.
+		ShakeAlpha = 1.0f - FMath::Clamp(
+			(ClosestDistance - ShakeMinDistance) / FMath::Max(ShakeMaxDistance - ShakeMinDistance, 1.0f),
+			0.0f, 1.0f);
+	}
+
+	if (ShakeAlpha > 0.0f && GetWorld())
+	{
+		// 축마다 다른 위상을 줘서 피치·요가 같은 파형으로 안 겹치게 한다.
+		const float NoiseTime = GetWorld()->GetTimeSeconds() * ShakeFrequency;
+		const float PitchNoise = (FMath::PerlinNoise1D(NoiseTime) - 0.5f) * 2.0f;
+		const float YawNoise   = (FMath::PerlinNoise1D(NoiseTime + 37.0f) - 0.5f) * 2.0f;
+		FollowCamera->SetRelativeRotation(FRotator(
+			PitchNoise * ShakeAlpha * ShakeMaxAngle,
+			YawNoise * ShakeAlpha * ShakeMaxAngle,
+			0.0f));
+	}
+	else
+	{
+		// 룰이 없거나 인간이 사거리 밖이면 항상 원위치로 — 다른 카메라 로직과 안 겹치니 무조건 되돌려도 안전하다.
+		FollowCamera->SetRelativeRotation(FRotator::ZeroRotator);
+	}
+
 	// 화면을 어둡게 만드는 세 효과(안개 · 명멸 룰 · 감염 연출)를 ColorGain 하나로 합쳐서 적용
 	const float DarkenAmount = FMath::Max3(FogAmount * 0.25f, BlackoutAmount, InfectionDarkenAmount);
 
@@ -1940,6 +1972,43 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance, bool bHideA
 		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
 		Other->GetMesh()->SetHiddenInGame(bShouldHide);
 	}
+}
+
+void AFACharacter::UpdateClosestHumanDistance()
+{
+	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 갱신한다.
+	TimeSinceLastShakeCheck += GetWorld()->GetDeltaSeconds();
+	if (TimeSinceLastShakeCheck < ShakeCheckInterval)
+	{
+		return;
+	}
+	TimeSinceLastShakeCheck = 0.0f;
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	const FVector MyLocation = GetActorLocation();
+	float ClosestSq = TNumericLimits<float>::Max();
+
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+		if (!IsValid(Other) || Other == this || !Other->GetFAAbilitySystemComponent())
+		{
+			continue;
+		}
+
+		if (!Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+		{
+			continue;
+		}
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		if (DistSq < ClosestSq)
+		{
+			ClosestSq = DistSq;
+		}
+	}
+
+	ClosestHumanDistanceSq = ClosestSq;
 }
 
 void AFACharacter::UpdatePerspectiveCamera()
