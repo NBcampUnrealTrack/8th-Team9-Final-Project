@@ -93,6 +93,7 @@ private:
 	  * 추가되거나 제거됐을 때 호출된다.
 	  */
 	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
+	void HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	/**
 	 * 각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.

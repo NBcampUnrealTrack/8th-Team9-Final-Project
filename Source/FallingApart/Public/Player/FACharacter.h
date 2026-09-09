@@ -30,6 +30,7 @@ class AFACabinet;
 class AFALadder;
 class UAnimMontage;
 class UFADetectionUnitComponent;
+class UFATrailComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -858,6 +859,8 @@ private:
 	bool bVisionForcedFirstPerson = false;
 
 	bool bHeartbeatRevealActive = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="FallingApart|Trail", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFATrailComponent> TrailComponent;
 	UPROPERTY(VisibleAnywhere, Category = "FallingApart|Detection")
 	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
 
