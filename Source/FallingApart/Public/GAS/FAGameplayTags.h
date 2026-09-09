@@ -85,6 +85,9 @@ public:
 	/* H24 고독 - 다른 생존자(인간)가 보이지 않음 (완전히 숨김) */
 	FGameplayTag Rule_Vision_NoAlly;
 
+	/* Z25 심박 왜곡 - 좀비 전용. 인간 근접 시 카메라 흔들림 심화 */
+	FGameplayTag Rule_Vision_Shake;
+
 
 
 	//~ ========================= 상태 태그 =========================

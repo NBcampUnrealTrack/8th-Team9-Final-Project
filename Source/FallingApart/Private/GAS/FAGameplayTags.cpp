@@ -42,6 +42,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_FlipY     = AddTag(TEXT("Rule.Vision.FlipY"),     TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
 	Rule_Vision_NoZombie  = AddTag(TEXT("Rule.Vision.NoZombie"),  TEXT("H23 투명한 적 — 좀비가 보이지 않음(발소리·실루엣만)."));
 	Rule_Vision_NoAlly    = AddTag(TEXT("Rule.Vision.NoAlly"),    TEXT("H24 고독 — 다른 생존자가 보이지 않음."));
+	Rule_Vision_Shake     = AddTag(TEXT("Rule.Vision.Shake"),     TEXT("Z25 심박 왜곡 — 인간 근접 시 카메라 흔들림 심화."));
 
 
 	//~ 상태
