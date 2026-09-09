@@ -18,6 +18,7 @@ namespace
 	const FString ProjectSettingValue(TEXT("FALLING_APART")); //480 세션구분용
 	const FName NameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
 	const FName HasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
+	const FName OwningUserNickname(TEXT("OwningUserNickname")); // 세션 정보에 호스트 닉네임 공개용(OwningUserName은 기본플랫폼닉네임임)
 
 	TAutoConsoleVariable<float> CVarJoinTokenLifetimeSeconds(
 		TEXT("FA.OSS.JoinTokenLifetimeSeconds"),
@@ -200,7 +201,9 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		EOnlineDataAdvertisementType::ViaOnlineService);
 
 	LastSessionSettings->Set(NameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
-
+	
+	//호스트 닉네임을 설정.
+	LastSessionSettings->Set(OwningUserNickname, PendingNickname , EOnlineDataAdvertisementType::ViaOnlineService);
 
 	SetHostPassword(Password);
 	LastSessionSettings->Set(HasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
