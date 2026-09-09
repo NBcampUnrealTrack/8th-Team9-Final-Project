@@ -52,7 +52,11 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 	
 	Result.Session.SessionSettings.Get(FName("OwningUserNickname"), HostNickname);
 	
-	SessionHostNicknameText->SetText(FText::FromString(HostNickname));
+	// BindWidgetOptional 로 바꿔둔 동안 null 가드
+	if (SessionHostNicknameText)
+	{
+		SessionHostNicknameText->SetText(FText::FromString(HostNickname));
+	}
 	
 	// 참가자 수
 	int32 MaxConnection = Result.Session.SessionSettings.NumPublicConnections;
