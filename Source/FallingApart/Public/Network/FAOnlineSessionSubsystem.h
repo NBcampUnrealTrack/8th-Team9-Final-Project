@@ -138,7 +138,7 @@ public:
 	/// TODO : 플랫폼의 친구에게 참가
 	void FindFriendSession();
 	
-	/// TODO : 플랫폼 친구에게 세션 초대 발송
+	/** 플랫폼의 초대 기능으로 초대 전송 */
 	void SendSessionInviteToFriends();
 	
 	void ReopenSessionForLobby();
@@ -173,6 +173,12 @@ protected:
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
+	
+	void OnSessionUserInviteAccepted(
+		bool bWasSuccessful,
+		int32 ControllerId, 
+		FUniqueNetIdPtr UserId, 
+		const FOnlineSessionSearchResult& InviteResult);
 
 	
 private:
@@ -205,6 +211,8 @@ private:
 	FDelegateHandle 					EndSessionCompleteDelegateHandle;
 	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
 	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
+	
+	FDelegateHandle 					OnSessionUserInviteAcceptedDelegateHandle;
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
 	

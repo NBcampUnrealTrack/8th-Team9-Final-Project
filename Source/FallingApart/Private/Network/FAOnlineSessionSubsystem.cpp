@@ -74,9 +74,19 @@ void UFAOnlineSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(UObject::GetWorld());
-	if (OnlineSubsystem!=nullptr)
+	if (!OnlineSubsystem)
 	{
-		SessionInterface = OnlineSubsystem->GetSessionInterface();
+		return;
+	}
+	SessionInterface = OnlineSubsystem->GetSessionInterface();
+	
+	if (SessionInterface.IsValid())
+	{
+		OnSessionUserInviteAcceptedDelegateHandle = 
+			SessionInterface->AddOnSessionUserInviteAcceptedDelegate_Handle(
+				FOnSessionUserInviteAcceptedDelegate::CreateUObject(
+					this, 
+					&ThisClass::OnSessionUserInviteAccepted));
 	}
 }
 
@@ -111,6 +121,10 @@ void UFAOnlineSessionSubsystem::Deinitialize()
 		if (EndSessionCompleteDelegateHandle.IsValid())
 		{
 			SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(EndSessionCompleteDelegateHandle);
+		}
+		if (OnSessionUserInviteAcceptedDelegateHandle.IsValid())
+		{
+			SessionInterface->ClearOnSessionUserInviteAcceptedDelegate_Handle(OnSessionUserInviteAcceptedDelegateHandle);
 		}
 		SessionInterface.Reset();
 	}
@@ -166,6 +180,9 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	LastSessionSettings->bShouldAdvertise = true;//세션을 공개하여 다른이들이 볼 수 있도록 함
 	LastSessionSettings->bUsesPresence = true;//내 상태를 플랫폼에 공개할것인지 여부 (친구창에 공개 등)
 	LastSessionSettings->bUseLobbiesIfAvailable = true;// 스팀 API구조 문제로, 반드시 로비 기능을 활성화해야한다고함
+	
+	//초대 기능 허용
+	LastSessionSettings->bAllowInvites = true;
 	
 	// STEAM AppID 480에서 구분을 위한 고유 키값
 	LastSessionSettings->Set(ProjectSettingKey, ProjectSettingValue, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
@@ -327,6 +344,7 @@ void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 Expect
 	
 	LastSessionSettings->bAllowJoinInProgress = false;
 	LastSessionSettings->bAllowJoinViaPresence = false;
+	LastSessionSettings->bAllowInvites = false;
 	
 	LastSessionSettings->Set(
 		SETTING_MAPNAME,MapId.ToString(), EOnlineDataAdvertisementType::ViaOnlineService);
@@ -398,7 +416,25 @@ void UFAOnlineSessionSubsystem::FindFriendSession()
 
 void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
 {
-	//SessionInterface->SendSessionInviteToFriends()
+	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
+	
+	if (!OnlineSubsystem || !SessionInterface.IsValid())
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("Steam Subsystem is unavailable"));
+		return;
+	}
+	
+	if (!SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("No active session to invite friends to."));
+		return;
+	}
+	IOnlineExternalUIPtr ExternalUI = OnlineSubsystem->GetExternalUIInterface();
+	if (!ExternalUI.IsValid() ||
+		!ExternalUI->ShowInviteUI(0, NAME_GameSession))
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("Failed to open Steam invite overlay."));
+	}
 }
 
 void UFAOnlineSessionSubsystem::ReopenSessionForLobby()
@@ -735,6 +771,43 @@ void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool 
 	{
 		CompleteReopenSessionForLobby(true);
 	}
+}
+
+void UFAOnlineSessionSubsystem::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId,
+	FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult)
+{
+	if (!bWasSuccessful || !InviteResult.IsValid())
+	{
+		UE_LOG(LogFAOSS, Warning,
+			TEXT("Invalid Steam invite result."));
+		return;
+	}
+
+	FString ProjectValue;
+	FString SessionState;
+	
+	//우리 프로젝트 맞는지 검증
+	const bool bCorrectProject =
+		InviteResult.Session.SessionSettings.Get(ProjectSettingKey,ProjectValue) &&
+		ProjectValue == ProjectSettingValue;
+
+	const bool bLobbyIsOpen =
+		InviteResult.Session.SessionSettings.Get(
+			FName(TEXT("SESSION_STATE")),
+			SessionState) &&
+		SessionState == TEXT("Lobby");
+
+	if (!bCorrectProject || !bLobbyIsOpen)
+	{
+		UE_LOG(LogFAOSS, Warning,
+			TEXT("Rejected incompatible or closed Steam lobby."));
+		return;
+	}
+
+	// 이 프로젝트에서는 여기서 JoinSession()을 바로 호출하면 안 됨.
+	// UI에 InviteResult를 넘기고 닉네임/비밀번호 입력을 받은 뒤:
+	//
+	// VerifyPasswordAndJoin(InviteResult, EnteredPassword);
 }
 
 
