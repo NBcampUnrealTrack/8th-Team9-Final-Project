@@ -34,6 +34,7 @@
 #include "EngineUtils.h"
 #include "UI/FAOverHeadWidget.h"
 #include "Player/FADetectionUnitComponent.h"
+#include "Player/FATrailComponent.h"
 
 namespace FACharacterAudio
 {
@@ -118,6 +119,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	TrailComponent = CreateDefaultSubobject<UFATrailComponent>(TEXT("TrailComponent"));
 
 	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
 }
