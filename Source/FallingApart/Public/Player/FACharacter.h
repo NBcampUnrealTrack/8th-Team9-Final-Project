@@ -344,6 +344,13 @@ protected:
 	 */
 	void UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies);
 
+	/**
+	 * [Z25 심박 왜곡] 가장 가까운 인간까지의 거리(제곱)를 ClosestHumanDistanceSq 에 캐싱한다.
+	 * 너무 잦은 전체 순회를 피하려고 ShakeCheckInterval 주기로만 갱신 — 흔들림 세기는 부드럽게
+	 * 이어지므로 캐시가 살짝 늦어도 체감상 문제없다.
+	 */
+	void UpdateClosestHumanDistance();
+
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
 
@@ -451,6 +458,35 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Narrow", meta = (ClampMin = "1.0"))
 	float NarrowAmountIntensity = 2.0f;
+
+	//~ ---------------- 심박 왜곡 연출 (Vision.Shake, Z25) ----------------
+	//~ 카메라 셰이크 애셋 없이 FollowCamera 의 RelativeRotation 을 매 프레임 직접 흔든다 —
+	//~ 이 룰이 꺼져 있으면 항상 ZeroRotator 로 되돌리므로 다른 카메라 로직과 안 겹친다.
+
+	/** 이 거리 이하로 가까워지면 흔들림이 최대치가 된다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMinDistance = 150.0f;
+
+	/** 이 거리보다 멀면 흔들림이 없다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxDistance = 800.0f;
+
+	/** 흔들림 최대 각도(도). 최대치일 때 카메라가 좌우/상하로 이 각도만큼 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxAngle = 1.5f;
+
+	/** 흔들림 파형 속도. 값이 클수록 더 빠르게 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeFrequency = 18.0f;
+
+	/** 가장 가까운 인간 탐색 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeCheckInterval = 0.2f;
+
+	float TimeSinceLastShakeCheck = 0.0f;
+
+	/** UpdateClosestHumanDistance() 가 채우는 캐시. 사람이 하나도 없으면 아주 큰 값(=흔들림 0)으로 유지. */
+	float ClosestHumanDistanceSq = TNumericLimits<float>::Max();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
