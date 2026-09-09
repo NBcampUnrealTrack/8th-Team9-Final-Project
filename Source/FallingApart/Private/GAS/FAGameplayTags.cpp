@@ -42,6 +42,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_FlipY     = AddTag(TEXT("Rule.Vision.FlipY"),     TEXT("Z21/H22 상하 반전 — 입력 Y축 반전."));
 	Rule_Vision_NoZombie  = AddTag(TEXT("Rule.Vision.NoZombie"),  TEXT("H23 투명한 적 — 좀비가 보이지 않음(발소리·실루엣만)."));
 	Rule_Vision_NoAlly    = AddTag(TEXT("Rule.Vision.NoAlly"),    TEXT("H24 고독 — 다른 생존자가 보이지 않음."));
+	Rule_Vision_Shake     = AddTag(TEXT("Rule.Vision.Shake"),     TEXT("Z25 심박 왜곡 — 인간 근접 시 카메라 흔들림 심화."));
 
 
 	//~ 상태
@@ -100,11 +101,19 @@ void FAGameplayTags::AddAllTags()
 	//~ 룰 - Social
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
 
+	//~ 룰 - Group
+	Rule_Group_Leash = AddTag(TEXT("Rule.Group.Leash"), TEXT("H34 무리 강박 — 가까운 생존자와 15m 초과 시 이속 -40%"));
+	State_Group_Leash = AddTag(TEXT("State.Group.Leash"), TEXT("H34 무리 강박 거리 조건(15m 초과) 충족 상태"));
+
+	Rule_Group_Repel = AddTag(TEXT("Rule.Group.Repel"), TEXT("H35 대인 기피 — 가까운 생존자와 5m 이내 시 이속 -30%"));
+	State_Group_Repel = AddTag(TEXT("State.Group.Repel"), TEXT("H35 대인 기피 거리 조건(5m 이내) 충족 상태"));
+
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
 	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
+
 	//~ 룰 - State
 	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
 	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
@@ -138,5 +147,6 @@ void FAGameplayTags::AddAllTags()
 
 	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
 	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
+
 #pragma endregion
 }

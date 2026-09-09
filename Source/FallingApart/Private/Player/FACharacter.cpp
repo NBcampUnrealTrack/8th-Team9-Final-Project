@@ -118,7 +118,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
-	
+
 	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
 }
 
@@ -686,7 +686,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 	{
 		return false;
 	}
-	
+
 	const UWorld* World = GetWorld();
 	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
 
@@ -700,7 +700,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		FVector ViewLocation;
 		FRotator ViewRotation;
 		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-		
+
 		//안개 디버프 먹었을때 제한할 필요가 있음.
 		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
 		float CullDistance = 4000.f;
@@ -709,12 +709,12 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			CullDistance = 800.f;
 		}
-	
+
 		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
 		{
 			return false;
 		}
-		
+
 		//이름표가 보일 시야각의 제한, 임시 90도 사용.
 		const FVector ToTarget = (NameLocation - ViewLocation).GetSafeNormal();
 		const FVector CameraForward = ViewRotation.Vector();
@@ -722,7 +722,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			return false;
 		}
-		
+
 		//화면내 영역에서만 처리하도록 위치가 Viewport내에 존재하는지 확인. 사람마다 화면 비율이 다를수 있으므로, 시야각과 같이 더블체크함.
 		FVector2D ScreenPosition;
 		if (!LocalController->ProjectWorldLocationToScreen(
@@ -749,12 +749,12 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		{
 			return false;
 		}
-		
+
 		//계산이 무거운 라인트레이스를 마지막에 계산하도록 함.
 		FCollisionQueryParams Params(
 		SCENE_QUERY_STAT(FANameplateOcclusion),
 		false);
-		
+
 		Params.AddIgnoredActor(this);
 
 		if (const APawn* LocalPawn = LocalController->GetPawn())
@@ -762,8 +762,8 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 			Params.AddIgnoredActor(LocalPawn);
 		}
 
-		
-		
+
+
 		FHitResult Hit;
 		const bool bHeadBlocked = World->LineTraceSingleByChannel(
 			Hit,
@@ -777,7 +777,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 			FootLocation,
 			ECC_Visibility,
 			Params);
-		
+
 		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
 		if (bHeadBlocked || bBodyBlocked)
 		{
@@ -786,6 +786,68 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		return true;
 	}
 	return false;
+}
+
+void AFACharacter::UpdateGroupRules()
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	const bool bHasLeash = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Leash);
+	const bool bHasRepel = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Repel);
+
+	// 두 룰(H34, H35) 모두 없다면 혹시 혹시 남아 있는 그룹 룰 태그 제거 후 종료
+	if (!bHasLeash && !bHasRepel)
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
+		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+		return;
+	}
+
+	// 가장 가까운 생존자(인간)와의 거리 계산
+	float MinDistSq = MAX_flt;
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+
+		if (IsValid(Other) && Other != this && Other->GetFAAbilitySystemComponent())
+		{
+			if (Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+			{
+				const float DistSq = FVector::DistSquared(GetActorLocation(), Other->GetActorLocation());
+				MinDistSq = FMath::Min(MinDistSq, DistSq);
+			}
+		}
+	}
+
+	// H34 무리 강박 (15m = 1500uu 초과 시 태그 부여)
+	if (bHasLeash)
+	{
+		if (MinDistSq > FMath::Square(1500.0f))
+		{
+			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Leash);
+		}
+		else
+		{
+			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
+		}
+	}
+
+	// H35 대인 기피 (5m = 500uu 이내 시 태그 부여)
+	if (bHasRepel)
+	{
+		if (MinDistSq <= FMath::Square(500.0f))
+		{
+			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Repel);
+		}
+		else
+		{
+			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+		}
+	}
 }
 
 void AFACharacter::SetHeartbeatRevealActive(bool bActive)
@@ -883,7 +945,7 @@ void AFACharacter::BeginPlay()
 	SetupCaptureMarker();
 	SetupRuleMarker();
 	SetupNicknameMarker();
-	
+
 	if (FollowCamera)
 	{
 		// Vision.NarrowFOV 계산의 기준값. 이후로는 이 값을 실제 FOV로 되돌리지 않는다 — 카메라 FOV는 고정.
@@ -1016,6 +1078,26 @@ void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 
 	ApplyTeamMaterial(NewTeam);
 	UpdateGrowlLoop(NewTeam);
+
+	if (HasAuthority())
+	{
+		if (NewTeam == EFATeam::Human)
+		{
+			// 인간 진영 배정 시 그룹 룰(H34, H35) 검사 시작
+			GetWorldTimerManager().SetTimer(GroupRuleTimerHandle, this, &AFACharacter::UpdateGroupRules, 0.5f, true);
+		}
+		else
+		{
+			// 좀비 진영 배정 시 혹시 남아 있는 그룹 룰 태그 제거
+			GetWorldTimerManager().ClearTimer(GroupRuleTimerHandle);
+
+			if (AbilitySystemComponent)
+			{
+				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Leash);
+				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Repel);
+			}
+		}
+	}
 }
 
 void AFACharacter::StartInfectionSequence()
@@ -1360,12 +1442,12 @@ void AFACharacter::Tick(float DeltaTime)
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
 	UpdateRuleMarker(DeltaTime);
-	
+
 	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
 	//ShouldShowOverheadWidget의 내용과 UpdateRuleMarkerOcclusion의 내용 팀원과 확인 후 병합작업 필요.
 	NicknameMarkerOcclusionTimer += DeltaTime;
 	if (NicknameMarker && NicknameMarkerOcclusionTimer >= 0.1f)
-	{	
+	{
 		NicknameMarkerOcclusionTimer = 0.0f;
 		bool ShouldVisible = ShouldShowOverheadWidget();
 		if (ShouldVisible != NicknameMarker->IsVisible())
@@ -1783,6 +1865,38 @@ void AFACharacter::UpdateVisionEffects()
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
 
+	// 심박 왜곡 (Vision.Shake, Z25) — 가장 가까운 인간까지 거리가 가까울수록 화면을 흔든다.
+	// 카메라 셰이크 애셋 없이 FollowCamera 의 RelativeRotation 을 직접 흔든다.
+	const bool bShake = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Shake);
+	float ShakeAlpha = 0.0f;
+	if (bShake)
+	{
+		UpdateClosestHumanDistance();
+
+		const float ClosestDistance = FMath::Sqrt(ClosestHumanDistanceSq);
+		// ShakeMinDistance 이하면 1(최대), ShakeMaxDistance 이상이면 0.
+		ShakeAlpha = 1.0f - FMath::Clamp(
+			(ClosestDistance - ShakeMinDistance) / FMath::Max(ShakeMaxDistance - ShakeMinDistance, 1.0f),
+			0.0f, 1.0f);
+	}
+
+	if (ShakeAlpha > 0.0f && GetWorld())
+	{
+		// 축마다 다른 위상을 줘서 피치·요가 같은 파형으로 안 겹치게 한다.
+		const float NoiseTime = GetWorld()->GetTimeSeconds() * ShakeFrequency;
+		const float PitchNoise = (FMath::PerlinNoise1D(NoiseTime) - 0.5f) * 2.0f;
+		const float YawNoise   = (FMath::PerlinNoise1D(NoiseTime + 37.0f) - 0.5f) * 2.0f;
+		FollowCamera->SetRelativeRotation(FRotator(
+			PitchNoise * ShakeAlpha * ShakeMaxAngle,
+			YawNoise * ShakeAlpha * ShakeMaxAngle,
+			0.0f));
+	}
+	else
+	{
+		// 룰이 없거나 인간이 사거리 밖이면 항상 원위치로 — 다른 카메라 로직과 안 겹치니 무조건 되돌려도 안전하다.
+		FollowCamera->SetRelativeRotation(FRotator::ZeroRotator);
+	}
+
 	// 화면을 어둡게 만드는 세 효과(안개 · 명멸 룰 · 감염 연출)를 ColorGain 하나로 합쳐서 적용
 	const float DarkenAmount = FMath::Max3(FogAmount * 0.25f, BlackoutAmount, InfectionDarkenAmount);
 
@@ -1858,6 +1972,43 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance, bool bHideA
 		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
 		Other->GetMesh()->SetHiddenInGame(bShouldHide);
 	}
+}
+
+void AFACharacter::UpdateClosestHumanDistance()
+{
+	// 너무 잦은 전체 순회는 비용이 크므로 일정 주기로만 갱신한다.
+	TimeSinceLastShakeCheck += GetWorld()->GetDeltaSeconds();
+	if (TimeSinceLastShakeCheck < ShakeCheckInterval)
+	{
+		return;
+	}
+	TimeSinceLastShakeCheck = 0.0f;
+
+	const FAGameplayTags& FATags = FAGameplayTags::Get();
+	const FVector MyLocation = GetActorLocation();
+	float ClosestSq = TNumericLimits<float>::Max();
+
+	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
+	{
+		AFACharacter* Other = *It;
+		if (!IsValid(Other) || Other == this || !Other->GetFAAbilitySystemComponent())
+		{
+			continue;
+		}
+
+		if (!Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+		{
+			continue;
+		}
+
+		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+		if (DistSq < ClosestSq)
+		{
+			ClosestSq = DistSq;
+		}
+	}
+
+	ClosestHumanDistanceSq = ClosestSq;
 }
 
 void AFACharacter::UpdatePerspectiveCamera()

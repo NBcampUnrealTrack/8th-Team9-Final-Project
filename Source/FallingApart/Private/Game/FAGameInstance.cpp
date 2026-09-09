@@ -67,3 +67,13 @@ void UFAGameInstance::ProcessJoinFailure()
 		}
 	}
 }
+
+void UFAGameInstance::SetLastSelectedMapId(FName MapId)
+{
+	LastSelectedMapId = MapId;
+}
+
+FName UFAGameInstance::GetLastSelectedMapId() const
+{
+	return LastSelectedMapId;
+}

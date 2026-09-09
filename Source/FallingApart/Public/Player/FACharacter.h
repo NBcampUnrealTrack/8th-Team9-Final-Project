@@ -30,6 +30,7 @@ class AFACabinet;
 class AFALadder;
 class UAnimMontage;
 class UFADetectionUnitComponent;
+
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -343,6 +344,13 @@ protected:
 	 */
 	void UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies);
 
+	/**
+	 * [Z25 심박 왜곡] 가장 가까운 인간까지의 거리(제곱)를 ClosestHumanDistanceSq 에 캐싱한다.
+	 * 너무 잦은 전체 순회를 피하려고 ShakeCheckInterval 주기로만 갱신 — 흔들림 세기는 부드럽게
+	 * 이어지므로 캐시가 살짝 늦어도 체감상 문제없다.
+	 */
+	void UpdateClosestHumanDistance();
+
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
 
@@ -367,7 +375,7 @@ protected:
 
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
-	
+
 	/** 머리 위 닉네임 위젯을 만들고 이 캐릭터를 표시 대상으로 주입한다. */
 	void SetupNicknameMarker();
 
@@ -397,10 +405,10 @@ protected:
 	 * 아웃라인만 남긴다 — 좀비한테만 적용하면 실루엣 자체가 정체를 드러내므로 전원 대상으로 바꿨다.
 	 */
 	void RefreshCustomDepth();
-	
+
 	bool ShouldShowOverheadWidget() const;
-	
-	
+
+	void UpdateGroupRules();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -408,13 +416,13 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	class UMaterialInterface* VisionFogMaterial = nullptr;
 
 	UPROPERTY(Transient)
 	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
-	
+
 	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
 	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
@@ -450,6 +458,35 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Narrow", meta = (ClampMin = "1.0"))
 	float NarrowAmountIntensity = 2.0f;
+
+	//~ ---------------- 심박 왜곡 연출 (Vision.Shake, Z25) ----------------
+	//~ 카메라 셰이크 애셋 없이 FollowCamera 의 RelativeRotation 을 매 프레임 직접 흔든다 —
+	//~ 이 룰이 꺼져 있으면 항상 ZeroRotator 로 되돌리므로 다른 카메라 로직과 안 겹친다.
+
+	/** 이 거리 이하로 가까워지면 흔들림이 최대치가 된다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMinDistance = 150.0f;
+
+	/** 이 거리보다 멀면 흔들림이 없다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxDistance = 800.0f;
+
+	/** 흔들림 최대 각도(도). 최대치일 때 카메라가 좌우/상하로 이 각도만큼 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxAngle = 1.5f;
+
+	/** 흔들림 파형 속도. 값이 클수록 더 빠르게 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeFrequency = 18.0f;
+
+	/** 가장 가까운 인간 탐색 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeCheckInterval = 0.2f;
+
+	float TimeSinceLastShakeCheck = 0.0f;
+
+	/** UpdateClosestHumanDistance() 가 채우는 캐시. 사람이 하나도 없으면 아주 큰 값(=흔들림 0)으로 유지. */
+	float ClosestHumanDistanceSq = TNumericLimits<float>::Max();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
@@ -624,17 +661,17 @@ public:
 	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
 	float RuleMarkerOcclusionInterval = 0.2f;
-	
+
 	/**
-	 *	닉네임 컴포넌트 
+	 *	닉네임 컴포넌트
 	 *	Rule과 마찬가지로 플레이어가 보일때만 가시성 활성.
 	 *	여건이 되면 위의 Rulemarker와 통합하는게 좋을듯?
 	*/
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
 	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
-	
+
 	void SetHeartbeatRevealActive(bool bActive);
-	
+
 	UFADetectionUnitComponent* GetDetectionUnitComponent() const
 	{
 		return DetectionUnitComponent;
@@ -670,14 +707,14 @@ private:
 	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> RuleMarker;
-	
+
 	/** 머리 닉네임 텍스트. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> NicknameMarker;
-	
+
 	/** 머리 위 닉네임 텍스트 거림 검사 시간 확인용. */
 	float NicknameMarkerOcclusionTimer = 0.0f;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
 	FVector NicknameMarkerOffset = FVector(0.0f, 0.0f, 80.0f);
 
@@ -819,8 +856,11 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
-	
+
 	bool bHeartbeatRevealActive = false;
 	UPROPERTY(VisibleAnywhere, Category = "FallingApart|Detection")
 	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
+
+	// 거리 기반 룰(무리 강박, 대인 기피) 검사용 타이머
+	FTimerHandle GroupRuleTimerHandle;
 };

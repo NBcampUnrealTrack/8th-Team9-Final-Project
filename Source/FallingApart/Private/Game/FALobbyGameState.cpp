@@ -3,6 +3,7 @@
 
 #include "Game/FALobbyGameState.h"
 
+#include "SkeletalDebugRendering.h"
 #include "Net/UnrealNetwork.h"
 
 void AFALobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -99,7 +100,15 @@ float AFALobbyGameState::GetRemainingCountdownSeconds() const
 
 void AFALobbyGameState::SetSelectedMapId(FName InMapId)
 {
+	if (!HasAuthority() || SelectedMapId == InMapId)
+		return;
+	
 	SelectedMapId = InMapId;
+
+	//호스트 갱신을 위한 명시적 호출.
+	OnRep_SelectedMapId();
+	
+	ForceNetUpdate();
 }
 
 bool AFALobbyGameState::CanHostStartMatch() const
@@ -148,6 +157,5 @@ void AFALobbyGameState::OnRep_LobbyState()
 
 void AFALobbyGameState::OnRep_SelectedMapId()
 {
-	//TODO : 맵 선택시 UI갱신
-	
+	OnLobbyStateChanged.Broadcast();
 }

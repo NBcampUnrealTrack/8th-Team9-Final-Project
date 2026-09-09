@@ -36,7 +36,7 @@ public:
 	/// PlayerController에서 준비 입력받아 처리
 	void SetPlayerReady(APlayerController* NewPlayerController, bool bReady);
 
-	
+	void RequestSelectMap(APlayerController* RequestingPlayerController, FName RequestMapId);
 	
 protected:
 	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal = L"") override;
@@ -85,12 +85,6 @@ private:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	bool bAutoStartCountdownWhenAllReady = true;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
-	TSoftObjectPtr<UWorld> DestinationMap;
-	
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
-	FName DefaultMapId;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;

@@ -85,6 +85,9 @@ public:
 	/* H24 고독 - 다른 생존자(인간)가 보이지 않음 (완전히 숨김) */
 	FGameplayTag Rule_Vision_NoAlly;
 
+	/* Z25 심박 왜곡 - 좀비 전용. 인간 근접 시 카메라 흔들림 심화 */
+	FGameplayTag Rule_Vision_Shake;
+
 
 
 	//~ ========================= 상태 태그 =========================
@@ -118,6 +121,16 @@ public:
 
 	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
 	FGameplayTag State_Hiding;
+
+	//~ ========================= Group =========================
+
+	/* H34 무리 강박 . 가장 가까운 생존자와 15m 초과 시 이동속도 -40% */
+	FGameplayTag Rule_Group_Leash;
+	FGameplayTag State_Group_Leash;
+
+	/* H35 대인 기피 . 가장 가까운 생존자와 5m 이내 시 이동속도 -30% */
+	FGameplayTag Rule_Group_Repel;
+	FGameplayTag State_Group_Repel;
 
 	//~ ========================= Trade Tag =========================
 
@@ -257,7 +270,7 @@ public:
 
 	FGameplayTag Rule_Trade_Hide;
 	FGameplayTag State_Hidden;
-	
+
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;
 #pragma endregion
