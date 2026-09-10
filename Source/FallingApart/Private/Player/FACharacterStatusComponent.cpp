@@ -19,6 +19,7 @@
 #include "Rule/FADeathMatchSubsystem.h"
 #include "Player/FACharacter.h"
 #include "Player/FADetectionUnitComponent.h"
+#include "Player/FATrailComponent.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -103,6 +104,11 @@ void UFACharacterStatusComponent::BeginPlay()
 		.AddUObject(this,&ThisClass::HandleHeartbeatRuleChanged);
 
 		HandleHeartbeatRuleChanged(HeartbeatRuleTag,ASC->GetTagCount(HeartbeatRuleTag));
+
+		const FGameplayTag TrailRuleTag = FAGameplayTags::Get().Rule_State_Trail;
+		ASC->RegisterGameplayTagEvent(TrailRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleTrailRuleChanged);
+		HandleTrailRuleChanged(TrailRuleTag, ASC->GetTagCount(TrailRuleTag));
 	}
 }
 
@@ -130,6 +136,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Blink,
 		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Heartbeat,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Trail,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
@@ -449,6 +457,21 @@ void UFACharacterStatusComponent::HandleHeartbeatRuleChanged(
 	{
 		// 룰이 제거되면 타이머와 H41 아웃라인을 즉시 해제한다.
 		StopHeartbeatDetection();
+	}
+}
+
+void UFACharacterStatusComponent::HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	if (UFATrailComponent* Trail = GetOwner()->FindComponentByClass<UFATrailComponent>())
+	{
+		if (NewCount > 0)
+		{
+			Trail->StartTrail();
+		}
+		else
+		{
+			Trail->StopTrail();
+		}
 	}
 }
 
