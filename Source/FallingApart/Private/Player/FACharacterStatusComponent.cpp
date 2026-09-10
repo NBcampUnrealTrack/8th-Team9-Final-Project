@@ -26,7 +26,6 @@ UFACharacterStatusComponent::UFACharacterStatusComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 
-	// [H45 RPC 수정] 컴포넌트의 Multicast RPC를 전달하도록 복제를 활성화한다.
 	// 지속 상태인 GameplayTag는 기존처럼 ASC가 복제한다.
 	SetIsReplicatedByDefault(true);
 }
@@ -727,13 +726,12 @@ void UFACharacterStatusComponent::SetHideActive(bool bActive)
 		ASC->RemoveLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
 
-	// [H45 RPC 추가] 태그 도착 순서에 의존하지 않고 현재 은둔 상태를 전달한다.
+	// 태그 도착 순서에 의존하지 않고 현재 은둔 상태를 전달한다.
 	MulticastSetHideVisual(bActive);
 }
 
 void UFACharacterStatusComponent::MulticastSetHideVisual_Implementation(bool bActive)
 {
-	// [H45 RPC 추가] 전용 서버는 렌더링하지 않는다.
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		return;
