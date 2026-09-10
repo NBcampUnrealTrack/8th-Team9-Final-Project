@@ -17,6 +17,8 @@ UFAAttributeSet::UFAAttributeSet()
 	InitWaterMoveSpeedMultiplier(1.0f);
 	InitGambleSpeedMultiplier(1.0f);
 	InitRuleJumpZVelocity (420.0f);
+	InitDecaySpeedMultiplier(1.0f);
+
 
 	// 스태미나
 	InitMaxStamina(5.0f);
@@ -119,6 +121,10 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	else if (Attribute == GetBiteCooldownAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 20.0f);
+	}
+	else if (Attribute == GetDecaySpeedMultiplierAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 1.0f);
 	}
 }
 
@@ -226,6 +232,7 @@ void UFAAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,RuleJumpZVelocity, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,MaxResistTimeMultiplier,COND_None,REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,BiteCooldown,COND_None,REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFAAttributeSet,DecaySpeedMultiplier,COND_None,REPNOTIFY_Always);
 }
 
 void UFAAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
@@ -315,4 +322,9 @@ void UFAAttributeSet::OnRep_RuleJumpZVelocity(const FGameplayAttributeData& OldV
 void UFAAttributeSet::OnRep_BiteCooldown(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, BiteCooldown, OldValue);
+}
+
+void UFAAttributeSet::OnRep_DecaySpeedMultiplier(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFAAttributeSet, DecaySpeedMultiplier, OldValue);
 }
