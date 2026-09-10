@@ -418,6 +418,46 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
 
+	/** 전신의 최종 포즈를 받는 표시용 팔. 로컬 플레이어의 일인칭에서만 보인다. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|First Person")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+
+	/** 카툰 캐릭터에서 측정한 서기 눈높이 보정. 머리 애니메이션의 흔들림은 전달하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonEyeHeightOffset = -20.0f;
+
+	/** 실제 앉기 최종 포즈에서 측정한 눈높이. 정지와 이동 값을 속도에 따라 보간한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonCrouchedIdleEyeHeightOffset = -11.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonCrouchedMovingEyeHeightOffset = 8.7f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (ClampMin = "1.0", Units = "cm/s"))
+	float FirstPersonCrouchedEyeReferenceSpeed = 120.0f;
+
+private:
+	/** 시점 변경을 로컬 카메라와 이동 방향 요청에 함께 반영한다. */
+	void UpdateFirstPersonViewMode();
+	/** 팔 표시·틱·전신 본 갱신 정책을 같은 상태로 맞춘다. */
+	void SetFirstPersonArmsVisible(bool bVisible);
+	void UpdateFirstPersonPoseSource(bool bShowArms);
+	float GetFirstPersonEyeHeight() const;
+	void UpdateFirstPersonCameraPresentation(bool bFirstPersonView);
+
+	// 일인칭을 벗어날 때 복구할 기존 카메라 설정.
+	bool bFirstPersonCameraPresentationActive = false;
+	bool bSavedCameraTranslationLag = false;
+	bool bSavedMotionBlurOverride = false;
+	float SavedMotionBlurAmount = 0.0f;
+
+	// 팔을 숨기면 원래 정책으로 되돌려 전신의 불필요한 본 갱신을 막는다.
+	bool bFirstPersonSourceActive = false;
+	uint8 SavedBodyVisibilityTickOption = 0;
+	bool bSavedBodyUpdateRateOptimizations = false;
+
+public:
+
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	class UMaterialInterface* VisionFogMaterial = nullptr;
 

@@ -8,6 +8,7 @@
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
+#include "Animation/FAFirstPersonAnimInstance.h"
 #include "Interact/FAInteractable.h"
 #include "Interact/FAInteractionComponent.h"
 #include "Interact/FACabinet.h"
@@ -107,6 +108,18 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+
+	FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+	FirstPersonArms->SetupAttachment(GetMesh());
+	FirstPersonArms->SetOnlyOwnerSee(true);
+	FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	FirstPersonArms->SetGenerateOverlapEvents(false);
+	FirstPersonArms->SetCastShadow(false);
+	FirstPersonArms->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	FirstPersonArms->SetVisibility(false);
+	FirstPersonArms->PrimaryComponentTick.bStartWithTickEnabled = false;
+	FirstPersonArms->PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
+	FirstPersonArms->PrimaryComponentTick.EndTickGroup = TG_PostUpdateWork;
 
 	// 3인칭이어도 오디오 리스너는 카메라가 아니라 캐릭터 헤드에 붙는다(기획 확정).
 	// 카메라/스프링암 쪽에서 SetAudioListenerOverride 를 호출하면 이 동작이 깨진다.
@@ -937,6 +950,13 @@ void AFACharacter::UpdateRuleMarker(float DeltaTime)
 void AFACharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	// 이전 BP에 카메라 부착값이 남아 있어도 전신과 같은 기준 좌표로 맞춘다.
+	FirstPersonArms->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale);
+	FirstPersonArms->SetRelativeTransform(FTransform::Identity);
+	GetMesh()->AddTickPrerequisiteActor(this);
+	// 전신 포즈와 카메라 갱신이 모두 끝난 뒤 팔이 이번 프레임의 포즈를 복사한다.
+	FirstPersonArms->AddTickPrerequisiteComponent(GetMesh());
+	FirstPersonArms->AddTickPrerequisiteComponent(CameraBoom);
 
 	// 로비는 AFAPlayerState 가 아니라 AFALobbyPlayerState 를 쓴다 — 진영 알림이 아예 없다.
 	// 진영을 모르는 맥락에서는 인간 외형이 기본이므로, 여기서 한 번 기준선을 깔아둔다.
@@ -1002,6 +1022,9 @@ void AFACharacter::OnRep_Controller()
 void AFACharacter::UnPossessed()
 {
 	Super::UnPossessed();
+	GetFAMovementComponent()->SetFirstPersonFacingRequested(false);
+	UpdateFirstPersonCameraPresentation(false);
+	SetFirstPersonArmsVisible(false);
 
 	RefreshInteractionTick();
 }
@@ -1016,6 +1039,9 @@ void AFACharacter::RefreshInteractionTick()
 
 void AFACharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetFAMovementComponent()->SetFirstPersonFacingRequested(false);
+	UpdateFirstPersonCameraPresentation(false);
+	UpdateFirstPersonPoseSource(false);
 	if (AFAPlayerState* FAPlayerState = TeamNotifySource.Get())
 	{
 		FAPlayerState->OnTeamChanged.RemoveDynamic(this, &AFACharacter::HandleTeamChanged);
@@ -1187,6 +1213,10 @@ void AFACharacter::ApplyTeamMaterial(EFATeam NewTeam)
 		{
 			MeshComponent->SetMaterial(SlotIndex, TargetMaterial);
 		}
+	}
+	for (int32 SlotIndex = 0; SlotIndex < FirstPersonArms->GetNumMaterials(); ++SlotIndex)
+	{
+		FirstPersonArms->SetMaterial(SlotIndex, TargetMaterial);
 	}
 }
 
@@ -1419,6 +1449,17 @@ void AFACharacter::ApplyInvulnerability(float Duration)
 void AFACharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	UpdateFirstPersonViewMode();
+	if (IsLocallyControlled())
+	{
+		// 전환 타이머가 끝난 후에도 앉은 채 이동하면 목표 눈높이가 계속 달라진다.
+		if (bIsFirstPerson && bIsCrouched && !IsHiding()
+			&& !GetWorldTimerManager().IsTimerActive(CrouchTimerHandle)
+			&& !GetWorldTimerManager().IsTimerActive(PerspectiveTimerHandle))
+		{
+			UpdateCrouchCamera();
+		}
+	}
 
 	// 착지 순간에는 속도가 이미 죽어 있다 — 낙하하는 동안 최고 속도를 재둬야 세게 떨어졌는지 안다.
 	// 복제된 Velocity 를 보므로 남의 캐릭터에서도 같은 판정이 나온다.
@@ -1440,6 +1481,11 @@ void AFACharacter::Tick(float DeltaTime)
 	{
 		GetMesh()->SetOwnerNoSee(bShouldHideMesh);
 	}
+
+	// 카메라 충돌로 3인칭 붐이 짧아진 경우에는 팔을 표시하지 않는다.
+	const bool bShowFirstPersonArms = IsLocallyControlled() && bIsFirstPerson
+		&& bShouldHideMesh && !IsHiding() && !IsHidden();
+	SetFirstPersonArmsVisible(bShowFirstPersonArms);
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
@@ -1469,6 +1515,78 @@ void AFACharacter::Tick(float DeltaTime)
 	UpdateInfectionSequence();
 
 	UpdateVisionEffects();
+}
+
+void AFACharacter::UpdateFirstPersonViewMode()
+{
+	const bool bLocalPlayer = IsLocallyControlled();
+	UpdateFirstPersonCameraPresentation(bLocalPlayer && bIsFirstPerson);
+	if (bLocalPlayer)
+	{
+		GetFAMovementComponent()->SetFirstPersonFacingRequested(bIsFirstPerson);
+	}
+}
+
+void AFACharacter::SetFirstPersonArmsVisible(bool bVisible)
+{
+	UpdateFirstPersonPoseSource(bVisible);
+	if (FirstPersonArms->IsVisible() != bVisible)
+	{
+		FirstPersonArms->SetVisibility(bVisible);
+	}
+	// 애니메이션 초기화가 틱을 다시 켤 수 있으므로 표시 여부와 별도로 맞춘다.
+	if (FirstPersonArms->IsComponentTickEnabled() != bVisible)
+	{
+		FirstPersonArms->SetComponentTickEnabled(bVisible);
+	}
+}
+
+void AFACharacter::UpdateFirstPersonCameraPresentation(bool bFirstPersonView)
+{
+	if (!CameraBoom || !FollowCamera || bFirstPersonView == bFirstPersonCameraPresentationActive)
+	{
+		return;
+	}
+	if (bFirstPersonView)
+	{
+		bSavedCameraTranslationLag = CameraBoom->bEnableCameraLag;
+		// 삼인칭 추종 지연을 그대로 쓰면 달릴 때 눈이 몸 뒤로 밀린다.
+		// 기존 시점·앉기 보간과 게임플레이 카메라 흔들림은 유지한다.
+		CameraBoom->bEnableCameraLag = false;
+		bSavedMotionBlurOverride = FollowCamera->PostProcessSettings.bOverride_MotionBlurAmount;
+		SavedMotionBlurAmount = FollowCamera->PostProcessSettings.MotionBlurAmount;
+		FollowCamera->PostProcessSettings.bOverride_MotionBlurAmount = true;
+		FollowCamera->PostProcessSettings.MotionBlurAmount = 0.0f;
+	}
+	else
+	{
+		CameraBoom->bEnableCameraLag = bSavedCameraTranslationLag;
+		FollowCamera->PostProcessSettings.bOverride_MotionBlurAmount = bSavedMotionBlurOverride;
+		FollowCamera->PostProcessSettings.MotionBlurAmount = SavedMotionBlurAmount;
+	}
+	bFirstPersonCameraPresentationActive = bFirstPersonView;
+}
+
+void AFACharacter::UpdateFirstPersonPoseSource(bool bShowArms)
+{
+	if (bShowArms == bFirstPersonSourceActive || !GetMesh())
+	{
+		return;
+	}
+	if (bShowArms)
+	{
+		SavedBodyVisibilityTickOption = static_cast<uint8>(GetMesh()->VisibilityBasedAnimTickOption);
+		bSavedBodyUpdateRateOptimizations = GetMesh()->bEnableUpdateRateOptimizations;
+		// 본인 화면에서 전신을 숨겨도 팔이 복사할 본은 계속 갱신해야 한다.
+		GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		GetMesh()->bEnableUpdateRateOptimizations = false;
+	}
+	else
+	{
+		GetMesh()->VisibilityBasedAnimTickOption = static_cast<EVisibilityBasedAnimTickOption>(SavedBodyVisibilityTickOption);
+		GetMesh()->bEnableUpdateRateOptimizations = bSavedBodyUpdateRateOptimizations;
+	}
+	bFirstPersonSourceActive = bShowArms;
 }
 
 void AFACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -1698,9 +1816,26 @@ void AFACharacter::ToggleCrouch()
 	}
 }
 
+float AFACharacter::GetFirstPersonEyeHeight() const
+{
+	if (!bIsCrouched)
+	{
+		return BaseEyeHeight + FirstPersonEyeHeightOffset;
+	}
+	const float MovingWeight = FMath::Clamp(GetVelocity().Size2D()
+		/ FMath::Max(FirstPersonCrouchedEyeReferenceSpeed, 1.0f), 0.0f, 1.0f);
+	return BaseEyeHeight + FMath::Lerp(FirstPersonCrouchedIdleEyeHeightOffset,
+		FirstPersonCrouchedMovingEyeHeightOffset, MovingWeight);
+}
+
 void AFACharacter::UpdateCrouchCamera()
 {
-	float BaseZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	if (IsHiding())
+	{
+		GetWorldTimerManager().ClearTimer(CrouchTimerHandle);
+		return;
+	}
+	float BaseZ = bIsFirstPerson ? GetFirstPersonEyeHeight() : 0.f;
 	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, BaseZ, GetWorld()->GetDeltaSeconds(), CameraInterpSpeed);
 
 	if (FMath::IsNearlyEqual(CameraBoom->TargetOffset.Z, BaseZ, 1.f))
@@ -1725,6 +1860,7 @@ void AFACharacter::TogglePerspective()
 void AFACharacter::ForceTogglePerspective()
 {
 	bIsFirstPerson = !bIsFirstPerson;
+	UpdateFirstPersonViewMode();
 	GetWorldTimerManager().ClearTimer(PerspectiveTimerHandle);
 
 	// 캐비넷 안에서는 붐이 캐비넷에 매달려 있다.
@@ -1930,7 +2066,8 @@ void AFACharacter::UpdateVisionEffects()
 	// 중 하나라도 켜져 있으면 블렌드. 감염 연출을 빠뜨리면 값만 넣고 화면에는 아무것도 안 나온다.
 	const bool bAnyVisualEffectActive = bApplyDesaturate || FogAmount > 0.0f || BlackoutAmount > 0.0f
 		|| NarrowAmount > 0.0f || InfectionDarkenAmount > 0.0f || InfectionRedAmount > 0.0f;
-	FollowCamera->PostProcessBlendWeight = bAnyVisualEffectActive ? 1.0f : 0.0f;
+	// 시야 효과가 없는 평상시에도 일인칭 모션 블러 설정은 적용해야 한다.
+	FollowCamera->PostProcessBlendWeight = (bAnyVisualEffectActive || bFirstPersonCameraPresentationActive) ? 1.0f : 0.0f;
 }
 
 void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies)
@@ -2016,7 +2153,7 @@ void AFACharacter::UpdateClosestHumanDistance()
 void AFACharacter::UpdatePerspectiveCamera()
 {
 	float DeltaTime = GetWorld()->GetDeltaSeconds();
-	float TargetOffsetZ = bIsFirstPerson ? BaseEyeHeight : 0.f;
+	float TargetOffsetZ = bIsFirstPerson ? GetFirstPersonEyeHeight() : 0.f;
 	CameraBoom->TargetOffset.Z = FMath::FInterpTo(CameraBoom->TargetOffset.Z, TargetOffsetZ, DeltaTime, CameraInterpSpeed);
 
 	if (bIsFirstPerson)
@@ -2528,7 +2665,7 @@ void AFACharacter::ApplyHideCamera(bool bHiding)
 	// 저장해둔 값이 아니라 지금 상태가 요구하는 값으로 되돌린다.
 	CameraBoom->TargetArmLength = bIsFirstPerson ? 0.0f : ThirdPersonArmLength;
 	CameraBoom->SocketOffset = FVector::ZeroVector;
-	CameraBoom->TargetOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? BaseEyeHeight : 0.0f);
+	CameraBoom->TargetOffset = FVector(0.0f, 0.0f, bIsFirstPerson ? GetFirstPersonEyeHeight() : 0.0f);
 
 	GetMesh()->SetOwnerNoSee(CameraBoom->TargetArmLength < 40.0f);
 }

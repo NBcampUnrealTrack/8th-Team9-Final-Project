@@ -21,6 +21,9 @@ public class FallingApart : ModuleRules
 		// LoadingScreenKit — 트래블 로딩 화면. 공개 헤더에는 안 나오고 .cpp 세 곳에서만 부른다.
 		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "EngineSettings", "HTTP", "LoadingScreenKit", "Niagara" });
 
+		// 일인칭 팔의 .cpp에서 전신 최종 포즈를 복사하는 FAnimNode_CopyPoseFromMesh를 사용한다.
+		PrivateDependencyModuleNames.Add("AnimGraphRuntime");
+
 		// 로컬 토커 등록(IOnlineVoice::RegisterLocalTalker)은 UOnlineEngineInterface 에 노출돼 있지 않아
 		// VoiceInterface 를 직접 잡아야 한다. 엔진은 이걸 자동으로 해주지 않는다.
 		// AudioMixer — UFAVoiceStatics 가 월드 정리 때 UVoipListenerSynthComponent(USynthComponent 파생)의
