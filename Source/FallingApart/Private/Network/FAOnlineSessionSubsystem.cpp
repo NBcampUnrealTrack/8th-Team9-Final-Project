@@ -1220,6 +1220,17 @@ void UFAOnlineSessionSubsystem::OnSessionUserInviteAccepted(bool bWasSuccessful,
 		return;
 	}
 	
+	//현재 세션이 있다면, 동일세션인지 확인.
+	if (FNamedOnlineSession* CurrentSession = GetCurrentSession())
+	{
+		if (CurrentSession->GetSessionIdStr() == InviteResult.GetSessionIdStr())
+		{
+			UE_LOG(LogFAOSS, Warning,
+				   TEXT("Already in invited Session"));
+			return;
+		}
+	}
+	
 	//초대 세션 정보를 저장, 
 	PendingInviteJoinResult = InviteResult;
 	
