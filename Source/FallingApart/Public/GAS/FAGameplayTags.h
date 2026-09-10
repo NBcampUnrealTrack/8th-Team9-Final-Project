@@ -166,8 +166,8 @@ public:
 	/* Z50 전염 도박 .  감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) */
 	FGameplayTag Rule_Gamble_Plague;
 
-	/* H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동 */
-	FGameplayTag Rule_Gamble_Blink;
+	/* H43 도박꾼 / Z40 귀환. 40초마다 공유 스폰 지점 중 무작위 위치로 순간이동 */
+	FGameplayTag Rule_State_Recall;
 
 	//~ ========================= Cooldown Tag =========================
 
@@ -233,12 +233,11 @@ public:
 	FGameplayTag Rule_State_NoStruggle;
 	FGameplayTag State_NoStruggle;
 
-	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
-	FGameplayTag Rule_State_Heartbeat;
-	FGameplayTag Rule_State_Trail;
-
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
+
+	/** Z42 — 인간에게 가까워질수록 최대 35% 감속 */
+	FGameplayTag Rule_State_Decay;
 
 #pragma endregion
 
@@ -274,6 +273,10 @@ public:
 
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;
+
+	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
+	FGameplayTag Rule_State_Heartbeat;
+	FGameplayTag Rule_State_Trail;
 #pragma endregion
 
 private:

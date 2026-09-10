@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacterMovementComponent.h"
 
@@ -196,8 +196,10 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	}
 
 	const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
-	const float RuleSpeed = FMath::Max(0.0f,Attributes->GetMoveSpeed() * GambleSpeedMultiplier);
+	const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
+	const float RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
 	const float WaterSpeedMultiplier = FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f);
+	
 	switch (MovementMode)
 	{
 	case MOVE_Walking:
