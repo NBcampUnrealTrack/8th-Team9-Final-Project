@@ -80,7 +80,13 @@ public:
 	FGameplayAttributeData RuleJumpZVelocity;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,RuleJumpZVelocity)
 
+	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_DecaySpeedMultiplier,Category = "Attribute|Movement")
+	FGameplayAttributeData DecaySpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, DecaySpeedMultiplier)
+
 #pragma endregion
+
+
 
 #pragma region Stamina
 
@@ -215,6 +221,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_BiteCooldown(const FGameplayAttributeData& OldBiteCooldown);
+
+	UFUNCTION()
+	void OnRep_DecaySpeedMultiplier(const FGameplayAttributeData& OldValue);
 
 #pragma endregion
 };
