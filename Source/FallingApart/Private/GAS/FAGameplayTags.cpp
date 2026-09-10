@@ -122,6 +122,7 @@ void FAGameplayTags::AddAllTags()
 	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
 	Rule_State_Heartbeat = AddTag(TEXT("Rule.State.Heartbeat"),TEXT("H41 — 좀비 15m 이내 시 위치 점멸 표시"));
 	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
+	Rule_State_Trail = AddTag(TEXT("Rule.State.Trail"), TEXT("H40 — 지나간 경로가 20초간 좀비에게 표시"));
 
 #pragma endregion
 

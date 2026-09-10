@@ -235,6 +235,7 @@ public:
 
 	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
 	FGameplayTag Rule_State_Heartbeat;
+	FGameplayTag Rule_State_Trail;
 
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
