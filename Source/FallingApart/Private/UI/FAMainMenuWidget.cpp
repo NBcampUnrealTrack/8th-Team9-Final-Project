@@ -16,7 +16,7 @@
 #include "UI/FASessionJoinWidget.h"
 #include "UI/FAUIMessageSubsystem.h"
 
-#define LOCTEXT_NAMESPACE "PrototypeMainMenu"
+#define LOCTEXT_NAMESPACE "MainMenu"
 
 namespace FAMainMenuAudio
 {

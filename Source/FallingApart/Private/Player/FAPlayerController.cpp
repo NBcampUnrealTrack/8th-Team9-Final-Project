@@ -28,6 +28,7 @@
 #include "UI/FAMatchResultWidget.h"
 #include "UI/FARoundResultWidget.h"
 #include "UI/FAPauseMenuWidget.h"
+#include "UI/FAUIMessageSubsystem.h"
 
 AFAPlayerController::AFAPlayerController()
 {
@@ -294,6 +295,14 @@ void AFAPlayerController::BeginPlay()
 			{
 				Subsystem->AddMappingContext(DefaultMappingContext, 0);
 			}
+		}
+	}
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* OnlineSessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			OnlineSessionSubsystem->OnPendingInviteJoinAvailable.RemoveAll(this);
+			OnlineSessionSubsystem->OnPendingInviteJoinAvailable.AddUObject(this, &ThisClass::HandleSessionInvite);
 		}
 	}
 }
@@ -677,6 +686,27 @@ void AFAPlayerController::QuitGame()
 {
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
+
+void AFAPlayerController::HandleSessionInvite()
+{
+	FOnFAConfirmationResult ConfirmationResult;
+	ConfirmationResult.BindDynamic(this, &ThisClass::HandleSessionInviteDecision);
+
+	UFAUIMessageSubsystem::ShowConfirmation(
+		this,
+		NSLOCTEXT("SteamInvite","JoinInviteSessionTitle", "다른 세션 참가"),
+		NSLOCTEXT("SteamInvite","JoinInviteSessionMessage", "현재 로비를 나가 다른 로비에 참가하시겠습니까?"),
+		ConfirmationResult);
+}
+
+void AFAPlayerController::HandleSessionInviteDecision(bool bAccepted)
+{
+	if (bAccepted)
+	{
+		ReturnToMainMenu();
+	}
+}
+
 
 // ============================================================
 // 콘솔에서 ESC 메뉴 열기
