@@ -208,6 +208,10 @@ public:
 	/* Z38 상시 표적 . 내 위치 상시 노출 */
 	FGameplayTag Rule_Social_Exposed;
 
+	/* Z39 좀비 혐오 . 다른 좀비 3m 이내 시 이동속도 -40% */
+	FGameplayTag Rule_Social_Repel;
+	FGameplayTag State_Social_Repel;
+
 	// Trade
 	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
 	FGameplayTag Rule_Trade_Frenzy;
