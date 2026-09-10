@@ -37,6 +37,7 @@ public:
 	void MenuSetup();
 	
 	void ShowPage(EPrototypeMenuPage Page);
+	void ShowPageByInvite(const FOnlineSessionSearchResult& InviteResult);
 	
 	//* 로비 레벨의 경로 입력 선택 */
 	UPROPERTY(EditDefaultsOnly,Category = "FallingApart|Level")
@@ -63,7 +64,9 @@ protected:
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
 	void HandleSessionRefreshRequested();
 	void HandleJoinSessionRequested(const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
-
+	
+	void HandlePendingInviteJoin();
+	
 	// 세션 서브시스템 완료 콜백
 	void OnCreateSessionComplete(EFASessionRequestResult Result);
 	void OnFindSessionComplete(const TArray<FOnlineSessionSearchResult>& SessionResults, EFASessionRequestResult Result);

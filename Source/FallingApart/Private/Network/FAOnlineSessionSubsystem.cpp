@@ -209,7 +209,7 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	LastSessionSettings->Set(HasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
 	LastSessionSettings->Set(SETTING_BEACONPORT, DEFAULT_BEACON_PORT, EOnlineDataAdvertisementType::ViaOnlineService);
 	UE_LOG(LogFAOSS, Log, TEXT("[SessionCreate] Requesting lobby; HasPassword=%s BeaconPort=%d MaxPlayers=%d"),
-		Password.IsEmpty() ? TEXT("false") : TEXT("true"), DEFAULT_BEACON_PORT, NumPublicConnections);
+	       Password.IsEmpty() ? TEXT("false") : TEXT("true"), DEFAULT_BEACON_PORT, NumPublicConnections);
 
 	
 	OperationState = ESessionOperationState::Creating;
@@ -417,29 +417,6 @@ void UFAOnlineSessionSubsystem::FindFriendSession()
 	//SessionInterface->FindFriendSession()
 }
 
-void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
-{
-	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
-	
-	if (!OnlineSubsystem || !SessionInterface.IsValid())
-	{
-		UE_LOG(LogFAOSS, Warning, TEXT("Steam Subsystem is unavailable"));
-		return;
-	}
-	
-	if (!SessionInterface->GetNamedSession(NAME_GameSession))
-	{
-		UE_LOG(LogFAOSS, Warning, TEXT("No active session to invite friends to."));
-		return;
-	}
-	IOnlineExternalUIPtr ExternalUI = OnlineSubsystem->GetExternalUIInterface();
-	if (!ExternalUI.IsValid() ||
-		!ExternalUI->ShowInviteUI(0, NAME_GameSession))
-	{
-		UE_LOG(LogFAOSS, Warning, TEXT("Failed to open Steam invite overlay."));
-	}
-}
-
 void UFAOnlineSessionSubsystem::ReopenSessionForLobby()
 {
 	// 매치 컨텍스트는 롤백 요청 시점부터 더 이상 소비되지 않도록 즉시 폐기한다.
@@ -555,16 +532,6 @@ void UFAOnlineSessionSubsystem::RestoreLobbySetting()
 	}
 }
 
-void UFAOnlineSessionSubsystem::CompleteReopenSessionForLobby(bool bWasSuccessful)
-{
-	// 모든 복구 종료 경로에서 내부 상태를 동일하게 정리한 뒤 결과를 한 번만 알린다.
-	OperationState = ESessionOperationState::Idle;
-	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
-	bReopenLobbyRequested = false;
-	ClearPendingMatchContext();
-	OnSessionReopenedForLobby.Broadcast(bWasSuccessful);
-}
-
 ESessionOperationState UFAOnlineSessionSubsystem::GetCurrentOperationState() const
 {
 	return OperationState;
@@ -657,8 +624,8 @@ void UFAOnlineSessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 	}
 
 	const EFASessionRequestResult Result = FilteredResults.IsEmpty()
-		? EFASessionRequestResult::NoResults
-		: EFASessionRequestResult::Success;
+		                                       ? EFASessionRequestResult::NoResults
+		                                       : EFASessionRequestResult::Success;
 	MultiplayerOnFindSessionsComplete.Broadcast(FilteredResults, Result);
 }
 
@@ -684,7 +651,7 @@ void UFAOnlineSessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoin
 	}
 
 	UE_LOG(LogFAOSS, Log, TEXT("[SessionJoin] JoinSession completed: %s; HasConnectString=%s"),
-		*UEnum::GetValueAsString(SessionResult), ConnectString.IsEmpty() ? TEXT("false") : TEXT("true"));
+	       *UEnum::GetValueAsString(SessionResult), ConnectString.IsEmpty() ? TEXT("false") : TEXT("true"));
 
 	MultiplayerOnJoinSessionComplete.Broadcast(SessionResult, ConnectString);
 }
@@ -776,43 +743,15 @@ void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool 
 	}
 }
 
-void UFAOnlineSessionSubsystem::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId,
-	FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult)
+void UFAOnlineSessionSubsystem::CompleteReopenSessionForLobby(bool bWasSuccessful)
 {
-	if (!bWasSuccessful || !InviteResult.IsValid())
-	{
-		UE_LOG(LogFAOSS, Warning,
-			TEXT("Invalid Steam invite result."));
-		return;
-	}
-
-	FString ProjectValue;
-	FString SessionState;
-	
-	//우리 프로젝트 맞는지 검증
-	const bool bCorrectProject =
-		InviteResult.Session.SessionSettings.Get(ProjectSettingKey,ProjectValue) &&
-		ProjectValue == ProjectSettingValue;
-
-	const bool bLobbyIsOpen =
-		InviteResult.Session.SessionSettings.Get(
-			FName(TEXT("SESSION_STATE")),
-			SessionState) &&
-		SessionState == TEXT("Lobby");
-
-	if (!bCorrectProject || !bLobbyIsOpen)
-	{
-		UE_LOG(LogFAOSS, Warning,
-			TEXT("Rejected incompatible or closed Steam lobby."));
-		return;
-	}
-
-	// 이 프로젝트에서는 여기서 JoinSession()을 바로 호출하면 안 됨.
-	// UI에 InviteResult를 넘기고 닉네임/비밀번호 입력을 받은 뒤:
-	//
-	// VerifyPasswordAndJoin(InviteResult, EnteredPassword);
+	// 모든 복구 종료 경로에서 내부 상태를 동일하게 정리한 뒤 결과를 한 번만 알린다.
+	OperationState = ESessionOperationState::Idle;
+	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+	bReopenLobbyRequested = false;
+	ClearPendingMatchContext();
+	OnSessionReopenedForLobby.Broadcast(bWasSuccessful);
 }
-
 
 void UFAOnlineSessionSubsystem::SetPendingMatchContext(FName MapId, int32 ExpectedPlayerCount)
 {
@@ -834,6 +773,7 @@ bool UFAOnlineSessionSubsystem::GetPendingMatchContext(FFAPendingMatchContext& O
 	OutContext = PendingMatchContext;
 	return true;
 }
+
 
 void UFAOnlineSessionSubsystem::ClearPendingMatchContext()
 {
@@ -899,7 +839,7 @@ FString UFAOnlineSessionSubsystem::IssueJoinToken(const FUniqueNetIdRepl& NetId)
 	ScheduleJoinTokenCleanup();
 
 	UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Issued TokenId=%s NetId=%s Lifetime=%.1fs Pending=%d"),
-		*GetTokenLogId(Token), *NetId.ToDebugString(), LifetimeSeconds, ServerPendingJoinTokens.Num());
+	       *GetTokenLogId(Token), *NetId.ToDebugString(), LifetimeSeconds, ServerPendingJoinTokens.Num());
 
 	return Token;
 }
@@ -922,7 +862,7 @@ bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const
 	if (!Authorization)
 	{
 		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Missing or expired TokenId=%s NetId=%s"),
-			*GetTokenLogId(JoinToken), *NetId.ToDebugString());
+		       *GetTokenLogId(JoinToken), *NetId.ToDebugString());
 		return false;
 	}
 
@@ -936,12 +876,12 @@ bool UFAOnlineSessionSubsystem::ConsumeJoinToken(const FString& JoinToken, const
 	if (bSamePlayer)
 	{
 		UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Consumed TokenId=%s NetId=%s Match=true Pending=%d"),
-			*GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
+		       *GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
 	}
 	else
 	{
 		UE_LOG(LogFAOSS, Warning, TEXT("[JoinToken] Consumed TokenId=%s NetId=%s Match=false Pending=%d"),
-			*GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
+		       *GetTokenLogId(JoinToken), *NetId.ToDebugString(), ServerPendingJoinTokens.Num());
 	}
 
 	return bSamePlayer;
@@ -953,13 +893,13 @@ void UFAOnlineSessionSubsystem::RemoveExpiredJoinToken()
 	int32 RemovedCount = 0;
 
 	for (auto It = ServerPendingJoinTokens.CreateIterator();
-		 It;
-		 ++It)
+	     It;
+	     ++It)
 	{
 		if (It.Value().ExpirationTime <= CurrentTime)
 		{
 			UE_LOG(LogFAOSS, Verbose, TEXT("[JoinToken] Expired TokenId=%s NetId=%s"),
-				*GetTokenLogId(It.Key()), *It.Value().PlayerNetId.ToDebugString());
+			       *GetTokenLogId(It.Key()), *It.Value().PlayerNetId.ToDebugString());
 			It.RemoveCurrent();
 			++RemovedCount;
 		}
@@ -968,41 +908,10 @@ void UFAOnlineSessionSubsystem::RemoveExpiredJoinToken()
 	if (RemovedCount > 0)
 	{
 		UE_LOG(LogFAOSS, Log, TEXT("[JoinToken] Removed %d expired token(s); Pending=%d"),
-			RemovedCount, ServerPendingJoinTokens.Num());
+		       RemovedCount, ServerPendingJoinTokens.Num());
 	}
 
 	ScheduleJoinTokenCleanup();
-}
-
-void UFAOnlineSessionSubsystem::ScheduleJoinTokenCleanup()
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	World->GetTimerManager().ClearTimer(JoinTokenCleanupTimerHandle);
-	if (ServerPendingJoinTokens.IsEmpty())
-	{
-		return;
-	}
-
-	double EarliestExpirationTime = TNumericLimits<double>::Max();
-	for (const TPair<FString, FFAJoinAuthorization>& Pair : ServerPendingJoinTokens)
-	{
-		EarliestExpirationTime = FMath::Min(EarliestExpirationTime, Pair.Value.ExpirationTime);
-	}
-
-	const float DelaySeconds = static_cast<float>(FMath::Max(
-		0.01,
-		EarliestExpirationTime - FPlatformTime::Seconds()));
-	World->GetTimerManager().SetTimer(
-		JoinTokenCleanupTimerHandle,
-		this,
-		&ThisClass::RemoveExpiredJoinToken,
-		DelaySeconds,
-		false);
 }
 
 void UFAOnlineSessionSubsystem::CleanupActiveOnlineBeacon()
@@ -1033,6 +942,12 @@ void UFAOnlineSessionSubsystem::CompleteOnlineVerificationFailure()
 	MultiplayerOnJoinSessionComplete.Broadcast(
 		EFASessionRequestResult::RequestFailed,
 		FString());
+}
+
+void UFAOnlineSessionSubsystem::ClearClientJoinAuthorization()
+{
+	ClientPendingJoinToken.Reset();
+	PendingJoinSearchResult = FOnlineSessionSearchResult();
 }
 
 void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
@@ -1074,7 +989,7 @@ void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
 	}
 
 	UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Starting password verification; BeaconAddress=%s"),
-		*BeaconConnectString);
+	       *BeaconConnectString);
 
 	PendingJoinSearchResult = SessionResult;
 	OperationState = ESessionOperationState::Authenticating;
@@ -1084,8 +999,8 @@ void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
 	//임시 비컨 객체 생성하여 사용함
 	ActiveOnlineBeacon =
 		World
-		? World->SpawnActor<AFAOnlineBeaconClient>()
-		: nullptr;
+			? World->SpawnActor<AFAOnlineBeaconClient>()
+			: nullptr;
 
 	if (!ActiveOnlineBeacon)
 	{
@@ -1112,7 +1027,7 @@ void UFAOnlineSessionSubsystem::VerifyPasswordAndJoin(
 }
 
 void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPasswordVerifyResult Result,
-	const FString& JoinToken)
+                                                                   const FString& JoinToken)
 {
 	// 중복 방지.
 	if (OperationState != ESessionOperationState::Authenticating)
@@ -1131,11 +1046,11 @@ void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPass
 	{
 		const EFASessionRequestResult SessionResult =
 			Result == EFABeaconPasswordVerifyResult::InvalidPassword
-			? EFASessionRequestResult::InvalidPassword
-			: EFASessionRequestResult::RequestFailed;
+				? EFASessionRequestResult::InvalidPassword
+				: EFASessionRequestResult::RequestFailed;
 
 		UE_LOG(LogFAOSS, Warning, TEXT("[BeaconAuth] Verification failed: %s"),
-			*UEnum::GetValueAsString(Result));
+		       *UEnum::GetValueAsString(Result));
 		ClearClientJoinAuthorization();
 
 		MultiplayerOnJoinSessionComplete.Broadcast(
@@ -1147,7 +1062,7 @@ void UFAOnlineSessionSubsystem::HandlePasswordVerificationComplete(EFABeaconPass
 
 	ClientPendingJoinToken = JoinToken;
 	UE_LOG(LogFAOSS, Log, TEXT("[BeaconAuth] Verification succeeded; TokenId=%s"),
-		*GetTokenLogId(JoinToken));
+	       *GetTokenLogId(JoinToken));
 
 	// 여기서 처음으로 OnlineSession에 참가한다.
 	const FOnlineSessionSearchResult SearchResult = PendingJoinSearchResult;
@@ -1187,13 +1102,129 @@ void UFAOnlineSessionSubsystem::ClearJoinAuthorizationState()
 	CleanupActiveOnlineBeacon();
 }
 
-void UFAOnlineSessionSubsystem::ClearClientJoinAuthorization()
-{
-	ClientPendingJoinToken.Reset();
-	PendingJoinSearchResult = FOnlineSessionSearchResult();
-}
-
 const FString& UFAOnlineSessionSubsystem::GetPendingJoinToken() const
 {
 	return ClientPendingJoinToken;
+}
+
+void UFAOnlineSessionSubsystem::ScheduleJoinTokenCleanup()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(JoinTokenCleanupTimerHandle);
+	if (ServerPendingJoinTokens.IsEmpty())
+	{
+		return;
+	}
+
+	double EarliestExpirationTime = TNumericLimits<double>::Max();
+	for (const TPair<FString, FFAJoinAuthorization>& Pair : ServerPendingJoinTokens)
+	{
+		EarliestExpirationTime = FMath::Min(EarliestExpirationTime, Pair.Value.ExpirationTime);
+	}
+
+	const float DelaySeconds = static_cast<float>(FMath::Max(
+		0.01,
+		EarliestExpirationTime - FPlatformTime::Seconds()));
+	World->GetTimerManager().SetTimer(
+		JoinTokenCleanupTimerHandle,
+		this,
+		&ThisClass::RemoveExpiredJoinToken,
+		DelaySeconds,
+		false);
+}
+
+void UFAOnlineSessionSubsystem::SendSessionInviteToFriends()
+{
+	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
+	
+	if (!OnlineSubsystem || !SessionInterface.IsValid())
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("Steam Subsystem is unavailable"));
+		return;
+	}
+	
+	if (!SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("No active session to invite friends to."));
+		return;
+	}
+	IOnlineExternalUIPtr ExternalUI = OnlineSubsystem->GetExternalUIInterface();
+	if (!ExternalUI.IsValid() ||
+		!ExternalUI->ShowInviteUI(0, NAME_GameSession))
+	{
+		UE_LOG(LogFAOSS, Warning, TEXT("Failed to open Steam invite overlay."));
+	}
+}
+
+bool UFAOnlineSessionSubsystem::HasPendingInviteJoin() const
+{
+	return PendingInviteJoinResult.IsValid();
+}
+
+bool UFAOnlineSessionSubsystem::ConsumePendingInviteJoin(FOnlineSessionSearchResult& OutResult)
+{
+	if (!PendingInviteJoinResult.IsValid())
+	{
+		return false;
+	}
+	OutResult = PendingInviteJoinResult;
+	PendingInviteJoinResult = FOnlineSessionSearchResult();
+	return true;
+}
+
+void UFAOnlineSessionSubsystem::ClearPendingInviteJoin()
+{
+	PendingInviteJoinResult = FOnlineSessionSearchResult();
+}
+
+void UFAOnlineSessionSubsystem::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId,
+                                                            FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult& InviteResult)
+{
+	if (!bWasSuccessful || !InviteResult.IsValid())
+	{
+		UE_LOG(LogFAOSS, Warning,
+		       TEXT("Invalid Steam invite result."));
+		return;
+	}
+
+	FString ProjectValue;
+	FString SessionState;
+	
+	//우리 프로젝트 맞는지 검증
+	const bool bCorrectProject =
+		InviteResult.Session.SessionSettings.Get(ProjectSettingKey,ProjectValue) &&
+		ProjectValue == ProjectSettingValue;
+
+	const bool bLobbyIsOpen =
+		InviteResult.Session.SessionSettings.Get(
+			FName(TEXT("SESSION_STATE")),
+			SessionState) &&
+		SessionState == TEXT("Lobby");
+
+	if (!bCorrectProject || !bLobbyIsOpen)
+	{
+		UE_LOG(LogFAOSS, Warning,
+		       TEXT("Rejected incompatible or closed Steam lobby."));
+		return;
+	}
+	
+	if (InviteResult.Session.NumOpenPublicConnections <= 0)
+	{
+		UE_LOG(LogFAOSS, Warning,
+		       TEXT("Invite lobby is full."));
+		return;
+	}
+	
+	//초대 세션 정보를 저장, 
+	PendingInviteJoinResult = InviteResult;
+	
+	UE_LOG(LogFAOSS, Log,
+	       TEXT("Pending Invite Session : %s"), *InviteResult.GetSessionIdStr());
+	OnPendingInviteJoinAvailable.Broadcast();
+	// VerifyPasswordAndJoin(InviteResult, EnteredPassword);
 }
