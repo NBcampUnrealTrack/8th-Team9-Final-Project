@@ -9,6 +9,7 @@
 class UAbilitySystemComponent;
 class UFAAttributeSet;
 struct FGameplayTag;
+class FSavedMove_FACharacter;
 
 UCLASS()
 class FALLINGAPART_API UFACharacterMovementComponent : public UCharacterMovementComponent
@@ -27,7 +28,17 @@ public:
 	virtual FVector ConstrainInputAcceleration(const FVector& InputAcceleration) const override;
 	virtual bool DoJump(bool bReplayingMoves) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
+	virtual void PhysicsRotation(float DeltaTime) override;
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
+	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	//~ End
+
+	/** 로컬의 현재 시점 요청. 각 이동 기록에 담아 서버 전송·예측 보정에도 적용한다. */
+	void SetFirstPersonFacingRequested(bool bRequested);
+
+	/** 기존 특수 상태 제한을 확인한 뒤, 현재 이동이 시선 방향을 따라야 하는지 판단한다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Movement")
+	bool IsUsingFirstPersonFacing() const;
 
 	/** 경련·경직·QTE 등으로 이동이 완전히 봉인된 상태인가. */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Movement")
@@ -55,6 +66,12 @@ protected:
 	
 
 private:
+	friend class FSavedMove_FACharacter;
+
+	// 예측 보정으로 과거 이동을 재생해도 현재 시점 요청이 덮어써지지 않도록 분리한다.
+	bool bFirstPersonFacingRequested = false;
+	bool bFirstPersonFacingForMove = false;
+
 	mutable TWeakObjectPtr<UAbilitySystemComponent> CachedASC;
 
 	float DefaultGroundFriction = 8.0f;
