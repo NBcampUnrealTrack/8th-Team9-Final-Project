@@ -35,6 +35,9 @@ public:
 	void ShowStatusMessage(const FText& Message);
 	void SetJoinInProgress(bool bIsJoining);
 	
+	/** 초대를 통해 로비 접근시 해당 방을 리스트에 올림.*/
+	void ShowInvitedSession(const FOnlineSessionSearchResult& InviteResult);
+	
 	FString GetNickname() const;
 
 	FOnSessionRefreshRequested OnSessionRefreshRequested;

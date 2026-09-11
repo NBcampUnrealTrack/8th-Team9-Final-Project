@@ -107,6 +107,19 @@ void UFASessionJoinWidget::SetJoinInProgress(bool bIsJoining)
 	SetIsEnabled(!bIsJoining);
 }
 
+void UFASessionJoinWidget::ShowInvitedSession(const FOnlineSessionSearchResult& InviteResult)
+{
+	ClearList();
+	AddSessionSearchResult(InviteResult);
+	
+	//임시 메세지 출력
+	ShowStatusMessage(
+		NSLOCTEXT(
+			"SessionJoinWidget",
+			"ShowPlatformInvitedSession",
+			"친구 초대로 참가할 방입니다."));
+}
+
 FString UFASessionJoinWidget::GetNickname() const
 {
 	return NicknameInput->GetText().ToString();
