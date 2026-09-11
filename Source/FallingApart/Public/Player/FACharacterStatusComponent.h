@@ -8,6 +8,7 @@
 
 class ACharacter;
 class AFACharacter;
+class UPrimitiveComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
@@ -36,6 +37,21 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	/** Z41: 기존 캡슐의 blocking Hit에서 인간 접촉을 판정한다. */
+	UFUNCTION()
+	void HandleKnockbackHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	double NextKnockbackTime = 0.0;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackSpeed = 600.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackUpSpeed = 150.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.05", Units = "s"))
+	float KnockbackInterval = 0.5f;
+
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
 

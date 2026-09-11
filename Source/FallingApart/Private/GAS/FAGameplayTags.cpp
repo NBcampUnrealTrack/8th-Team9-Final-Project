@@ -115,6 +115,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
 	Rule_State_Decay = AddTag(TEXT("Rule.State.Decay"),TEXT("Z42 붕괴. 인간 10m 이내에서 가까워질수록 최대 35% 감속"));
+	Rule_State_Knockback = AddTag(TEXT("Rule.State.Knockback"), TEXT("Z41 반발 — 물기 중이 아닐 때 인간에게 닿으면 밀려남"));
 
 #pragma endregion
 
