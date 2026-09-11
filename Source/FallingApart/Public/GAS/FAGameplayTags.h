@@ -238,6 +238,7 @@ public:
 
 	/** Z42 — 인간에게 가까워질수록 최대 35% 감속 */
 	FGameplayTag Rule_State_Decay;
+	FGameplayTag Rule_State_Knockback;
 
 #pragma endregion
 
