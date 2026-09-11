@@ -10,6 +10,7 @@ class UButton;
 class UTextBlock;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFAGenericPopupConfirmed);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnFAConfirmationResult, bool, bConfirmed);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnFAGenericPopupClosed, class UFAGenericPopup*);
 
 /**
@@ -28,6 +29,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|UI|Message")
 	void SetupMessage(const FText& Title, const FText& Message,
 		const FText& ConfirmText = FText());
+
+	/** 예/아니오 확인창으로 설정하고 선택 결과를 bool 콜백으로 전달한다. */
+	void SetupConfirmation(const FText& Title, const FText& Message,
+		const FText& YesText, const FText& NoText,
+		const FOnFAConfirmationResult& ResultCallback);
+
+	bool IsConfirmationDialog() const { return bConfirmationDialog; }
+	bool SupportsConfirmationLayout() const { return NoButton != nullptr && NoButtonText != nullptr; }
 
 	/** 확인 버튼 클릭과 동일하게 창을 닫고 뷰포트에서 제거한다. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|UI|Message")
@@ -48,6 +57,11 @@ private:
 	UFUNCTION()
 	void HandleConfirmClicked();
 
+	UFUNCTION()
+	void HandleNoClicked();
+
+	void ResolveConfirmation(bool bConfirmed);
+
 	/** WBP 없이 네이티브 클래스만 생성해도 동작하는 최소 레이아웃을 만든다. */
 	void BuildFallbackLayout();
 	void BroadcastClosedOnce();
@@ -64,5 +78,16 @@ private:
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> ConfirmButtonText;
 
+	/** 기존 WBP에는 없어도 된다. 확인창 디자인을 적용할 때 같은 이름으로 추가한다. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> NoButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> NoButtonText;
+
+	UPROPERTY()
+	FOnFAConfirmationResult ConfirmationResultCallback;
+
 	bool bClosedBroadcast = false;
+	bool bConfirmationDialog = false;
 };

@@ -158,6 +158,14 @@ public:
 	/** 게임 프로세스 종료. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void QuitGame();
+	
+	
+	/** 스팀 친구초대 핸들 */
+	UFUNCTION()
+	void HandleSessionInvite();
+
+	UFUNCTION()
+	void HandleSessionInviteDecision(bool bAccepted);
 
 protected:
 	virtual void BeginPlay() override;
