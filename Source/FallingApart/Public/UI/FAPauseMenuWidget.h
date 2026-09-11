@@ -11,7 +11,7 @@ class UTextBlock;
 
 /**
  * ESC 로 여는 공용 일시정지 메뉴 — 로비 · 인게임.
- * 메인 메뉴 / 설정 / 게임 종료 세 가지.
+ * 메인 메뉴 / 설정 / 게임 종료 세 가지 + 닫기 버튼(ESC 와 같은 동작).
  *
  * 실제 동작은 전부 AFAPlayerController 가 한다 — 이 위젯은 버튼만 들고 있다.
  */
@@ -36,7 +36,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void OnQuitClicked();
 
-	/** 버튼 위에 마우스가 올라갔을 때. 세 버튼이 공유한다. */
+	/** 닫기 버튼. ESC 와 같은 경로(CloseMenu)로 닫는다. */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
+	void OnCloseClicked();
+
+	/** 버튼 위에 마우스가 올라갔을 때. 모든 버튼이 공유한다. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void OnButtonHovered();
 
@@ -56,6 +60,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|PauseMenu")
 	TObjectPtr<UButton> Btn_Quit;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|PauseMenu")
+	TObjectPtr<UButton> Btn_Close;
 
 	/**
 	 * 설정 창 위젯 클래스.
