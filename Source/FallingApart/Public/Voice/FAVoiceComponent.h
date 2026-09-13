@@ -6,6 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "Templates/SubclassOf.h"
 #include "Voice/FAVoiceTypes.h"
+#include "GameplayTagContainer.h"
 #include "FAVoiceComponent.generated.h"
 
 class APlayerState;
@@ -15,6 +16,7 @@ class USceneComponent;
 class USoundAttenuation;
 class UUserWidget;
 class UWidgetComponent;
+class UAbilitySystemComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFAOnVoiceTalkingStateChanged, bool, bIsTalking);
 
@@ -204,6 +206,15 @@ private:
 	void HandleTalkerStateChanged(bool bIsTalking);
 	APlayerState* GetOwningPlayerState() const;
 	class APlayerController* GetOwningPlayerController() const;
+
+	/** 소유 Pawn의 ASC를 가져온다. 관전자처럼 ASC가 없으면 nullptr. */
+	UAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
+
+	/** 현재 Social.Mute 룰을 보유하고 있는지. */
+	bool IsRuleMuted() const;
+
+	/** Social.Mute 태그가 추가/제거됐을 때 마이크 상태를 즉시 갱신. */
+	void HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFAVoiceTalker> Talker;

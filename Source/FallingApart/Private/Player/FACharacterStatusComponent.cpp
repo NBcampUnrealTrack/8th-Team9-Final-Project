@@ -46,6 +46,14 @@ void UFACharacterStatusComponent::BeginPlay()
 
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		if (OwnerCharacter->HasAuthority())
+		{
+			const FGameplayTag KnockbackTag = FAGameplayTags::Get().Rule_State_Knockback;
+			ASC->RegisterGameplayTagEvent(KnockbackTag, EGameplayTagEventType::NewOrRemoved)
+				.AddUObject(this, &ThisClass::HandleKnockbackRuleChanged);
+			HandleKnockbackRuleChanged(KnockbackTag, ASC->GetTagCount(KnockbackTag));
+		}
+
 		const FGameplayTag FlipRuleTag = FAGameplayTags::Get().Rule_Input_FlipLR;
 		ASC->RegisterGameplayTagEvent(FlipRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleInputFlipRuleChanged);
@@ -122,6 +130,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 {
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Knockback,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(
 			FAGameplayTags::Get().Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -162,6 +172,7 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (OwnerCharacter)
 	{
 		OwnerCharacter->LandedDelegate.RemoveDynamic(this,&ThisClass::HandleLanded);
+		OwnerCharacter->GetCapsuleComponent()->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
 	}
 	ClearDecay();
 	Super::EndPlay(EndPlayReason);
@@ -200,6 +211,98 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		SetWallPhaseActive(bShouldPhase);
 	}
+}
+
+void UFACharacterStatusComponent::HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount)
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	UCapsuleComponent* Capsule = OwnerCharacter->GetCapsuleComponent();
+	if (NewCount > 0)
+	{
+		Capsule->OnComponentHit.AddUniqueDynamic(this, &ThisClass::HandleKnockbackHit);
+	}
+	else
+	{
+		Capsule->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
+		NextKnockbackTime = 0.0;
+	}
+}
+
+void UFACharacterStatusComponent::HandleKnockbackHit(UPrimitiveComponent* HitComponent,
+	AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+	// 충돌 상대의 본체 캡슐인지 확인
+	AFACharacter* Human = Cast<AFACharacter>(OtherActor);
+	if (!IsValid(Human) || Human == OwnerCharacter
+		|| OtherComp != Human->GetCapsuleComponent())
+	{
+		return;
+	}
+
+	// 양쪽 ASC 확인
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	UAbilitySystemComponent* HumanASC = Human->GetAbilitySystemComponent();
+	if (!ASC || !HumanASC)
+	{
+		return;
+	}
+
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	// 반발 룰을 가진 좀비가 인간과 충돌한 경우만 처리
+	if (!ASC->HasMatchingGameplayTag(Tags.Rule_State_Knockback)
+		|| !ASC->HasMatchingGameplayTag(Tags.State_Zombie)
+		|| !HumanASC->HasMatchingGameplayTag(Tags.State_Human))
+	{
+		return;
+	}
+
+	// 연속 반발 방지
+	if (GetWorld()->GetTimeSeconds() < NextKnockbackTime)
+	{
+		return;
+	}
+
+	// 포획이나 구출 대결 중에는 반발하지 않음
+	if (ASC->HasMatchingGameplayTag(Tags.State_Grabbing)
+		|| ASC->HasMatchingGameplayTag(Tags.State_Grabbed)
+		|| ASC->HasMatchingGameplayTag(Tags.State_Contesting))
+	{
+		return;
+	}
+
+	// 명중 전 물기 몽타주도 보호한다. State.Grabbing은 포획 성공 후에 붙는다.
+	TArray<FGameplayAbilitySpec*> GrabSpecs;
+	ASC->GetActivatableGameplayAbilitySpecsByAllMatchingTags(
+		FGameplayTagContainer(Tags.Ability_Grab), GrabSpecs, false);
+	for (const FGameplayAbilitySpec* Spec : GrabSpecs)
+	{
+		if (Spec && Spec->IsActive())
+		{
+			return;
+		}
+	}
+
+	FVector Direction = (OwnerCharacter->GetActorLocation() - Human->GetActorLocation()).GetSafeNormal2D();
+	if (Direction.IsNearlyZero())
+	{
+		Direction = -OwnerCharacter->GetActorForwardVector().GetSafeNormal2D();
+	}
+	// 하차 중 발생할 수 있는 중첩 Hit도 재발동 간격으로 막는다.
+	NextKnockbackTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.05f, KnockbackInterval);
+	if (AFACharacter* Zombie = Cast<AFACharacter>(OwnerCharacter))
+	{
+		Zombie->ServerStopClimbing(false);
+	}
+	OwnerCharacter->LaunchCharacter(Direction * KnockbackSpeed + FVector(0.0f, 0.0f, KnockbackUpSpeed), true, true);
 }
 
 void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount)
@@ -248,15 +351,7 @@ void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag,
 	// 델리게이트 시그니처를 맞추기 위한 인자다. ??
 	(void)Tag;
 
-	/*
-	 * NewCount > 0:
-	 * Rule.Trade.Ghost 태그 적용 상태
-	 * → 반투명 처리
-	 *
-	 * NewCount == 0:
-	 * 태그 미적용 또는 제거 상태
-	 * → 완전히 보이는 상태로 복구
-	 */
+	
 	RefreshGhostVisual();
 }
 

@@ -17,6 +17,9 @@
 #include "Voice/FAVoiceTalker.h"
 #include "Voice/FAVoiceTransport.h"
 #include "Voice/FAVoiceUserSettings.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemInterface.h"
+#include "GAS/FAGameplayTags.h"
 
 DEFINE_LOG_CATEGORY(LogFAVoice);
 
@@ -63,6 +66,23 @@ void UFAVoiceComponent::BeginPlay()
 	// 마이크 방식의 주인은 사용자 설정이다.
 	bPushToTalk = UFAVoiceStatics::IsPushToTalkEnabled();
 
+	// H29 / Z35 침묵 룰 감시.
+	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent())
+	{
+		const FGameplayTag MuteRuleTag = FAGameplayTags::Get().Rule_Social_Mute;
+
+		ASC->RegisterGameplayTagEvent(
+			MuteRuleTag,
+			EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleMuteRuleChanged);
+
+		// BeginPlay 이전에 이미 룰이 들어와 있던 경우도 처리.
+		if (ASC->GetTagCount(MuteRuleTag) > 0)
+		{
+			StopTalking();
+		}
+	}
+
 	SetupVoiceSource();
 	SetupListenerAnchor();
 	SetupSpeakingIndicator();
@@ -82,6 +102,11 @@ void UFAVoiceComponent::BeginPlay()
 
 void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent())
+	{
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_Mute, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RegisterRetryTimerHandle);
@@ -252,6 +277,14 @@ void UFAVoiceComponent::SetVoicePlaybackVolume(float NewVolume)
 
 void UFAVoiceComponent::StartTalking()
 {
+	// H29 / Z35 침묵.
+	// 푸시투토크를 눌러도, 오픈 마이크여도 송신 자체를 열지 않는다.
+	if (IsRuleMuted())
+	{
+		StopTalking();
+		return;
+	}
+
 	if (Transport)
 	{
 		Transport->SetLocalTalking(GetOwningPlayerController(), true);
@@ -682,4 +715,45 @@ APlayerController* UFAVoiceComponent::GetOwningPlayerController() const
 	}
 
 	return CachedPlayerController.Get();
+}
+
+UAbilitySystemComponent* UFAVoiceComponent::GetOwnerAbilitySystemComponent() const
+{
+	if (IAbilitySystemInterface* AbilitySystemOwner = Cast<IAbilitySystemInterface>(GetOwner()))
+	{
+		return AbilitySystemOwner->GetAbilitySystemComponent();
+	}
+
+	return nullptr;
+}
+
+bool UFAVoiceComponent::IsRuleMuted() const
+{
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent();
+	return ASC != nullptr && ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Social_Mute);
+}
+
+void UFAVoiceComponent::HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	APlayerController* PlayerController = GetOwningPlayerController();
+
+	// 실제 마이크는 로컬 플레이어 것만 건드린다.
+	if (!PlayerController || !PlayerController->IsLocalController())
+	{
+		return;
+	}
+
+	if (NewCount > 0)
+	{
+		// 룰이 들어온 순간 이미 말하고 있었다면 즉시 송신 종료.
+		StopTalking();
+		return;
+	}
+
+	// 룰이 제거됨.
+	// 오픈 마이크 설정이라면 원래 상태대로 다시 송신을 연다.
+	if (!bPushToTalk)
+	{
+		StartTalking();
+	}
 }
