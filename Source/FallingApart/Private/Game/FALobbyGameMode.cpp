@@ -100,6 +100,7 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+	RefreshAdvertisedPlayerCount();
 
 	if (OnlineSessionSubsystem && NewPlayer && NewPlayer->PlayerState)
 	{
@@ -136,6 +137,8 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		: FUniqueNetIdRepl();
 
 	Super::Logout(Exiting);
+	// Controller 제거는 Logout 반환 후다. 롤백의 조기 return 전에 제외하여 집계한다.
+	RefreshAdvertisedPlayerCount(Exiting);
 	
 	if (OnlineSessionSubsystem && ExitingNetId.IsValid())
 	{
@@ -155,6 +158,25 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		CancelGameCountdown();
 
 	EvaluateLobby();
+}
+
+void AFALobbyGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+	Super::HandleSeamlessTravelPlayer(C);
+	RefreshAdvertisedPlayerCount();
+}
+
+void AFALobbyGameMode::RefreshAdvertisedPlayerCount(const AController* ExcludedController)
+{
+	if (!OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
+	}
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->RefreshSessionCurrentPlayerNumber(ExcludedController);
+	}
 }
 
 FString AFALobbyGameMode::InitNewPlayer(
@@ -237,6 +259,7 @@ void AFALobbyGameMode::RequestSelectMap(APlayerController* RequestingPlayerContr
 void AFALobbyGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	RefreshAdvertisedPlayerCount();
 	
 	OnlineSessionSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
 	
@@ -408,7 +431,7 @@ bool AFALobbyGameMode::CanStartGame(int32& OutPlayerCount, int32& OutReadyCount)
 	{
 		AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(PlayerState);
 		
-		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator())
+		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator() || PlayerState->GetPlayerController()->IsActorBeingDestroyed())
 			continue;
 		
 		OutPlayerCount++;
