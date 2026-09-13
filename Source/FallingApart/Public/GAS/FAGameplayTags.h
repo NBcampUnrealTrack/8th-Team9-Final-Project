@@ -82,13 +82,11 @@ public:
 	/* H23 투명한 적 - 좀비가 보이지 않음 (발소리·실루엣만, CustomDepth 아웃라인으로 표시) */
 	FGameplayTag Rule_Vision_NoZombie;
 
-	/* H24 고독 - 다른 생존자(인간)가 보이지 않음 (완전히 숨김) */
+	/* H24 고독 / Z37 고립 - 같은 진영의 다른 플레이어가 보이지 않음 */
 	FGameplayTag Rule_Vision_NoAlly;
 
 	/* Z25 심박 왜곡 - 좀비 전용. 인간 근접 시 카메라 흔들림 심화 */
 	FGameplayTag Rule_Vision_Shake;
-
-
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -131,6 +129,11 @@ public:
 	/* H35 대인 기피 . 가장 가까운 생존자와 5m 이내 시 이동속도 -30% */
 	FGameplayTag Rule_Group_Repel;
 	FGameplayTag State_Group_Repel;
+
+	//~ ========================= Social 태그 =========================
+
+	/** H29 / Z35 침묵 — 보이스 송신 차단 */
+	FGameplayTag Rule_Social_Mute;
 
 	//~ ========================= Trade Tag =========================
 
