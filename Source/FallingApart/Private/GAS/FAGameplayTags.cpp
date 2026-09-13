@@ -100,11 +100,12 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Social
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
+	Rule_Social_Repel = AddTag(TEXT("Rule.Social.Repel"), TEXT("Z39 좀비 혐오 — 가까운 좀비와 3m 이내 시 이속 -40%"));
+	State_Social_Repel = AddTag(TEXT("State.Social.Repel"), TEXT("Z39 좀비 혐오 — 3m 이내 조건 충족 상태"));
 
 	//~ 룰 - Group
 	Rule_Group_Leash = AddTag(TEXT("Rule.Group.Leash"), TEXT("H34 무리 강박 — 가까운 생존자와 15m 초과 시 이속 -40%"));
 	State_Group_Leash = AddTag(TEXT("State.Group.Leash"), TEXT("H34 무리 강박 거리 조건(15m 초과) 충족 상태"));
-
 	Rule_Group_Repel = AddTag(TEXT("Rule.Group.Repel"), TEXT("H35 대인 기피 — 가까운 생존자와 5m 이내 시 이속 -30%"));
 	State_Group_Repel = AddTag(TEXT("State.Group.Repel"), TEXT("H35 대인 기피 거리 조건(5m 이내) 충족 상태"));
 
