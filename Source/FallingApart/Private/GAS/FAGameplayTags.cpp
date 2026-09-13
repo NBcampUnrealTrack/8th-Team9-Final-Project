@@ -78,7 +78,7 @@ void FAGameplayTags::AddAllTags()
 	//~ 룰 - Gamble
 	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
-	Rule_Gamble_Blink = AddTag(TEXT("Rule.Gamble.Blink"), TEXT("H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동"));
+	Rule_State_Recall = AddTag(TEXT("Rule.State.Recall"), TEXT("H43 도박꾼 / Z40 귀환. 40초마다 공유 스폰 지점 중 무작위 위치로 순간이동"));
 
 	//~ 쿨타임
 	Cooldown_Bite = AddTag(TEXT("Cooldown.Bite"), TEXT("좀비 포획(Bite) 어빌리티 쿨타임 상태를 나타내는 태그"));
@@ -115,15 +115,8 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
-	//~ 룰 - State
-	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
-	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
-	State_NoInteract = AddTag(TEXT("State.NoInteract"),TEXT("상호작용 오브젝트 사용이 제한된 상태."));
-	Rule_State_NoStruggle = AddTag(TEXT("Rule.State.NoStruggle"),TEXT("H38 유리 몸 — 일반 포획 저항 불가."));
-	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
-	Rule_State_Heartbeat = AddTag(TEXT("Rule.State.Heartbeat"),TEXT("H41 — 좀비 15m 이내 시 위치 점멸 표시"));
-	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
-	Rule_State_Trail = AddTag(TEXT("Rule.State.Trail"), TEXT("H40 — 지나간 경로가 20초간 좀비에게 표시"));
+	Rule_State_Decay = AddTag(TEXT("Rule.State.Decay"),TEXT("Z42 붕괴. 인간 10m 이내에서 가까워질수록 최대 35% 감속"));
+	Rule_State_Knockback = AddTag(TEXT("Rule.State.Knockback"), TEXT("Z41 반발 — 물기 중이 아닐 때 인간에게 닿으면 밀려남"));
 
 #pragma endregion
 
@@ -149,6 +142,20 @@ void FAGameplayTags::AddAllTags()
 
 	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
 	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
+
+	//~ 룰 - State
+	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
+
+	Rule_State_NoInteract = AddTag(TEXT("Rule.State.NoInteract"),TEXT("H37 문맹 — 문·사다리 등 상호작용 오브젝트 사용 불가."));
+	State_NoInteract = AddTag(TEXT("State.NoInteract"),TEXT("상호작용 오브젝트 사용이 제한된 상태."));
+
+	Rule_State_NoStruggle = AddTag(TEXT("Rule.State.NoStruggle"),TEXT("H38 유리 몸 — 일반 포획 저항 불가."));
+	State_NoStruggle = AddTag(TEXT("State.NoStruggle"),TEXT("일반 포획 저항 입력이 무효인 상태."));
+
+	Rule_State_Trail = AddTag(TEXT("Rule.State.Trail"), TEXT("H40 — 지나간 경로가 20초간 좀비에게 표시"));
+
+	Rule_State_Heartbeat = AddTag(TEXT("Rule.State.Heartbeat"),TEXT("H41 — 좀비 15m 이내 시 위치 점멸 표시"));
+	State_Camp = AddTag(TEXT("State.Camp"),TEXT("4초 이상 정지하여 위치가 노출된 상태"));
 
 #pragma endregion
 }

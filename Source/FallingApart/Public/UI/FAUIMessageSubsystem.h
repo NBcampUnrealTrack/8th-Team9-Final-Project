@@ -4,9 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "UI/FAGenericPopup.h"
 #include "FAUIMessageSubsystem.generated.h"
 
-class UFAGenericPopup;
+class APlayerController;
+class SWidget;
 
 /**
  * 모든 레벨과 위젯에서 공통으로 사용하는 단일 메시지 창 관리자.
@@ -32,6 +34,14 @@ public:
 	static void ShowMessage(const UObject* WorldContextObject, const FText& Title, const FText& Message,
 		const FText& ConfirmText = FText());
 
+	/**
+	 * 예/아니오 메시지창을 열고 버튼 선택 결과를 FOnFAConfirmationResult 콜백의 bool 값으로 반환한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|UI|Message",
+		meta = (WorldContext = "WorldContextObject", DisplayName = "Show FA Confirmation"))
+	static void ShowConfirmation(const UObject* WorldContextObject, const FText& Title, const FText& Message,
+		FOnFAConfirmationResult ResultCallback, const FText& YesText = FText(), const FText& NoText = FText());
+
 	/** 맵 전환이 끝난 뒤 다음 월드에 메시지를 표시한다. 호스트 이탈/접속 종료 처리용. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|UI|Message",
 		meta = (WorldContext = "WorldContextObject", DisplayName = "Show FA Message After Travel"))
@@ -48,11 +58,19 @@ public:
 
 private:
 	bool ShowMessageInternal(const FText& Title, const FText& Message, const FText& ConfirmText);
+	bool ShowConfirmationInternal(const FText& Title, const FText& Message,
+		const FText& YesText, const FText& NoText, const FOnFAConfirmationResult& ResultCallback);
 	void QueueMessage(const FText& Title, const FText& Message, const FText& ConfirmText);
 	void CloseMessageInternal();
 	void HandlePopupClosed(UFAGenericPopup* ClosedPopup);
 	void HandlePostLoadMap(UWorld* LoadedWorld);
 	void TryShowPendingMessage();
+
+	/** UI창이 열릴때 InputMode를 저장후 메시지 창에 접근이 가능하도록 GameAndUI로 변경.
+	 * UIOnly는 매치 중 조작을 멈출 가능성이 있어 GameAndUI를 사용함. */
+	void SaveAndApplyPopupInputMode(APlayerController* PlayerController, UFAGenericPopup* Popup);
+	void RestorePreviousInputMode();
+	void ResetSavedInputMode();
 
 	UPROPERTY(Config, EditAnywhere, Category = "FallingApart|UI|Message")
 	TSubclassOf<UFAGenericPopup> PopupWidgetClass;
@@ -68,4 +86,18 @@ private:
 	FText PendingConfirmText;
 	bool bHasPendingMessage = false;
 	FDelegateHandle PostLoadMapDelegateHandle;
+
+	/**
+	 * UE에는 런타임용 InputMode getter가 없으므로, 모드를 판별하고 복원하는 데 필요한
+	 * 실제 뷰포트/포커스 상태를 첫 팝업이 열릴 때 한 번만 저장한다.
+	 */
+	TWeakObjectPtr<APlayerController> SavedInputPlayerController;
+	TWeakPtr<SWidget> SavedFocusedWidget;
+	uint8 SavedInputMode = 0;
+	uint8 SavedMouseCaptureMode = 0;
+	uint8 SavedMouseLockMode = 0;
+	bool bSavedShowMouseCursor = false;
+	bool bSavedIgnoreInput = false;
+	bool bSavedHideCursorDuringCapture = false;
+	bool bHasSavedInputMode = false;
 };

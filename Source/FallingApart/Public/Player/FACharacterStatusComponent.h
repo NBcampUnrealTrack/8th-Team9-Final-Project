@@ -8,6 +8,7 @@
 
 class ACharacter;
 class AFACharacter;
+class UPrimitiveComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
@@ -24,7 +25,7 @@ class FALLINGAPART_API UFACharacterStatusComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	// Sets default values for this component's properties
 	UFACharacterStatusComponent();
 
@@ -32,10 +33,28 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
+
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
-	
+
 private:
+	/** Z41 태그가 있을 때만 기존 캡슐의 Hit 이벤트를 연결한다. */
+	void HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount);
+
+	/** Z41: 기존 캡슐의 blocking Hit에서 인간 접촉을 판정한다. */
+	UFUNCTION()
+	void HandleKnockbackHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	double NextKnockbackTime = 0.0;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackSpeed = 600.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackUpSpeed = 150.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.05", Units = "s"))
+	float KnockbackInterval = 0.5f;
+
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
 
@@ -44,17 +63,21 @@ private:
 
 	//* 포복용
 	void HandleCrouchOnlyRuleChanged(const FGameplayTag Tag, int32 NewCount);
-	
+
 	/** Rule.Trade.Ghost 태그 추가·제거에 따라 유령 외형을 변경한다. */
 	void HandleGhostRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
 	void HandleSecondLifeRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void UpdateHideRule(float DeltaTime);
 	void SetHideActive(bool bActive);
-	
+
+	// [H45 RPC 추가] 서버에서 관련 클라이언트로 은둔 외형을 전달한다.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastSetHideVisual(bool bActive);
+
 	void UpdateCampRule(float DeltaTime);
 	void SetCampActive(bool bActive);
-	
+
 	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
 	void RefreshGhostVisual();
 
@@ -64,20 +87,20 @@ private:
 	void RollGambleSpeed();
 	/** H50 타이머와 현재 속도 효과를 모두 제거한다. */
 	void ClearGambleSpeed();
-	
-	// Rule.Gamble.Blink 추가·제거 이벤트 처리
-	void HandleGambleBlinkRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
-	// 무작위 Human PlayerStart로 순간이동
-	void BlinkToRandomPlayerStart();
+	// Rule.State.Recall 추가·제거 이벤트 처리
+	void HandleRecallRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
-	// H43 반복 타이머 정리
-	void ClearGambleBlink();
+	// H43 / Z40: 공유 스폰 지점(Human PlayerStart) 중 무작위 위치로 이동
+	void RecallToRandomPlayerStart();
+
+	// H43 / Z40 공용 귀환 반복 타이머 정리
+	void ClearRecall();
 
 
 	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
 	void SetGhostVisualActive(bool bActive);
-	
+
 	/** Z46 Gameplay Tag 추가·제거 이벤트를 처리한다. */
 	void HandleWallPhaseRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	/** 캐릭터 캡슐의 PhaseWall 충돌 응답을 변경한다. */
@@ -87,31 +110,27 @@ private:
 	void ToggleInputFlip();
 
 	void SetInputFlipActive(bool bActive);
-	
-	/**
-	  * Rule.State.Heartbeat 태그가
-	  * 추가되거나 제거됐을 때 호출된다.
-	  */
+
+	//Rule.State.Heartbeat 태그가 추가되거나 제거됐을 때 호출된다.
 	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
-	/**
-	 * 각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
-	 */
+	//각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
 	void StartHeartbeatDetection();
 
-	/**
-	 * H41 타이머를 중지하고 보유자의 로컬 아웃라인을 해제한다.
-	 */
+	// H41 타이머를 중지하고 보유자의 로컬 아웃라인을 해제한다.
 	void StopHeartbeatDetection();
 
-	/**
-	 * 로컬 관찰자가 15m 이내 좀비이면 H41 보유자의 위치를 점멸 표시한다.
-	 */
+	// 로컬 관찰자가 15m 이내 좀비이면 H41 보유자의 위치를 점멸 표시한다.
 	void ScanHeartbeatTargets();
-	
+
+	// Z42 붕괴
+	void HandleDecayRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	void UpdateDecay();
+	void ClearDecay();
+
 	UAbilitySystemComponent* GetOwnerAbilitySystem() const;
-	
+
 	/* 착지 시 적용할 상태 GE. Has Duration 1초, Granted Tag는 State.Stunned로 설정한다. */
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Landing")
 	TSubclassOf<UGameplayEffect> LandStunEffect;
@@ -124,7 +143,7 @@ private:
 
 	FTimerHandle InputFlipTimerHandle;
 	bool bInputFlipActive = false;
-	
+
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Ghost")
 	float GhostActiveOpacity = 0.35f;
 
@@ -148,7 +167,7 @@ private:
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
 	float CampStationarySpeedTolerance = 3.0f;
-	
+
 	float CampStationaryElapsed = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.1"))
@@ -161,17 +180,15 @@ private:
 	float GambleSpeedMaxMultiplier = 1.5f;
 
 	FTimerHandle GambleSpeedTimerHandle;
-		
-	
-	// H43 순간이동 반복 간격.
+
+
+	// H43 / Z40 공용 귀환 반복 간격.
 	// 룰 획득 후 40초 뒤 첫 순간이동이 발생한다.
-	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="1.0"))
-	float GambleBlinkInterval = 40.0f;
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Recall",meta=(ClampMin="1.0"))
+	float RecallInterval = 40.0f;
 
-	// H43 반복 타이머
-	FTimerHandle GambleBlinkTimerHandle;
-
-	// [H41 추가 시작]
+	// H43 / Z40 공용 귀환 반복 타이머
+	FTimerHandle RecallTimerHandle;
 
 	/** H41 주변 좀비 탐색 타이머 */
 	FTimerHandle HeartbeatDetectionTimerHandle;
@@ -194,5 +211,20 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.0"))
 	float HeartbeatBlinkVisibleDuration = 0.4f;
 
-	// [H41 추가 끝]
+
+	// Z42 붕괴
+	// 반복 검사
+	FTimerHandle DecayTimerHandle;
+
+	// 탐지 반경 10m
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "1.0"))
+	float DecayRadius = 1000.0f;
+
+	// 최대 감속 비율 35%
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DecayMaxSlowRatio = 0.35f;
+
+	// 거리 검사 주기
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "0.05"))
+	float DecayUpdateInterval = 0.2f;
 };
