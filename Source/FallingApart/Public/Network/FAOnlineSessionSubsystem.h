@@ -96,6 +96,10 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool b
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool bWasSuccessful);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionPreparedForMatch, bool bSuccessed);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionReopenedForLobby,	bool bSuccessed);
+
+DECLARE_MULTICAST_DELEGATE(FOnPendingInviteJoinAvailable)
+
+
 /**
  * OSS의 기본적인 생명주기를 관리하는 서브시스템
  * 세션생성, 세션 검색과 참가, 세션 시작, 세션 종료
@@ -137,9 +141,7 @@ public:
 	
 	/// TODO : 플랫폼의 친구에게 참가
 	void FindFriendSession();
-	
-	/** 플랫폼의 초대 기능으로 초대 전송 */
-	void SendSessionInviteToFriends();
+
 	
 	void ReopenSessionForLobby();
 	
@@ -174,11 +176,6 @@ protected:
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
 	
-	void OnSessionUserInviteAccepted(
-		bool bWasSuccessful,
-		int32 ControllerId, 
-		FUniqueNetIdPtr UserId, 
-		const FOnlineSessionSearchResult& InviteResult);
 
 	
 private:
@@ -212,7 +209,6 @@ private:
 	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
 	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
 	
-	FDelegateHandle 					OnSessionUserInviteAcceptedDelegateHandle;
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
 	
@@ -302,4 +298,33 @@ private:
 	TObjectPtr<AFAOnlineBeaconClient> ActiveOnlineBeacon;
 	
 #pragma endregion
+#pragma region Invite
+public:
+	/** 플랫폼의 초대 기능으로 초대 전송 */
+	void SendSessionInviteToFriends();
+	
+	/** 초대 데이터 존재확인 */
+	bool HasPendingInviteJoin() const;
+	
+	/** 초대 세션 데이터 가져오기 + 정리 */
+	bool ConsumePendingInviteJoin(FOnlineSessionSearchResult& OutResult);
+	
+	/** 초대 세션 데이터 정리 */
+	void ClearPendingInviteJoin();
+	
+	/** 초대 이벤트 콜백 */
+	FOnPendingInviteJoinAvailable OnPendingInviteJoinAvailable;
+protected:
+	void OnSessionUserInviteAccepted(
+		bool bWasSuccessful,
+		int32 ControllerId, 
+		FUniqueNetIdPtr UserId, 
+		const FOnlineSessionSearchResult& InviteResult);
+private:
+	/** 플랫폼 초대 이벤트 핸들 */
+	FDelegateHandle OnSessionUserInviteAcceptedDelegateHandle;
+	
+	/** 저장된 초대 세션 데이터 */
+	FOnlineSessionSearchResult PendingInviteJoinResult;
+#pragma endregion Invite
 };

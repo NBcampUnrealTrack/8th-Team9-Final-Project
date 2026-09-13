@@ -111,6 +111,14 @@ void UFAPauseMenuWidget::OnQuitClicked()
 	}
 }
 
+void UFAPauseMenuWidget::OnCloseClicked()
+{
+	UFAAudioSubsystem::PlayFASound(this, FAPauseMenuUI::SoundClick);
+
+	// ESC 와 같은 길로 닫는다 — 닫힘 소리 · 입력 모드 복구는 CloseMenu 쪽에서 난다.
+	CloseMenu();
+}
+
 void UFAPauseMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
@@ -180,6 +188,11 @@ void UFAPauseMenuWidget::BindButtons()
 		Btn_Quit->OnClicked.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnQuitClicked);
 		Btn_Quit->OnHovered.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnButtonHovered);
 	}
+	if (Btn_Close)
+	{
+		Btn_Close->OnClicked.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnCloseClicked);
+		Btn_Close->OnHovered.AddUniqueDynamic(this, &UFAPauseMenuWidget::OnButtonHovered);
+	}
 }
 
 //~ ---------------- WBP 가 없을 때 쓰는 임시 레이아웃 ----------------
@@ -233,6 +246,7 @@ void UFAPauseMenuWidget::BuildFallbackLayout()
 	Btn_MainMenu = MakeFallbackButton(Column, LOCTEXT("PauseMenuMainMenu", "메인 메뉴"));
 	Btn_Settings = MakeFallbackButton(Column, LOCTEXT("PauseMenuSettings", "설정"));
 	Btn_Quit = MakeFallbackButton(Column, LOCTEXT("PauseMenuQuit", "게임 종료"));
+	Btn_Close = MakeFallbackButton(Column, LOCTEXT("PauseMenuClose", "닫기"));
 
 	UTextBlock* HintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	HintText->SetText(LOCTEXT("PauseMenuHint", "ESC — 닫기"));

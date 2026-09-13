@@ -25,10 +25,9 @@
 UFACharacterStatusComponent::UFACharacterStatusComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	
-	// 컴포넌트 자체 상태는 복제할 필요가 없다.
-	// 적용된 GE와 GameplayTag는 ASC가 복제한다.
-	SetIsReplicatedByDefault(false);
+
+	// 지속 상태인 GameplayTag는 기존처럼 ASC가 복제한다.
+	SetIsReplicatedByDefault(true);
 }
 
 
@@ -47,6 +46,14 @@ void UFACharacterStatusComponent::BeginPlay()
 
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		if (OwnerCharacter->HasAuthority())
+		{
+			const FGameplayTag KnockbackTag = FAGameplayTags::Get().Rule_State_Knockback;
+			ASC->RegisterGameplayTagEvent(KnockbackTag, EGameplayTagEventType::NewOrRemoved)
+				.AddUObject(this, &ThisClass::HandleKnockbackRuleChanged);
+			HandleKnockbackRuleChanged(KnockbackTag, ASC->GetTagCount(KnockbackTag));
+		}
+
 		const FGameplayTag FlipRuleTag = FAGameplayTags::Get().Rule_Input_FlipLR;
 		ASC->RegisterGameplayTagEvent(FlipRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleInputFlipRuleChanged);
@@ -58,10 +65,10 @@ void UFACharacterStatusComponent::BeginPlay()
 		const FGameplayTag CrouchOnlyRuleTag = FAGameplayTags::Get().Rule_Move_CrouchOnly;
 		ASC->RegisterGameplayTagEvent(CrouchOnlyRuleTag, EGameplayTagEventType::NewOrRemoved)
 		 	.AddUObject(this, &ThisClass::HandleCrouchOnlyRuleChanged);
-		
+
 		// BeginPlay 전에 이미 룰이 적용된 경우에도 즉시 포복시킨다.
 		 HandleCrouchOnlyRuleChanged(CrouchOnlyRuleTag,ASC->GetTagCount(CrouchOnlyRuleTag));
-		
+
 		const FGameplayTag GhostRuleTag =FAGameplayTags::Get().Rule_Trade_Ghost;
 
 		// Ghost
@@ -69,7 +76,7 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this,&ThisClass::HandleGhostRuleChanged);
 		// BeginPlay 전에 Z44가 적용된 경우도 즉시 반영한다.
 		HandleGhostRuleChanged(GhostRuleTag,ASC->GetTagCount(GhostRuleTag));
-		
+
 		const FGameplayTag WallPhaseRuleTag =FAGameplayTags::Get().Rule_Trade_WallPhase;
 		ASC->RegisterGameplayTagEvent(WallPhaseRuleTag,EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this,&ThisClass::HandleWallPhaseRuleChanged);
@@ -89,15 +96,15 @@ void UFACharacterStatusComponent::BeginPlay()
 		ASC->RegisterGameplayTagEvent(GambleSpeedRuleTag,EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this,&ThisClass::HandleGambleSpeedRuleChanged);
 		HandleGambleSpeedRuleChanged(GambleSpeedRuleTag,ASC->GetTagCount(GambleSpeedRuleTag));
-		
-		const FGameplayTag GambleBlinkRuleTag =FAGameplayTags::Get().Rule_Gamble_Blink;
 
-		// GE_Rule_Blink가 적용되거나 제거될 때 이벤트를 받는다.
-		ASC->RegisterGameplayTagEvent(GambleBlinkRuleTag,EGameplayTagEventType::NewOrRemoved).
-		AddUObject(this,&ThisClass::HandleGambleBlinkRuleChanged);
-		
-		HandleGambleBlinkRuleChanged(GambleBlinkRuleTag,ASC->GetTagCount(GambleBlinkRuleTag));
-		
+		const FGameplayTag RecallRuleTag =FAGameplayTags::Get().Rule_State_Recall;
+
+		// H43 / Z40 공용 귀환 태그의 추가·제거 이벤트를 받는다.
+		ASC->RegisterGameplayTagEvent(RecallRuleTag,EGameplayTagEventType::NewOrRemoved).
+		AddUObject(this,&ThisClass::HandleRecallRuleChanged);
+
+		HandleRecallRuleChanged(RecallRuleTag,ASC->GetTagCount(RecallRuleTag));
+
 		const FGameplayTag HeartbeatRuleTag =FAGameplayTags::Get().Rule_State_Heartbeat;
 
 		ASC->RegisterGameplayTagEvent(HeartbeatRuleTag,EGameplayTagEventType::NewOrRemoved)
@@ -109,6 +116,13 @@ void UFACharacterStatusComponent::BeginPlay()
 		ASC->RegisterGameplayTagEvent(TrailRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleTrailRuleChanged);
 		HandleTrailRuleChanged(TrailRuleTag, ASC->GetTagCount(TrailRuleTag));
+
+
+		const FGameplayTag DecayTag = FAGameplayTags::Get().Rule_State_Decay;
+		ASC->RegisterGameplayTagEvent(DecayTag, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ThisClass::HandleDecayRuleChanged);
+
+		HandleDecayRuleChanged(DecayTag, ASC->GetTagCount(DecayTag));
 	}
 }
 
@@ -116,13 +130,15 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 {
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Knockback,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(
 			FAGameplayTags::Get().Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		
+
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
 				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_WallPhase,
@@ -133,28 +149,32 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Speed,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Blink,
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Recall,
 		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Heartbeat,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Trail,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Decay,
+	  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
 	ClearGambleSpeed();
-	ClearGambleBlink();
+	ClearRecall();
 	StopHeartbeatDetection();
-	// 저게서 
+	// 저게서
 	SetGhostVisualActive(false);
 	GhostDynamicMaterials.Reset();
 
 	if (OwnerCharacter)
 	{
 		OwnerCharacter->LandedDelegate.RemoveDynamic(this,&ThisClass::HandleLanded);
+		OwnerCharacter->GetCapsuleComponent()->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
 	}
-
+	ClearDecay();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -191,6 +211,98 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		SetWallPhaseActive(bShouldPhase);
 	}
+}
+
+void UFACharacterStatusComponent::HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount)
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	UCapsuleComponent* Capsule = OwnerCharacter->GetCapsuleComponent();
+	if (NewCount > 0)
+	{
+		Capsule->OnComponentHit.AddUniqueDynamic(this, &ThisClass::HandleKnockbackHit);
+	}
+	else
+	{
+		Capsule->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
+		NextKnockbackTime = 0.0;
+	}
+}
+
+void UFACharacterStatusComponent::HandleKnockbackHit(UPrimitiveComponent* HitComponent,
+	AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+	// 충돌 상대의 본체 캡슐인지 확인
+	AFACharacter* Human = Cast<AFACharacter>(OtherActor);
+	if (!IsValid(Human) || Human == OwnerCharacter
+		|| OtherComp != Human->GetCapsuleComponent())
+	{
+		return;
+	}
+
+	// 양쪽 ASC 확인
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	UAbilitySystemComponent* HumanASC = Human->GetAbilitySystemComponent();
+	if (!ASC || !HumanASC)
+	{
+		return;
+	}
+
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	// 반발 룰을 가진 좀비가 인간과 충돌한 경우만 처리
+	if (!ASC->HasMatchingGameplayTag(Tags.Rule_State_Knockback)
+		|| !ASC->HasMatchingGameplayTag(Tags.State_Zombie)
+		|| !HumanASC->HasMatchingGameplayTag(Tags.State_Human))
+	{
+		return;
+	}
+
+	// 연속 반발 방지
+	if (GetWorld()->GetTimeSeconds() < NextKnockbackTime)
+	{
+		return;
+	}
+
+	// 포획이나 구출 대결 중에는 반발하지 않음
+	if (ASC->HasMatchingGameplayTag(Tags.State_Grabbing)
+		|| ASC->HasMatchingGameplayTag(Tags.State_Grabbed)
+		|| ASC->HasMatchingGameplayTag(Tags.State_Contesting))
+	{
+		return;
+	}
+
+	// 명중 전 물기 몽타주도 보호한다. State.Grabbing은 포획 성공 후에 붙는다.
+	TArray<FGameplayAbilitySpec*> GrabSpecs;
+	ASC->GetActivatableGameplayAbilitySpecsByAllMatchingTags(
+		FGameplayTagContainer(Tags.Ability_Grab), GrabSpecs, false);
+	for (const FGameplayAbilitySpec* Spec : GrabSpecs)
+	{
+		if (Spec && Spec->IsActive())
+		{
+			return;
+		}
+	}
+
+	FVector Direction = (OwnerCharacter->GetActorLocation() - Human->GetActorLocation()).GetSafeNormal2D();
+	if (Direction.IsNearlyZero())
+	{
+		Direction = -OwnerCharacter->GetActorForwardVector().GetSafeNormal2D();
+	}
+	// 하차 중 발생할 수 있는 중첩 Hit도 재발동 간격으로 막는다.
+	NextKnockbackTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.05f, KnockbackInterval);
+	if (AFACharacter* Zombie = Cast<AFACharacter>(OwnerCharacter))
+	{
+		Zombie->ServerStopClimbing(false);
+	}
+	OwnerCharacter->LaunchCharacter(Direction * KnockbackSpeed + FVector(0.0f, 0.0f, KnockbackUpSpeed), true, true);
 }
 
 void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount)
@@ -239,15 +351,7 @@ void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag,
 	// 델리게이트 시그니처를 맞추기 위한 인자다. ??
 	(void)Tag;
 
-	/*
-	 * NewCount > 0:
-	 * Rule.Trade.Ghost 태그 적용 상태
-	 * → 반투명 처리
-	 *
-	 * NewCount == 0:
-	 * 태그 미적용 또는 제거 상태
-	 * → 완전히 보이는 상태로 복구
-	 */
+	
 	RefreshGhostVisual();
 }
 
@@ -445,6 +549,112 @@ void UFACharacterStatusComponent::ScanHeartbeatTargets()
 		FMath::Fmod(Now - HeartbeatRevealStartTime, Period) < VisibleDuration);
 }
 
+void UFACharacterStatusComponent::HandleDecayRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+
+	// 배율 계산과 타이머는 서버에서 관리
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	// 시작전 정리
+	ClearDecay();
+
+	UWorld* World = GetWorld();
+	if (NewCount <= 0 || !World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		DecayTimerHandle,
+		this,
+		&ThisClass::UpdateDecay,
+		FMath::Max(0.05f, DecayUpdateInterval),
+		true);
+
+	// 룰 획득 즉시 현재 거리 반영
+	UpdateDecay();
+}
+
+void UFACharacterStatusComponent::UpdateDecay()
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	if (!ASC || !ASC->HasMatchingGameplayTag(Tags.Rule_State_Decay))
+	{
+		ClearDecay();
+		return;
+	}
+
+	float Multiplier = 1.0f;
+
+	const AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
+	const UFADetectionUnitComponent* Detection =
+		Character ? Character->GetDetectionUnitComponent() : nullptr;
+
+	if (Detection && ASC->HasMatchingGameplayTag(Tags.State_Zombie))
+	{
+		const float Radius = FMath::Max(1.0f, DecayRadius);
+
+		// 기존 탐지 컴포넌트 재사용
+		TArray<AFACharacter*> Humans;
+		Detection->GetCharactersInRange(
+			Tags.State_Human, Radius, Humans);
+
+		float NearestDistanceSquared = FMath::Square(Radius);
+		const FVector OwnerLocation = OwnerCharacter->GetActorLocation();
+
+		for (const AFACharacter* Human : Humans)
+		{
+			if (!IsValid(Human))
+			{
+				continue;
+			}
+
+			NearestDistanceSquared = FMath::Min(
+				NearestDistanceSquared,
+				FVector::DistSquared(
+					OwnerLocation, Human->GetActorLocation()));
+		}
+
+		// 가장 가까운 인간 기준: 10m → 1.0배, 0m → 0.65배
+		const float Distance = FMath::Sqrt(NearestDistanceSquared);
+		const float Alpha =1.0f - FMath::Clamp(Distance / Radius, 0.0f, 1.0f);
+		Multiplier = 1.0f- FMath::Clamp(DecayMaxSlowRatio, 0.0f, 1.0f) * Alpha;
+	}
+
+	// 인간이 없거나 소유자가 좀비가 아니면 1.0배
+	ASC->SetNumericAttributeBase(UFAAttributeSet::GetDecaySpeedMultiplierAttribute(),Multiplier);
+}
+
+void UFACharacterStatusComponent::ClearDecay()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DecayTimerHandle);
+	}
+
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
+	{
+		// 룰 제거 또는 종료 시 감속 해제
+		ASC->SetNumericAttributeBase(UFAAttributeSet::GetDecaySpeedMultiplierAttribute(),1.0f);
+	}
+}
+
 void UFACharacterStatusComponent::HandleHeartbeatRuleChanged(
 	const FGameplayTag Tag, int32 NewCount)
 {
@@ -516,11 +726,11 @@ void UFACharacterStatusComponent::HandleLanded(const FHitResult& Hit)
 
 	if (ActiveEffectHandle.IsValid())
 	{
-		//  성공 추가코드 
+		//  성공 추가코드
 	}
 	else
 	{
-		// 실패 로그 
+		// 실패 로그
 		UE_LOG(LogTemp,Warning,TEXT("[LandStun] Apply failed: Owner=%s, Effect=%s"),*GetNameSafe(OwnerActor),
 			*GetNameSafe(LandStunEffect.Get()));
 	}
@@ -610,6 +820,32 @@ void UFACharacterStatusComponent::SetHideActive(bool bActive)
 	{
 		ASC->RemoveLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
+
+	// 태그 도착 순서에 의존하지 않고 현재 은둔 상태를 전달한다.
+	MulticastSetHideVisual(bActive);
+}
+
+void UFACharacterStatusComponent::MulticastSetHideVisual_Implementation(bool bActive)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (!OwnerCharacter)
+	{
+		OwnerCharacter = Cast<ACharacter>(GetOwner());
+	}
+
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	const bool bGhostRuleActive = ASC
+		&& ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost);
+
+	// 은둔이 해제돼도 별도 Ghost 룰의 반투명 효과는 유지한다.
+	SetGhostVisualActive(bActive || bGhostRuleActive);
+
+	UE_LOG(LogTemp, Log, TEXT("[H45 RPC] Character=%s | NetMode=%d | Hidden=%d"),
+		*GetNameSafe(OwnerCharacter), static_cast<int32>(GetNetMode()), bActive);
 }
 
 void UFACharacterStatusComponent::UpdateCampRule(float DeltaTime)
@@ -763,7 +999,7 @@ void UFACharacterStatusComponent::ClearGambleSpeed()
 	}
 }
 
-void UFACharacterStatusComponent::HandleGambleBlinkRuleChanged(const FGameplayTag Tag, int32 NewCount)
+void UFACharacterStatusComponent::HandleRecallRuleChanged(const FGameplayTag Tag, int32 NewCount)
 {
 	// 이벤트 함수 형식을 맞추기 위한 인자
 	(void)Tag;
@@ -775,9 +1011,9 @@ void UFACharacterStatusComponent::HandleGambleBlinkRuleChanged(const FGameplayTa
 	}
 
 	// 중복 타이머 방지
-	ClearGambleBlink();
+	ClearRecall();
 
-	// H43 태그가 제거된 경우 타이머를 다시 시작하지 않는다.
+	// 공용 귀환 태그가 제거된 경우 타이머를 다시 시작하지 않는다.
 	if (NewCount <= 0)
 	{
 		return;
@@ -790,23 +1026,23 @@ void UFACharacterStatusComponent::HandleGambleBlinkRuleChanged(const FGameplayTa
 	}
 
 	// 즉시 순간이동하지 않고 40초 뒤 첫 순간이동을 실행한다.
-	World->GetTimerManager().SetTimer(GambleBlinkTimerHandle,
-		this,&ThisClass::BlinkToRandomPlayerStart,
-		GambleBlinkInterval,true);
+	World->GetTimerManager().SetTimer(RecallTimerHandle,
+		this,&ThisClass::RecallToRandomPlayerStart,
+		RecallInterval,true);
 
-	UE_LOG(LogTemp,Log,TEXT("[H43] 도박꾼 시작 | Character=%s | Interval=%.1f"),
-		*GetNameSafe(OwnerCharacter),GambleBlinkInterval);
+	UE_LOG(LogTemp,Log,TEXT("[Recall H43/Z40] 귀환 시작 | Character=%s | Interval=%.1f"),
+		*GetNameSafe(OwnerCharacter),RecallInterval);
 }
 
-void UFACharacterStatusComponent::BlinkToRandomPlayerStart()
+void UFACharacterStatusComponent::RecallToRandomPlayerStart()
 {
 	 UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
 
-      // 서버가 아니거나 H43이 제거된 경우 타이머를 종료한다.
+      // 서버가 아니거나 귀환 태그가 제거된 경우 타이머를 종료한다.
       if (!OwnerCharacter|| !OwnerCharacter->HasAuthority()
-          || !ASC|| !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Gamble_Blink))
+          || !ASC|| !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_State_Recall))
       {
-          ClearGambleBlink();
+          ClearRecall();
           return;
       }
 
@@ -816,7 +1052,7 @@ void UFACharacterStatusComponent::BlinkToRandomPlayerStart()
           return;
       }
 
-      // 기존 GameMode의 인간 스폰 태그 기본값과 동일하다.
+      // 인간과 좀비가 공유하는 스폰 지점의 태그.
       static const FName HumanPlayerStartTag(TEXT("Human"));
 
       TArray<APlayerStart*> Candidates;
@@ -849,7 +1085,7 @@ void UFACharacterStatusComponent::BlinkToRandomPlayerStart()
 
       if (Candidates.IsEmpty())
       {
-      	// 순간이동 실패 
+          // 순간이동 실패
           return;
       }
 
@@ -879,7 +1115,7 @@ void UFACharacterStatusComponent::BlinkToRandomPlayerStart()
               continue;
           }
 
-          UE_LOG(LogTemp,Warning,TEXT("[H43] 순간이동 성공 | Character=%s | "
+          UE_LOG(LogTemp,Warning,TEXT("[Recall H43/Z40] 순간이동 성공 | Character=%s | "
                   "PlayerStart=%s | Location=%s"
               ),
               *GetNameSafe(OwnerCharacter),
@@ -892,18 +1128,18 @@ void UFACharacterStatusComponent::BlinkToRandomPlayerStart()
 
 }
 
-void UFACharacterStatusComponent::ClearGambleBlink()
+void UFACharacterStatusComponent::ClearRecall()
 {
 	if (UWorld* World = GetWorld())
 	{
-		// H43이 제거되거나 캐릭터가 종료될 때 반복 타이머를 정리한다.
-		World->GetTimerManager().ClearTimer(GambleBlinkTimerHandle);
+		// 귀환 태그가 제거되거나 캐릭터가 종료될 때 반복 타이머를 정리한다.
+		World->GetTimerManager().ClearTimer(RecallTimerHandle);
 	}
 }
 
 UAbilitySystemComponent* UFACharacterStatusComponent::GetOwnerAbilitySystem() const
 {
 	const IAbilitySystemInterface* AbilityInterface =Cast<IAbilitySystemInterface>(GetOwner());
-	
+
 	return AbilityInterface? AbilityInterface->GetAbilitySystemComponent(): nullptr;
 }

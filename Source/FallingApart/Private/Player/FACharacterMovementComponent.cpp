@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/FACharacterMovementComponent.h"
 
@@ -8,6 +8,56 @@
 #include "GAS/FAGameplayTags.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
+#include "Player/FACharacter.h"
+
+/** 일인칭 방향 의도를 가속도·시선 회전과 같은 이동 기록에 저장한다. */
+class FSavedMove_FACharacter : public FSavedMove_Character
+{
+public:
+	bool bSavedFirstPersonFacing = false;
+
+	virtual void Clear() override
+	{
+		FSavedMove_Character::Clear();
+		bSavedFirstPersonFacing = false;
+	}
+
+	virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, const FVector& NewAccel,
+		FNetworkPredictionData_Client_Character& ClientData) override
+	{
+		FSavedMove_Character::SetMoveFor(Character, InDeltaTime, NewAccel, ClientData);
+		auto* Movement = CastChecked<UFACharacterMovementComponent>(Character->GetCharacterMovement());
+		bSavedFirstPersonFacing = Movement->bFirstPersonFacingRequested;
+		Movement->bFirstPersonFacingForMove = bSavedFirstPersonFacing;
+	}
+
+	virtual void PrepMoveFor(ACharacter* Character) override
+	{
+		FSavedMove_Character::PrepMoveFor(Character);
+		auto* Movement = CastChecked<UFACharacterMovementComponent>(Character->GetCharacterMovement());
+		Movement->bFirstPersonFacingForMove = bSavedFirstPersonFacing;
+	}
+
+	virtual uint8 GetCompressedFlags() const override
+	{
+		return FSavedMove_Character::GetCompressedFlags()
+			| (bSavedFirstPersonFacing ? FLAG_Custom_0 : 0);
+	}
+
+	// 기본 CanCombineWith가 Custom_0 차이도 검사하므로 시점이 다른 이동은 합쳐지지 않는다.
+};
+
+class FNetworkPredictionData_Client_FACharacter : public FNetworkPredictionData_Client_Character
+{
+public:
+	explicit FNetworkPredictionData_Client_FACharacter(const UCharacterMovementComponent& Movement)
+		: FNetworkPredictionData_Client_Character(Movement) {}
+
+	virtual FSavedMovePtr AllocateNewMove() override
+	{
+		return FSavedMovePtr(new FSavedMove_FACharacter());
+	}
+};
 
 UFACharacterMovementComponent::UFACharacterMovementComponent()
 {
@@ -22,6 +72,68 @@ void UFACharacterMovementComponent::InitializeComponent()
 	Super::InitializeComponent();
 
 	DefaultGroundFriction = GroundFriction;
+}
+
+void UFACharacterMovementComponent::SetFirstPersonFacingRequested(bool bRequested)
+{
+	bFirstPersonFacingRequested = bRequested;
+	bFirstPersonFacingForMove = bRequested;
+}
+
+FNetworkPredictionData_Client* UFACharacterMovementComponent::GetPredictionData_Client() const
+{
+	if (!ClientPredictionData)
+	{
+		auto* MutableThis = const_cast<UFACharacterMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_FACharacter(*this);
+	}
+	return ClientPredictionData;
+}
+
+void UFACharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
+{
+	Super::UpdateFromCompressedFlags(Flags);
+	bFirstPersonFacingForMove = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+}
+
+bool UFACharacterMovementComponent::IsUsingFirstPersonFacing() const
+{
+	if (!bFirstPersonFacingForMove || !HasValidData() || !CharacterOwner->GetController()
+		|| CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy || CharacterOwner->IsHidden()
+		|| !(IsMovingOnGround() || IsFalling()))
+	{
+		return false;
+	}
+
+	const auto* Character = Cast<AFACharacter>(CharacterOwner);
+	if (!Character || Character->IsHiding() || Character->IsClimbing()
+		|| Character->GetCaptureState().IsActive() || Character->GetContestState().IsActive()
+		|| Character->IsPlayingInfectionSequence())
+	{
+		return false;
+	}
+
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	return !IsMovementFrozen() && !HasOwnerTag(Tags.State_Grabbed) && !HasOwnerTag(Tags.State_Grabbing);
+}
+
+void UFACharacterMovementComponent::PhysicsRotation(float DeltaTime)
+{
+	if (!IsUsingFirstPersonFacing())
+	{
+		Super::PhysicsRotation(DeltaTime);
+		return;
+	}
+
+	// 이동과 함께 전송된 시선 방향을 사용해 서버의 전방 판정도 같은 방향을 보게 한다.
+	// 사다리·삼인칭에서 사용하는 기존 회전 플래그는 변경하지 않는다.
+	const FRotator CurrentRotation = UpdatedComponent->GetComponentRotation();
+	FRotator Facing = CurrentRotation;
+	Facing.Yaw = FRotator::NormalizeAxis(CharacterOwner->GetController()->GetControlRotation().Yaw);
+	if (!Facing.Equals(CurrentRotation, UE_KINDA_SMALL_NUMBER))
+	{
+		MoveUpdatedComponent(FVector::ZeroVector, Facing, false);
+	}
 }
 
 UAbilitySystemComponent* UFACharacterMovementComponent::GetOwnerASC() const
@@ -84,8 +196,10 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	}
 
 	const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
-	const float RuleSpeed = FMath::Max(0.0f,Attributes->GetMoveSpeed() * GambleSpeedMultiplier);
+	const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
+	const float RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
 	const float WaterSpeedMultiplier = FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f);
+	
 	switch (MovementMode)
 	{
 	case MOVE_Walking:
