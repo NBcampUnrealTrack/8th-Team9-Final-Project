@@ -847,6 +847,13 @@ void AFAGameMode::HandleSeamlessTravelPlayer(AController*& C)
 
 void AFAGameMode::Logout(AController* Exiting)
 {
+	if (UGameInstance* Instance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* Sessions = Instance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			Sessions->RefreshSessionCurrentPlayerNumber(Exiting);
+		}
+	}
 	AFAPlayerState* FAPlayerState = Exiting ? Cast<AFAPlayerState>(Exiting->PlayerState) : nullptr;
 	if (FAPlayerState)
 	{
@@ -1078,6 +1085,8 @@ void AFAGameMode::BeginReturnToLobby()
 	{
 		if (UFAOnlineSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
 		{
+			// 로비를 다시 광고하기 전에 매치 중 이탈까지 반영한 실제 인원을 저장한다.
+			SessionSubsystem->RefreshSessionCurrentPlayerNumber();
 			//handle은 BeginPlayer에서 단 한번 등록을 유지함.
 			SessionSubsystem->ReopenSessionForLobby();
 			return;

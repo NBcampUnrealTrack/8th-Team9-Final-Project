@@ -13,6 +13,7 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogFAOSS, Log, All);
 
 class AFAOnlineBeaconClient;
+class AController;
 enum class EFABeaconPasswordVerifyResult : uint8;
 
 struct FFAJoinAuthorization
@@ -61,7 +62,8 @@ enum class EFAUpdateSessionPurpose : uint8
 {
 	None,
 	PrepareMatch,
-	RestoreLobby
+	RestoreLobby,
+	UpdatePlayerCount
 };
 
 // 매치 게임 이동시 플레이어 수, 맵 관리 용
@@ -121,6 +123,11 @@ public:
 	 */
 	void CreateSession(int32 NumPublicConnections, const FString& ServerName, const FString& Password = "");
 	
+	/** 호스트가 원하는 최신 인원을 저장한다. 다른 세션 작업 중이면 게시를 미룬다. */
+	void UpdateSessionCurrentPlayerNumber(int32 CurrentPlayerCount);
+	/** Logout 안에서는 아직 월드에 남아 있는 ExcludedController를 제외한다. */
+	void RefreshSessionCurrentPlayerNumber(const AController* ExcludedController = nullptr);
+
 	/** 세션 검색 
 	 * @param MaxSearchResults 최대 검색 개수*/
 	void FindSession(int32 MaxSearchResults);
@@ -179,7 +186,25 @@ protected:
 
 	
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FFAPlayerCountSessionTest;
+#endif
 	void CompleteReopenSessionForLobby(bool bWasSuccessful);
+	void BeginSessionSettingsUpdate(EFAUpdateSessionPurpose Purpose);
+	void SchedulePlayerCountUpdate(float DelaySeconds = 0.1f);
+	void FlushPlayerCountUpdate();
+	void ResetPlayerCountUpdates();
+	void CompletePlayerCountUpdate(bool bWasSuccessful);
+
+	// 원하는 값과 마지막 성공 값을 분리해야 게시 실패를 성공으로 오인하지 않는다.
+	int32 LastPublishedPlayerCount = INDEX_NONE;
+	int32 InFlightPlayerCount = INDEX_NONE;
+	int32 PlayerCountUpdateFailures = 0;
+	// Steam OSS는 FNamedOnlineSession::bHosting을 채우지 않아 로컬 생성 성공을 추적한다.
+	bool bOwnsSession = false;
+	FTimerHandle PlayerCountUpdateTimerHandle;
+	bool bPrepareMatchAfterPlayerCount = false;
+	bool bDestroyAfterPlayerCount = false;
 	
 	IOnlineSessionPtr SessionInterface;
 	

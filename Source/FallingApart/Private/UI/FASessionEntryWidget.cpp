@@ -58,12 +58,16 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 		SessionHostNicknameText->SetText(FText::FromString(HostNickname));
 	}
 	
-	// 참가자 수
-	int32 MaxConnection = Result.Session.SessionSettings.NumPublicConnections;
-	int32 CurrentConnection = MaxConnection - Result.Session.NumOpenPublicConnections;
-	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentConnection, MaxConnection));
+	// 이전 버전의 방처럼 커스텀 값이 없으면 기존 빈자리 계산으로 대체한다.
+	const int32 MaxConnection = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);
+	int32 CurrentPlayers = MaxConnection - Result.Session.NumOpenPublicConnections;
+	Result.Session.SessionSettings.Get(FName(TEXT("CURRENT_PLAYERS")), CurrentPlayers);
+	CurrentPlayers = FMath::Clamp(CurrentPlayers, 0, MaxConnection);
+
+	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentPlayers, MaxConnection));
 	CurrentConnectionText->SetText(ConnectionTextFormat);
 	
+
 	// 지연시간
 	int32 Ping = Result.PingInMs;
 	SessionPingText->SetText(FText::FromString(FString::Printf(TEXT("핑 : %d"), Ping)));
