@@ -9,6 +9,8 @@
 
 class AFAGameState;
 class AFAPlayerState;
+class UImage;
+class UTextBlock;
 
 /**
  * 인게임 HUD C++ 베이스.
@@ -47,6 +49,19 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
 	FText GetLocalScoreText() const;
+
+	//~ 점수 알약 두 칸 — 팀 계 / 개인 계. 기준은 GetLocalDisplayScore() 와 같다
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
+	int32 GetLocalDisplayTeamScore() const;
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
+	FText GetLocalTeamScoreText() const;
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
+	int32 GetLocalDisplayPersonalScore() const;
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
+	FText GetLocalPersonalScoreText() const;
 
 	/** "인간" / "좀비". 진영 미배정이면 "-" */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD")
@@ -178,6 +193,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Interact")
 	float GetInteractHoldProgress() const;
 
+	/**
+	 * 상호작용 키 표기 — IA_Interact 에 실제로 매핑된 키를 읽는다
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|HUD|Interact")
+	FText GetInteractKeyText() const;
+
 	/** 조준 대상이 생긴 순간. 프롬프트를 띄우라는 신호. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FallingApart|HUD|Interact")
 	void OnInteractPromptShown(const FText& PromptText);
@@ -194,6 +215,39 @@ public:
 	void OnInteractPromptHidden();
 
 protected:
+	//~ ---------------- 디자이너 위젯 직결 ----------------
+	//~ 전부 BindWidgetOptional — WBP 에 같은 이름의 위젯이 있으면 C++ 가 직접 채우고, 없으면 그냥 논다.
+
+	/** 점수 알약 왼쪽 칸 머리 — 내 진영 이름("인간" / "좀비"). 점수가 아니라 진영 표시다. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_Team;
+
+	/** 점수 알약 왼쪽 칸 — 팀 점수. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_TeamScore;
+
+	/** 점수 알약 오른쪽 칸 — 개인 점수. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_PlayerScore;
+
+	/** "1 / 5". */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_Round;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_Survivor;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_Zombie;
+
+	/** 상호작용 키 글자. 조준 대상이 있을 때만 뜬다. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_InteractKey;
+
+	/** 키 글자 뒤 배경 이미지. Text_InteractKey 와 같이 뜨고 같이 사라진다. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> Image_InteractKey;
+
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -272,6 +326,15 @@ private:
 
 	/** 내 캐릭터의 상호작용 컴포넌트를 읽어 프롬프트를 띄우고 · 갱신하고 · 내린다. */
 	void UpdateInteractPrompt();
+
+	//~ 직결 위젯 갱신 — 바인딩이 안 걸린 위젯은 조용히 건너뛴다.
+	void RefreshScoreTexts();
+	void RefreshTeamText();
+	void RefreshTeamCountTexts();
+	void RefreshRoundText();
+
+	/** 키 글자와 그 배경을 한꺼번에 보이거나 숨긴다. */
+	void SetInteractKeyVisible(bool bVisible);
 
 	/** 로컬 폰의 상호작용 컴포넌트. 아직 빙의 전이면 nullptr. */
 	class UFAInteractionComponent* GetLocalInteractionComponent() const;
