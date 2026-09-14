@@ -105,6 +105,13 @@ public:
 #pragma region Vision
 
 public:
+	/**
+	 * VisionRange 기본값이자 상한(uu). InitVisionRange, PreAttributeChange 클램프,
+	 * PostGameplayEffectExecute 클램프, FACharacter::UpdateVisionEffects() 의 안개 세기 계산이
+	 * 전부 이 값을 참조한다 — 예전엔 각자 6000.0f 를 따로 박아둬서 하나만 바꾸면 나머지가 어긋났다.
+	 */
+	static constexpr float MaxVisionRange = 6000.0f;
+
 	// 시야 기본값 6000
 	//Vision.Fog 적용값: 800uu
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_VisionRange,Category = "Attribute|Vision")
