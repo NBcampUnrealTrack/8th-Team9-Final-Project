@@ -483,6 +483,16 @@ public:
 
 	float TimeSinceLastOpponentCullCheck = 0.0f;
 
+	//~ ---------------- 암전 명멸 연출 (Vision.Blackout) ----------------
+
+	/** 암전 명멸 주기(초). 이 주기마다 한 번씩 화면이 완전히 어두워진다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutPeriod = 5.0f;
+
+	/** 주기 안에서 완전 암전 상태가 유지되는 시간(초). BlackoutPeriod 보다 작아야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutFlashDuration = 1.0f;
+
 	//~ ---------------- 시야각 축소 연출 (Vision.NarrowFOV) ----------------
 	//~ 실제 카메라 FOV는 더 이상 건드리지 않는다 — 화면 테두리를 검게 좁히는 별도 PP 머티리얼로 대체.
 	//~ Vision.Fog(VisionFogMID)와는 완전히 분리된 블렌더블 슬롯 · 파라미터를 쓴다.
