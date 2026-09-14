@@ -41,6 +41,7 @@ public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaTime) override;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -425,6 +426,10 @@ public:
 	/** 카툰 캐릭터에서 측정한 서기 눈높이 보정. 머리 애니메이션의 흔들림은 전달하지 않는다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
 	float FirstPersonEyeHeightOffset = -20.0f;
+
+	/** 일인칭 축소 렌더링에서도 원본 공격의 가까운 소매가 잘리지 않도록 측정한 근접면 거리. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (ClampMin = "1", Units = "cm"))
+	float FirstPersonNearClipPlane = 4.0f;
 
 	/** 실제 앉기 최종 포즈에서 측정한 눈높이. 정지와 이동 값을 속도에 따라 보간한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
