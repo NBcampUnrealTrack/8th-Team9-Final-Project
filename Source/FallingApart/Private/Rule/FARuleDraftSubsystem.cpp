@@ -11,6 +11,13 @@
 #include "Rule/FARuleTypes.h"
 #include "TimerManager.h"
 
+namespace
+{
+	// 드래프트 후보 장수. 정규 드래프트는 UFARuleSettings::TierComposition 의 FIntVector(3개 슬롯)로
+	// 이미 3장이 정해져 있고, 연속 드래프트는 티어 곡선을 안 타서 이 상수로 같은 장수를 맞춘다.
+	constexpr int32 CandidatesPerDraft = 3;
+}
+
 bool UFARuleDraftSubsystem::IsDraftAllowed() const
 {
 	const AFAGameState* FAGameState = GetWorld() ? GetWorld()->GetGameState<AFAGameState>() : nullptr;
@@ -397,8 +404,8 @@ void UFARuleDraftSubsystem::StartChainDraft(AFAPlayerState* Victim, int32 Remove
 
 TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateCandidates(EFATeam ForTeam, int32 DraftIndex, const TArray<FName>& ExcludeRuleIds) const
 {
-	// 이번 회차의 슬롯별 요구 티어 (예: 2회차 = [1, 1, 2]). GDD 4.2 티어 곡선.
-	const TArray<int32> TierComposition = GetTierComposition(DraftIndex);
+	// 이번 회차의 슬롯별 요구 티어 (예: 2회차 = [1, 1, 2]). Project Settings → Falling Apart | Rule 에서 조정.
+	const TArray<int32> TierComposition = UFARuleSettings::GetTierComposition(DraftIndex);
 	const TArray<FFADummyRuleEntry> Pool = GetRulePool();
 
 	TArray<FFADraftCandidate> Result;
@@ -512,20 +519,6 @@ TArray<FFADummyRuleEntry> UFARuleDraftSubsystem::GetDummyRulePool() const
 		};
 }
 
-TArray<int32> UFARuleDraftSubsystem::GetTierComposition(int32 DraftIndex) const
-{
-	// 밸런싱 워크북 "1_드래프트곡선" 시트 그대로 반영 (1회차 T1T1T1 ~ 6회차 T3T3T3).
-	switch (DraftIndex)
-	{
-	case 1: return { 1, 1, 1 };
-	case 2: return { 1, 1, 2 };
-	case 3: return { 1, 2, 2 };
-	case 4: return { 2, 2, 2 };
-	case 5: return { 2, 2, 3 };
-	default: return { 3, 3, 3 }; // 6회차
-	}
-}
-
 TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateChainCandidates(const TArray<FName>& HeldRuleIds) const
 {
 	// 연속 드래프트는 티어 곡선을 타지 않는다
@@ -538,8 +531,8 @@ TArray<FFADraftCandidate> UFARuleDraftSubsystem::GenerateChainCandidates(const T
 		}
 	}
 
-	// 정규 드래프트와 같은 3장. 풀이 모자라면 있는 만큼만 보낸다.
-	const int32 WantedCount = FMath::Min(3, Pool.Num());
+	// 정규 드래프트와 같은 장수. 풀이 모자라면 있는 만큼만 보낸다.
+	const int32 WantedCount = FMath::Min(CandidatesPerDraft, Pool.Num());
 
 	TArray<FFADraftCandidate> Result;
 	for (int32 Index = 0; Index < WantedCount; ++Index)

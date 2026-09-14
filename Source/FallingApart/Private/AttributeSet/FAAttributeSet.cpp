@@ -25,7 +25,7 @@ UFAAttributeSet::UFAAttributeSet()
 	InitStamina(GetMaxStamina());
 
 	// 시야
-	InitVisionRange(6000.0f);
+	InitVisionRange(MaxVisionRange);
 	InitFieldOfView(90.0f);
 
 	// 포획 및 구출
@@ -84,7 +84,7 @@ void UFAAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,flo
 	}
 	else if (Attribute == GetVisionRangeAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue,0.0f,6000.0f);
+		NewValue = FMath::Clamp(NewValue,0.0f,MaxVisionRange);
 	}
 	else if (Attribute == GetFieldOfViewAttribute())
 	{
@@ -179,7 +179,7 @@ void UFAAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallback
 	}
 	else if (ChangedAttribute ==GetVisionRangeAttribute())
 	{
-		SetVisionRange(FMath::Clamp(GetVisionRange(),0.0f,6000.0f));
+		SetVisionRange(FMath::Clamp(GetVisionRange(),0.0f,MaxVisionRange));
 	}
 	else if (ChangedAttribute ==GetFieldOfViewAttribute())
 	{

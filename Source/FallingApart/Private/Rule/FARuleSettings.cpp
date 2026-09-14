@@ -74,6 +74,21 @@ float UFARuleSettings::GetChainDraftInterval()
 	return Settings ? FMath::Max(0.5f, Settings->ChainDraftInterval) : 2.0f;
 }
 
+TArray<int32> UFARuleSettings::GetTierComposition(int32 DraftIndex)
+{
+	const UFARuleSettings* Settings = GetDefault<UFARuleSettings>();
+	if (!Settings || Settings->TierComposition.Num() == 0)
+	{
+		// 설정이 비어있는 극단적인 경우에도 드래프트 자체는 굴러가야 한다.
+		return { 1, 1, 1 };
+	}
+
+	// 회차가 배열 길이를 넘으면 마지막 항목(가장 무거운 구성)을 계속 쓴다.
+	const int32 Index = FMath::Clamp(DraftIndex - 1, 0, Settings->TierComposition.Num() - 1);
+	const FIntVector& Composition = Settings->TierComposition[Index];
+	return { Composition.X, Composition.Y, Composition.Z };
+}
+
 FFARuleDisplayInfo UFARuleSettings::MakeRuleDisplayInfo(FName RuleId)
 {
 	FFARuleDisplayInfo Info;
