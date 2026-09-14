@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Network/FAOnlineSessionSubsystem.h"
@@ -14,8 +14,34 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 
+#include "Misc/Base64.h"
+
 DEFINE_LOG_CATEGORY(LogFAOSS);
 
+namespace
+{
+	const FString SessionTextPrefix(TEXT("B64:"));
+
+	FString EncodeSessionText(const FString& Text)
+	{
+		return SessionTextPrefix + FBase64::Encode(Text);
+	}
+
+	FString DecodeSessionText(const FString& StoredText)
+	{
+		if (!StoredText.StartsWith(SessionTextPrefix))
+		{
+			return StoredText; // 기존 영문 세션 호환
+		}
+
+		FString DecodedText;
+		const FString Payload = StoredText.RightChop(SessionTextPrefix.Len());
+
+		return FBase64::Decode(Payload, DecodedText)
+			? DecodedText
+			: StoredText;
+	}
+}
 namespace
 {
 	const FName ProjectSettingKey(TEXT("SPARTA_PROJECT")); //480 세션구분용
@@ -207,11 +233,58 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		FName(TEXT("SESSION_STATE")),
 		FString(TEXT("Lobby")),
 		EOnlineDataAdvertisementType::ViaOnlineService);
-
-	LastSessionSettings->Set(NameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
 	
-	//호스트 닉네임을 설정.
-	LastSessionSettings->Set(OwningUserNickname, PendingNickname , EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(NameSettingKey, EncodeSessionText(*ServerName), EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(OwningUserNickname, EncodeSessionText(*PendingNickname) , EOnlineDataAdvertisementType::ViaOnlineService);
+	/*
+	if (OnlineSubsystem->GetSubsystemName() == "NULL")
+	{
+		LastSessionSettings->Set(NameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
+		LastSessionSettings->Set(OwningUserNickname, PendingNickname , EOnlineDataAdvertisementType::ViaOnlineService);
+	}else
+	{
+		
+		LastSessionSettings->Set(SETTING_MAPNAME, EncodeSessionText(*ServerName), EOnlineDataAdvertisementType::ViaOnlineService);
+
+		LastSessionSettings->Set(OwningUserNickname, EncodeSessionText(*PendingNickname) , EOnlineDataAdvertisementType::ViaOnlineService);
+		
+		
+		//Steam네트워크를 통할 시 한글이 포함되어있다면 UTF-8로 변환과정이 필요함,
+		// 1. FString(UTF-16) -> UTF-8 바이트 배열로 변환
+		FTCHARToUTF8 UTF8Converter_ServerName(*ServerName);
+		int32 UTF8Length = UTF8Converter_ServerName.Length();
+		const ANSICHAR* UTF8Ptr = UTF8Converter_ServerName.Get();
+
+		// UTF-8 바이트를 문자 유실 없이 TCHAR 배열(FString) 형태로 안전하게 복사
+		FString SafeUTF8ServerName;
+		SafeUTF8ServerName.Reserve(UTF8Length);
+
+		for (int32 i = 0; i < UTF8Length; ++i)
+		{
+			// 바이트 데이터를 상위 바이트 없이 가볍게 문자(TCHAR)화하여 대입
+			SafeUTF8ServerName.AppendChar((TCHAR)(uint8)UTF8Ptr[i]);
+		}
+		LastSessionSettings->Set(NameSettingKey, SafeUTF8ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
+
+		//호스트 닉네임을 설정.
+		FTCHARToUTF8 UTF8Converter_HostName(*PendingNickname);
+		UTF8Length = UTF8Converter_HostName.Length();
+		UTF8Ptr = nullptr;
+		UTF8Ptr = UTF8Converter_HostName.Get();
+		
+		FString SafeUTF8HostName;
+		SafeUTF8HostName.Reserve(UTF8Length);
+
+		for (int32 i = 0; i < UTF8Length; ++i)
+		{
+			// 바이트 데이터를 상위 바이트 없이 가볍게 문자(TCHAR)화하여 대입
+			SafeUTF8HostName.AppendChar((TCHAR)(uint8)UTF8Ptr[i]);
+		}
+		
+		LastSessionSettings->Set(OwningUserNickname, SafeUTF8HostName , EOnlineDataAdvertisementType::ViaOnlineService);
+
+	}
+	*/
 
 	//현 세션 내 플레이어 수를 공개
 	LastSessionSettings->Set(CurrentPlayersSettingKey, 1, EOnlineDataAdvertisementType::ViaOnlineService);
