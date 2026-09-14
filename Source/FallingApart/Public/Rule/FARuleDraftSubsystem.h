@@ -111,9 +111,6 @@ private:
 	// DT 가 아직 없을 때 쓰는 임시 풀. 표가 14종을 채우면 지워도 된다.
 	TArray<FFADummyRuleEntry> GetDummyRulePool() const;
 
-	// 이번 드래프트 회차(1~6)의 후보 3장 각각의 티어 구성. GDD 4.2 티어 곡선(밸런싱 워크북 1_드래프트곡선 시트).
-	TArray<int32> GetTierComposition(int32 DraftIndex) const;
-	
 	// 타임아웃 시 서버가 대신 무작위로 확정한다.
 	void HandleDraftTimeout(TWeakObjectPtr<AFAPlayerState> ForPlayer);
 

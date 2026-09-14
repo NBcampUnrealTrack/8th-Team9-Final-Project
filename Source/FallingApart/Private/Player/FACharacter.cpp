@@ -1964,11 +1964,12 @@ void AFACharacter::UpdateVisionEffects()
 	float FogAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
 	{
-		constexpr float MaxVisionRange = 6000.0f; // AttributeSet 기본값과 맞춤.
 		const float CurrentVisionRange = Attributes->GetVisionRange();
 
 		// 0 = 정상 시야, 1 = VisionRange 가 바닥(800uu 근처)까지 떨어진 상태.
-		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
+		// 분모는 UFAAttributeSet::MaxVisionRange 하나만 본다 — 예전엔 여기 따로 6000.0f 를 복사해와서
+		// AttributeSet 쪽 상한을 바꾸면 이 계산만 몰래 안 맞는 문제가 있었다.
+		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / UFAAttributeSet::MaxVisionRange), 0.0f, 1.0f);
 	}
 
 	// 거리 기반 안개 — Custom PP 머티리얼(M_VisionFog)에 매 프레임 값 전달.
@@ -2000,13 +2001,10 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 5초 주기로 1초간 완전 암전.
+	// 주기·지속시간은 BlackoutPeriod/BlackoutFlashDuration(Class Defaults)에서 튜닝한다.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 5.0f;
-		constexpr float BlackoutFlashDuration = 1.0f;
-
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
