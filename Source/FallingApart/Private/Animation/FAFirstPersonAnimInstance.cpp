@@ -10,6 +10,9 @@
 
 namespace
 {
+	constexpr float CrouchFramingBlendSpeed = 12.0f;
+	constexpr float LocomotionFramingStrength = 0.25f;
+
 	// 부모 본의 좌표계를 거쳐 메시 공간의 회전을 로컬 본 회전에 적용한다.
 	void RotateInMeshSpace(FTransform& Bone, const FQuat& ParentRotation, float Angle)
 	{
@@ -37,6 +40,9 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 	float ForearmLift = 0.0f;
 	FVector ActiveShoulderOffset = FVector::ZeroVector;
 	float ForwardSwingLift = 0.0f;
+	float StandingFramingWeight = 1.0f;
+	float ArmPitchWeight = 1.0f;
+	uint64 LastFramingFrame = 0;
 	float MotionFramingWeight = 0.0f;
 	float InteractionWeight = 0.0f;
 	float InteractionLift = 0.0f;
@@ -62,6 +68,8 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 		auto* Anim = CastChecked<UFAFirstPersonAnimInstance>(Instance);
 		const ACharacter* Character = Cast<ACharacter>(Instance->TryGetPawnOwner());
 		USkeletalMeshComponent* Body = Character && Character->IsLocallyControlled() ? Character->GetMesh() : nullptr;
+		const bool bContinueFraming = bSourcePoseValid && CopyPose.SourceMeshComponent.Get() == Body
+			&& GFrameCounter - LastFramingFrame <= 1;
 		bSourcePoseValid = Body && Body != Instance->GetSkelMeshComponent() && Body->IsRegistered()
 			&& Body->GetSkeletalMeshAsset() && !Body->GetComponentSpaceTransforms().IsEmpty();
 
@@ -73,6 +81,9 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 		Anim->SourceBoneFrame = bSourcePoseValid ? static_cast<int64>(Body->GetCurrentBoneTransformFrame()) : -1;
 		Anim->SourceSnapshotFrame = bSourcePoseValid ? static_cast<int64>(static_cast<uint32>(GFrameCounter)) : -1;
 		const AFACharacter* FACharacter = Cast<AFACharacter>(Character);
+		const float DownPitch = FACharacter && FACharacter->FollowCamera
+			? -FACharacter->FollowCamera->GetComponentRotation().Pitch : 0.0f;
+		const float ViewFramingWeight = 1.0f - FMath::SmoothStep(25.0f, 70.0f, DownPitch);
 		// 카메라·설정·몽타주는 게임 스레드에서 읽고, 평가 스레드에는 아래 값만 전달한다.
 		bStabilizeEyePosition = Anim->bStabilizeEyePosition && FACharacter && FACharacter->FollowCamera;
 		if (bStabilizeEyePosition)
@@ -85,9 +96,16 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 		ForearmLift = FMath::DegreesToRadians(Anim->ForearmLift);
 		ActiveShoulderOffset = Anim->ActiveShoulderOffset;
 		ForwardSwingLift = FMath::DegreesToRadians(Anim->ForwardSwingLift);
-		// 이동 속도와 기존 몽타주의 실제 혼합 비중을 사용한다. 취소 후 잦아드는 구간도 포함한다.
+		// 앉기에서는 원본의 내려간 팔을 유지한다. 시점 복귀나 새 소스의 첫 평가는 현재 자세에서 시작한다.
+		const float StandingTarget = Character && Character->bIsCrouched ? 0.0f : 1.0f;
+		StandingFramingWeight = bContinueFraming && bSourcePoseValid
+			? FMath::FInterpTo(StandingFramingWeight, StandingTarget, DeltaSeconds, CrouchFramingBlendSpeed)
+			: StandingTarget;
+		LastFramingFrame = GFrameCounter;
+		// 이동 보정만 앉기 비중으로 줄인다. 실제 행동은 전신 몽타주의 시작·취소·종료 혼합을 그대로 따른다.
 		const double Speed = Character ? Character->GetVelocity().Size2D() : 0.0;
-		MotionFramingWeight = FMath::Clamp(Speed / 120.0f, 0.0f, 1.0f);
+		const float LocomotionWeight = FMath::Clamp(Speed / 120.0f, 0.0f, 1.0f) * StandingFramingWeight;
+		float MontageWeight = 0.0f;
 		ForwardSwingLift *= FMath::Lerp(1.0f, Anim->RunningLiftScale,
 			FMath::SmoothStep(200.0f, 450.0f, static_cast<float>(Speed)));
 		InteractionWeight = InteractionLift = 0.0f;
@@ -100,7 +118,7 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 					continue;
 				}
 				const float Weight = Montage->GetWeight();
-				MotionFramingWeight = FMath::Max(MotionFramingWeight, Weight);
+				MontageWeight = FMath::Max(MontageWeight, Weight);
 				if (const float* Lift = Anim->RightArmInteractionLifts.Find(Montage->Montage))
 				{
 					InteractionLift += FMath::DegreesToRadians(*Lift) * Weight;
@@ -108,11 +126,18 @@ struct FFAFirstPersonAnimProxy : FAnimInstanceProxy
 				}
 			}
 		}
+		// 이동 중 손이 눈앞까지 올라오지 않도록 추가 보정만 줄이고, 실제 행동의 혼합은 유지한다.
+		ArmPitchWeight = FMath::Max(StandingFramingWeight * LocomotionFramingStrength, MontageWeight);
+		MotionFramingWeight = FMath::Max(LocomotionWeight * LocomotionFramingStrength, MontageWeight);
 		if (InteractionWeight > UE_SMALL_NUMBER)
 		{
 			InteractionLift /= InteractionWeight;
 			InteractionWeight = FMath::Clamp(InteractionWeight, 0.0f, 1.0f);
 		}
+		// 아래를 보면 원본 팔 자체가 보이므로 화면에 들기 위한 추가 보정을 줄인다.
+		ArmPitchWeight *= ViewFramingWeight;
+		MotionFramingWeight *= ViewFramingWeight;
+		InteractionWeight *= ViewFramingWeight;
 	}
 
 	virtual void CacheBones() override
@@ -178,7 +203,8 @@ private:
 	void CorrectArmPitch(FCompactPose& Pose, const FBoneReference& Bone, const FBoneReference& Tip, float Limit) const
 	{
 		const FBoneContainer& Bones = Pose.GetBoneContainer();
-		if (!Bone.IsValidToEvaluate(Bones) || !Tip.IsValidToEvaluate(Bones) || FMath::IsNearlyZero(Limit))
+		if (!Bone.IsValidToEvaluate(Bones) || !Tip.IsValidToEvaluate(Bones) || FMath::IsNearlyZero(Limit)
+			|| ArmPitchWeight <= 0.0f)
 		{
 			return;
 		}
@@ -190,7 +216,8 @@ private:
 			- CurrentPose.GetComponentSpaceTransform(Index).GetLocation();
 		// 내려간 팔과 머리 위로 올라간 팔을 각각 전방 쪽으로 보정하되 회전량을 제한한다.
 		const float Pitch = FMath::Atan2(Direction.Z, FMath::Max(Direction.Y, Direction.Size() * 0.3f));
-		const float Angle = FMath::Clamp(-Pitch * 0.65f, -Limit, Limit);
+		// 제한값만 줄이면 작은 보정은 그대로 남으므로, 계산이 끝난 회전량 전체를 감쇠한다.
+		const float Angle = FMath::Clamp(-Pitch * 0.65f, -Limit, Limit) * ArmPitchWeight;
 		const FQuat ParentRotation = CurrentPose.GetComponentSpaceTransform(Pose.GetParentBoneIndex(Index)).GetRotation();
 		RotateInMeshSpace(Pose[Index], ParentRotation, Angle);
 	}

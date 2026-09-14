@@ -1454,6 +1454,17 @@ void AFACharacter::ApplyInvulnerability(float Duration)
 	}
 }
 
+void AFACharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
+{
+	Super::CalcCamera(DeltaTime, OutResult);
+	if (IsLocallyControlled() && bIsFirstPerson && !IsHiding())
+	{
+		// 위치·FOV·흔들림은 기존 카메라가 계산하고, 근접면만 현재 일인칭 시야에 적용한다.
+		OutResult.PerspectiveNearClipPlane = FMath::Min(
+			OutResult.GetFinalPerspectiveNearClipPlane(), FirstPersonNearClipPlane);
+	}
+}
+
 void AFACharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);

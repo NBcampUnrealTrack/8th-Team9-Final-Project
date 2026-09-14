@@ -24,15 +24,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "First Person|Framing")
 	FVector EyeOffsetFromHead = FVector(0.806666, -9.962656, 12.141244);
 
-	/** 원본 팔의 길이·움직임 순서를 유지하면서 적용할 상완의 최대 각도 보정. */
+	/** 서기·행동 중 적용할 상완의 최대 각도 보정. 앉기 정지·이동에서는 원본 자세로 부드럽게 돌아간다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "First Person|Framing", meta = (ClampMin = "0", ClampMax = "70", Units = "deg"))
 	float UpperArmLift = 45.0f;
 
-	/** 상완 보정 후 전완에 적용할 최대 각도 보정. */
+	/** 상완 보정 후 전완에 적용할 최대 각도 보정. 상완과 같은 앉기·행동 비중으로 감쇠한다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "First Person|Framing", meta = (ClampMin = "0", ClampMax = "45", Units = "deg"))
 	float ForearmLift = 25.0f;
 
-	/** 메시 공간에서의 어깨 표시 위치 보정(모델 cm). 정지하면 보정이 사라진다. */
+	/** 메시 공간에서의 어깨 표시 위치 보정(모델 cm). 서서 이동하거나 실제 몽타주가 재생될 때 적용한다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "First Person|Framing")
 	FVector ActiveShoulderOffset = FVector(0.0f, 4.0f, 4.0f);
 
