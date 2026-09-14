@@ -811,18 +811,24 @@ void AFACharacter::UpdateGroupRules()
 	}
 
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
-	const bool bHasLeash = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Leash);
-	const bool bHasRepel = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Repel);
+	const bool bIsHuman = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human);
+	const bool bIsZombie = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie);
 
-	// 두 룰(H34, H35) 모두 없다면 혹시 혹시 남아 있는 그룹 룰 태그 제거 후 종료
-	if (!bHasLeash && !bHasRepel)
+	// 각 진영별 룰 보유 여부 체크
+	const bool bHasLeash = bIsHuman && AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Leash);
+	const bool bHasRepel = bIsHuman && AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Group_Repel);
+	const bool bHasZombieRepel = bIsZombie && AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Social_Repel);
+
+	// 거리 룰을 하나도 안 가지고 있다면 연산 없이 태그만 지우고 종료
+	if (!bHasLeash && !bHasRepel && !bHasZombieRepel)
 	{
 		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
 		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+		AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Social_Repel);
 		return;
 	}
 
-	// 가장 가까운 생존자(인간)와의 거리 계산
+	// 나와 같은 진영인 가장 가까운 유저 찾기
 	float MinDistSq = MAX_flt;
 	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
 	{
@@ -830,7 +836,10 @@ void AFACharacter::UpdateGroupRules()
 
 		if (IsValid(Other) && Other != this && Other->GetFAAbilitySystemComponent())
 		{
-			if (Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+			bool bSameTeam = (bIsHuman && Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human)) ||
+				(bIsZombie && Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Zombie));
+
+			if (bSameTeam)
 			{
 				const float DistSq = FVector::DistSquared(GetActorLocation(), Other->GetActorLocation());
 				MinDistSq = FMath::Min(MinDistSq, DistSq);
@@ -838,29 +847,28 @@ void AFACharacter::UpdateGroupRules()
 		}
 	}
 
-	// H34 무리 강박 (15m = 1500uu 초과 시 태그 부여)
-	if (bHasLeash)
+	// 인간 룰 (H34, H35)
+	if (bIsHuman)
 	{
-		if (MinDistSq > FMath::Square(1500.0f))
+		if (bHasLeash)
 		{
-			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Leash);
+			if (MinDistSq > FMath::Square(1500.0f)) AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Leash);
+			else AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
 		}
-		else
+		if (bHasRepel)
 		{
-			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Leash);
+			if (MinDistSq <= FMath::Square(500.0f)) AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Repel);
+			else AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
 		}
 	}
 
-	// H35 대인 기피 (5m = 500uu 이내 시 태그 부여)
-	if (bHasRepel)
+	// 좀비 룰 (Z39)
+	if (bIsZombie)
 	{
-		if (MinDistSq <= FMath::Square(500.0f))
+		if (bHasZombieRepel)
 		{
-			AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Group_Repel);
-		}
-		else
-		{
-			AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Group_Repel);
+			if (MinDistSq <= FMath::Square(300.0f)) AbilitySystemComponent->AddLooseGameplayTag(FATags.State_Social_Repel);
+			else AbilitySystemComponent->RemoveLooseGameplayTag(FATags.State_Social_Repel);
 		}
 	}
 }
@@ -1109,21 +1117,21 @@ void AFACharacter::HandleTeamChanged(EFATeam NewTeam)
 
 	if (HasAuthority())
 	{
-		if (NewTeam == EFATeam::Human)
+		if (NewTeam == EFATeam::Human || NewTeam == EFATeam::Zombie)
 		{
-			// 인간 진영 배정 시 그룹 룰(H34, H35) 검사 시작
 			GetWorldTimerManager().SetTimer(GroupRuleTimerHandle, this, &AFACharacter::UpdateGroupRules, 0.5f, true);
 		}
 		else
 		{
-			// 좀비 진영 배정 시 혹시 남아 있는 그룹 룰 태그 제거
 			GetWorldTimerManager().ClearTimer(GroupRuleTimerHandle);
+		}
 
-			if (AbilitySystemComponent)
-			{
-				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Leash);
-				AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Repel);
-			}
+		// 진영이 바뀔 때 캐릭터에 남아있는 조건 태그들 일괄 초기화
+		if (AbilitySystemComponent)
+		{
+			AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Leash);
+			AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Group_Repel);
+			AbilitySystemComponent->RemoveLooseGameplayTag(FAGameplayTags::Get().State_Social_Repel);
 		}
 	}
 }
@@ -1956,11 +1964,12 @@ void AFACharacter::UpdateVisionEffects()
 	float FogAmount = 0.0f;
 	if (const UFAAttributeSet* Attributes = AbilitySystemComponent->GetSet<UFAAttributeSet>())
 	{
-		constexpr float MaxVisionRange = 6000.0f; // AttributeSet 기본값과 맞춤.
 		const float CurrentVisionRange = Attributes->GetVisionRange();
 
 		// 0 = 정상 시야, 1 = VisionRange 가 바닥(800uu 근처)까지 떨어진 상태.
-		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / MaxVisionRange), 0.0f, 1.0f);
+		// 분모는 UFAAttributeSet::MaxVisionRange 하나만 본다 — 예전엔 여기 따로 6000.0f 를 복사해와서
+		// AttributeSet 쪽 상한을 바꾸면 이 계산만 몰래 안 맞는 문제가 있었다.
+		FogAmount = FMath::Clamp(1.0f - (CurrentVisionRange / UFAAttributeSet::MaxVisionRange), 0.0f, 1.0f);
 	}
 
 	// 거리 기반 안개 — Custom PP 머티리얼(M_VisionFog)에 매 프레임 값 전달.
@@ -1992,13 +2001,10 @@ void AFACharacter::UpdateVisionEffects()
 	}
 
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
-	// 5초 주기로 1초간 완전 암전.
+	// 주기·지속시간은 BlackoutPeriod/BlackoutFlashDuration(Class Defaults)에서 튜닝한다.
 	float BlackoutAmount = 0.0f;
 	if (bBlackout && GetWorld())
 	{
-		constexpr float BlackoutPeriod = 5.0f;
-		constexpr float BlackoutFlashDuration = 1.0f;
-
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
 	}
@@ -2084,31 +2090,46 @@ void AFACharacter::UpdateOpponentDistanceCulling(float FullDistance, bool bHideA
 	const FVector MyLocation = GetActorLocation();
 	const float FullDistanceSq = FMath::Square(FullDistance);
 
+	const bool bLocalIsHuman = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Human);
+	const bool bLocalIsZombie = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Zombie);
+
 	for (TActorIterator<AFACharacter> It(GetWorld()); It; ++It)
 	{
 		AFACharacter* Other = *It;
+
 		if (!IsValid(Other) || Other == this || !Other->GetMesh())
 		{
 			continue;
 		}
 
-		// 캐비넷 등 다른 로직이 이미 액터 전체를 숨긴 상태라면 여기서 건드리지 않는다.
+		// 캐비넷 등 다른 로직이 이미 액터 전체를 숨긴 상태라면 여기서 건드리지 않음.
 		if (Other->bHideStateApplied)
 		{
 			continue;
 		}
 
 		const float DistSq = FVector::DistSquared(MyLocation, Other->GetActorLocation());
+
+		// Vision.Fog 거리 컬링.
 		bool bShouldHide = DistSq > FullDistanceSq;
 
-		// [H24 고독] 다른 인간(생존자)은 거리와 상관없이 로컬 화면에서 완전히 숨긴다.
-		if (bHideAllies && Other->GetFAAbilitySystemComponent() &&
-			Other->GetFAAbilitySystemComponent()->HasMatchingGameplayTag(FATags.State_Human))
+		// [H24 고독 / Z37 고립]
+		// Rule.Vision.NoAlly 보유 시 자신과 같은 진영의 다른 플레이어를 숨긴다.
+		if (bHideAllies)
 		{
-			bShouldHide = true;
+			if (const UFAAbilitySystemComponent* OtherASC = Other->GetFAAbilitySystemComponent())
+			{
+				const bool bOtherIsHuman = OtherASC->HasMatchingGameplayTag(FATags.State_Human);
+				const bool bOtherIsZombie = OtherASC->HasMatchingGameplayTag(FATags.State_Zombie);
+
+				if ((bLocalIsHuman && bOtherIsHuman) || (bLocalIsZombie && bOtherIsZombie))
+				{
+					bShouldHide = true;
+				}
+			}
 		}
 
-		// 로컬(내 화면)에서만 적용 — 서버·다른 클라이언트 화면엔 영향 없다.
+		// 로컬 화면에서만 적용.
 		Other->GetMesh()->SetHiddenInGame(bShouldHide);
 	}
 }

@@ -9,6 +9,10 @@
 #include "Network/FAOnlineBeaconClient.h"
 #include "Online/OnlineSessionNames.h"
 #include "TimerManager.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 
 DEFINE_LOG_CATEGORY(LogFAOSS);
 
@@ -19,6 +23,8 @@ namespace
 	const FName NameSettingKey(TEXT("SERVER_NAME")); // 커스텀 로비 이름
 	const FName HasPasswordSettingKey(TEXT("HAS_PASSWORD")); // 비밀번호는 존재여부만, 확인은 서버에서.
 	const FName OwningUserNickname(TEXT("OwningUserNickname")); // 세션 정보에 호스트 닉네임 공개용(OwningUserName은 기본플랫폼닉네임임)
+	const FName CurrentPlayersSettingKey(TEXT("CURRENT_PLAYERS"));
+	constexpr int32 MaxPlayerCountUpdateFailures = 3;
 
 	TAutoConsoleVariable<float> CVarJoinTokenLifetimeSeconds(
 		TEXT("FA.OSS.JoinTokenLifetimeSeconds"),
@@ -93,6 +99,7 @@ void UFAOnlineSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UFAOnlineSessionSubsystem::Deinitialize()
 {
+	ResetPlayerCountUpdates();
 	if (SessionInterface.IsValid())
 	{
 		if (OnCreateSessionCompleteDelegateHandle.IsValid())
@@ -171,6 +178,7 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	// 대리자 등록하고 핸들을 저장함. 작업후 핸들을 이용해 등록을 해제함.
 	OnCreateSessionCompleteDelegateHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
 	// 세션 세팅을 위한 구조체를 생성
+	ResetPlayerCountUpdates();
 	LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
 	
 	// 만약 스팀연결 여부에 따라 랜매치 사용하도록 설정
@@ -205,6 +213,9 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 	//호스트 닉네임을 설정.
 	LastSessionSettings->Set(OwningUserNickname, PendingNickname , EOnlineDataAdvertisementType::ViaOnlineService);
 
+	//현 세션 내 플레이어 수를 공개
+	LastSessionSettings->Set(CurrentPlayersSettingKey, 1, EOnlineDataAdvertisementType::ViaOnlineService);
+
 	SetHostPassword(Password);
 	LastSessionSettings->Set(HasPasswordSettingKey, !Password.IsEmpty(), EOnlineDataAdvertisementType::ViaOnlineService);
 	LastSessionSettings->Set(SETTING_BEACONPORT, DEFAULT_BEACON_PORT, EOnlineDataAdvertisementType::ViaOnlineService);
@@ -225,7 +236,155 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		// 생성 실패를 외부에 알리기 위해 Broadcast
 		MultiplayerOnCreateSessionComplete.Broadcast(EFASessionRequestResult::RequestFailed);
 	}
-} 
+}
+
+void UFAOnlineSessionSubsystem::UpdateSessionCurrentPlayerNumber(int32 CurrentPlayerCount)
+{
+	const FNamedOnlineSession* Session = GetCurrentSession();
+	if (!Session || !bOwnsSession || !LastSessionSettings.IsValid()
+		|| OperationState == ESessionOperationState::Destroying || bDestroyAfterPlayerCount)
+	{
+		return;
+	}
+
+	const int32 PlayerCount = FMath::Clamp(CurrentPlayerCount, 0,
+		FMath::Max(0, LastSessionSettings->NumPublicConnections));
+	int32 PreviousCount = INDEX_NONE;
+	LastSessionSettings->Get(CurrentPlayersSettingKey, PreviousCount);
+	if (PreviousCount != PlayerCount)
+	{
+		PlayerCountUpdateFailures = 0;
+	}
+	// 다음 요청에 보낼 값만 바꾼다. 진행 중인 요청의 목적은 덮어쓰지 않는다.
+	LastSessionSettings->Set(CurrentPlayersSettingKey, PlayerCount, EOnlineDataAdvertisementType::ViaOnlineService);
+	SchedulePlayerCountUpdate();
+}
+
+void UFAOnlineSessionSubsystem::RefreshSessionCurrentPlayerNumber(const AController* ExcludedController)
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_Client)
+	{
+		return;
+	}
+
+	int32 PlayerCount = 0;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APlayerController* Player = It->Get();
+		//정상 상태의 PlayerController의 수를 카운팅. 
+		if (Player && Player != ExcludedController && !Player->IsActorBeingDestroyed()
+			&& Player->PlayerState && !Player->PlayerState->IsInactive()
+			&& !Player->PlayerState->IsOnlyASpectator())
+		{
+			++PlayerCount;
+		}
+	}
+	UpdateSessionCurrentPlayerNumber(PlayerCount);
+}
+
+void UFAOnlineSessionSubsystem::SchedulePlayerCountUpdate(float DelaySeconds)
+{
+	int32 DesiredCount = INDEX_NONE;
+	if (!LastSessionSettings.IsValid()
+		|| !LastSessionSettings->Get(CurrentPlayersSettingKey, DesiredCount)
+		|| DesiredCount == LastPublishedPlayerCount
+		|| PlayerCountUpdateFailures >= MaxPlayerCountUpdateFailures
+		|| bDestroyAfterPlayerCount || OperationState == ESessionOperationState::Destroying)
+	{
+		return;
+	}
+
+	// GameInstance 타이머로 맵 이동에도 대기를 유지하고, 연속 변경은 한 번으로 모은다.
+	FTimerManager& Timers = GetGameInstance()->GetTimerManager();
+	if (!Timers.IsTimerActive(PlayerCountUpdateTimerHandle))
+	{
+		Timers.SetTimer(PlayerCountUpdateTimerHandle, this,
+			&ThisClass::FlushPlayerCountUpdate, DelaySeconds, false);
+	}
+}
+
+void UFAOnlineSessionSubsystem::FlushPlayerCountUpdate()
+{
+	GetGameInstance()->GetTimerManager().ClearTimer(PlayerCountUpdateTimerHandle);
+	const FNamedOnlineSession* Session = GetCurrentSession();
+	if (!Session || !bOwnsSession || !LastSessionSettings.IsValid()
+		|| OperationState == ESessionOperationState::Destroying || bDestroyAfterPlayerCount)
+	{
+		return;
+	}
+	if (OperationState != ESessionOperationState::Idle)
+	{
+		SchedulePlayerCountUpdate(0.25f);
+		return;
+	}
+
+	int32 DesiredCount = INDEX_NONE;
+	if (LastSessionSettings->Get(CurrentPlayersSettingKey, DesiredCount)
+		&& DesiredCount != LastPublishedPlayerCount
+		&& PlayerCountUpdateFailures < MaxPlayerCountUpdateFailures)
+	{
+		BeginSessionSettingsUpdate(EFAUpdateSessionPurpose::UpdatePlayerCount);
+	}
+}
+
+void UFAOnlineSessionSubsystem::BeginSessionSettingsUpdate(EFAUpdateSessionPurpose Purpose)
+{
+	OperationState = ESessionOperationState::Updating;
+	UpdateSessionPurpose = Purpose;
+	InFlightPlayerCount = INDEX_NONE;
+	LastSessionSettings->Get(CurrentPlayersSettingKey, InFlightPlayerCount);
+	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
+	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings, true)
+		&& OperationState == ESessionOperationState::Updating && UpdateSessionPurpose == Purpose)
+	{
+		// 즉시 거절과 비동기 실패가 같은 정리 경로를 사용한다. 동기 콜백은 중복 처리하지 않는다.
+		OnUpdateSessionComplete(NAME_GameSession, false);
+	}
+}
+
+void UFAOnlineSessionSubsystem::CompletePlayerCountUpdate(bool bWasSuccessful)
+{
+	GetGameInstance()->GetTimerManager().ClearTimer(PlayerCountUpdateTimerHandle);
+	if (!bWasSuccessful)
+	{
+		++PlayerCountUpdateFailures;
+		UE_LOG(LogFAOSS, Warning, TEXT("[PlayerCount] Update failed (%d/%d); Desired count retained"),
+			PlayerCountUpdateFailures, MaxPlayerCountUpdateFailures);
+	}
+
+	// 세션 종료/복구/게임 시작을 단순 인원 재게시보다 먼저 처리한다.
+	if (bDestroyAfterPlayerCount)
+	{
+		bDestroyAfterPlayerCount = false;
+		DestroySession();
+		return;
+	}
+	if (bReopenLobbyRequested)
+	{
+		ReopenSessionForLobby();
+		return;
+	}
+	if (bPrepareMatchAfterPlayerCount)
+	{
+		const FFAPendingMatchContext Context = PendingMatchContext;
+		bPrepareMatchAfterPlayerCount = false;
+		PrepareSessionForMatch(Context.MapId, Context.ExpectedPlayerCount);
+		return;
+	}
+	SchedulePlayerCountUpdate(bWasSuccessful ? 0.1f : 1.0f);
+}
+
+void UFAOnlineSessionSubsystem::ResetPlayerCountUpdates()
+{
+	GetGameInstance()->GetTimerManager().ClearTimer(PlayerCountUpdateTimerHandle);
+	LastPublishedPlayerCount = INDEX_NONE;
+	InFlightPlayerCount = INDEX_NONE;
+	PlayerCountUpdateFailures = 0;
+	bOwnsSession = false;
+	bPrepareMatchAfterPlayerCount = false;
+	bDestroyAfterPlayerCount = false;
+}
 
 void UFAOnlineSessionSubsystem::FindSession(int32 MaxSearchResults)
 {
@@ -327,6 +486,15 @@ void UFAOnlineSessionSubsystem::JoinSession(const FOnlineSessionSearchResult& Se
 
 void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 ExpectedPlayerCount)
 {
+	if (OperationState == ESessionOperationState::Updating
+		&& UpdateSessionPurpose == EFAUpdateSessionPurpose::UpdatePlayerCount
+		&& !bDestroyAfterPlayerCount && !bReopenLobbyRequested
+		&& !MapId.IsNone() && ExpectedPlayerCount > 0)
+	{
+		SetPendingMatchContext(MapId, ExpectedPlayerCount);
+		bPrepareMatchAfterPlayerCount = true;
+		return;
+	}
 	// 유효한 유휴 세션에서만 매치용 Update 요청을 시작한다.
 	if (OperationState != ESessionOperationState::Idle
 		|| !SessionInterface.IsValid()
@@ -342,8 +510,6 @@ void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 Expect
 
 	SetPendingMatchContext(MapId, ExpectedPlayerCount);
 	bReopenLobbyRequested = false;
-	OperationState = ESessionOperationState::Updating;
-	UpdateSessionPurpose = EFAUpdateSessionPurpose::PrepareMatch;
 	
 	LastSessionSettings->bAllowJoinInProgress = false;
 	LastSessionSettings->bAllowJoinViaPresence = false;
@@ -354,20 +520,20 @@ void UFAOnlineSessionSubsystem::PrepareSessionForMatch(FName MapId, int32 Expect
 	LastSessionSettings->Set(
 		FName(TEXT("SESSION_STATE")), FString(TEXT("Playing")),	EOnlineDataAdvertisementType::ViaOnlineService);
 	
-	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
-	
-	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
-	{
-		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
-		OperationState = ESessionOperationState::Idle;
-		UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
-		ClearPendingMatchContext();
-		OnSessionPreparedForMatch.Broadcast(false);
-	}
+	BeginSessionSettingsUpdate(EFAUpdateSessionPurpose::PrepareMatch);
 }
 
 void UFAOnlineSessionSubsystem::DestroySession()
 {
+	if (OperationState == ESessionOperationState::Updating
+		&& UpdateSessionPurpose == EFAUpdateSessionPurpose::UpdatePlayerCount)
+	{
+		bDestroyAfterPlayerCount = true;
+		bReopenLobbyRequested = false;
+		ClearPendingMatchContext();
+		GetGameInstance()->GetTimerManager().ClearTimer(PlayerCountUpdateTimerHandle);
+		return;
+	}
 	if (OperationState != ESessionOperationState::Idle)
 	{
 		MultiplayerOnDestroySessionComplete.Broadcast(false);
@@ -379,6 +545,7 @@ void UFAOnlineSessionSubsystem::DestroySession()
 		MultiplayerOnDestroySessionComplete.Broadcast(false);
 		return;
 	}
+	GetGameInstance()->GetTimerManager().ClearTimer(PlayerCountUpdateTimerHandle);
 	OperationState = ESessionOperationState::Destroying;
 	DestroySessionCompleteDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegate);
 	if (!SessionInterface->DestroySession(NAME_GameSession))
@@ -386,6 +553,7 @@ void UFAOnlineSessionSubsystem::DestroySession()
 		OperationState = ESessionOperationState::Idle;
 		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
 		MultiplayerOnDestroySessionComplete.Broadcast(false);
+		SchedulePlayerCountUpdate();
 	}
 }
 
@@ -421,6 +589,15 @@ void UFAOnlineSessionSubsystem::ReopenSessionForLobby()
 {
 	// 매치 컨텍스트는 롤백 요청 시점부터 더 이상 소비되지 않도록 즉시 폐기한다.
 	ClearPendingMatchContext();
+	if (OperationState == ESessionOperationState::Updating
+		&& UpdateSessionPurpose == EFAUpdateSessionPurpose::UpdatePlayerCount)
+	{
+		if (!bDestroyAfterPlayerCount)
+		{
+			bReopenLobbyRequested = true;
+		}
+		return;
+	}
 
 	if (!SessionInterface.IsValid())
 	{
@@ -430,7 +607,7 @@ void UFAOnlineSessionSubsystem::ReopenSessionForLobby()
 
 	// Prepare Update 또는 Start가 끝날 때까지 복구 요청을 보류해 OSS 비동기 호출을 직렬화한다.
 	if ((OperationState == ESessionOperationState::Updating
-			&& UpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch)
+		&& UpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch)
 		|| OperationState == ESessionOperationState::Starting)
 	{
 		bReopenLobbyRequested = true;
@@ -508,8 +685,6 @@ void UFAOnlineSessionSubsystem::RestoreLobbySetting()
 	}
 
 	// 참가 허용, 로비 맵, 공개 상태를 한 번의 UpdateSession 요청으로 원상복구한다.
-	OperationState = ESessionOperationState::Updating;
-	UpdateSessionPurpose = EFAUpdateSessionPurpose::RestoreLobby;
 	
 	LastSessionSettings->bAllowJoinInProgress = true;
 	LastSessionSettings->bAllowJoinViaPresence = true;
@@ -524,12 +699,7 @@ void UFAOnlineSessionSubsystem::RestoreLobbySetting()
 		FString(TEXT("Lobby")),
 		EOnlineDataAdvertisementType::ViaOnlineService);
 	
-	UpdateSessionCompleteDelegateHandle = SessionInterface->AddOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegate);
-	if (!SessionInterface->UpdateSession(NAME_GameSession, *LastSessionSettings))
-	{
-		SessionInterface->ClearOnUpdateSessionCompleteDelegate_Handle(UpdateSessionCompleteDelegateHandle);
-		CompleteReopenSessionForLobby(false);
-	}
+	BeginSessionSettingsUpdate(EFAUpdateSessionPurpose::RestoreLobby);
 }
 
 ESessionOperationState UFAOnlineSessionSubsystem::GetCurrentOperationState() const
@@ -563,11 +733,19 @@ FUniqueNetIdRepl UFAOnlineSessionSubsystem::GetLocalUniqueNetId()
 
 void UFAOnlineSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
+	bOwnsSession = bWasSuccessful;
 	// 콜백을 해제하고, 성공을 외부에 알림.
 	OperationState = ESessionOperationState::Idle;
 	if (SessionInterface)
 	{
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegateHandle);
+	}
+	if (bWasSuccessful)
+	{
+		if (const FNamedOnlineSession* Session = GetCurrentSession())
+		{
+			Session->SessionSettings.Get(CurrentPlayersSettingKey, LastPublishedPlayerCount);
+		}
 	}
 	MultiplayerOnCreateSessionComplete.Broadcast(
 		bWasSuccessful ? EFASessionRequestResult::Success : EFASessionRequestResult::RequestFailed);
@@ -664,12 +842,17 @@ void UFAOnlineSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool
 		SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
 	}
 	
-	MultiplayerOnDestroySessionComplete.Broadcast(bWasSuccessful);
-
 	if (bWasSuccessful)
 	{
+		ResetPlayerCountUpdates();
+		LastSessionSettings.Reset();
 		ClearPendingMatchContext();
 		ClearJoinAuthorizationState();
+	}
+	MultiplayerOnDestroySessionComplete.Broadcast(bWasSuccessful);
+	if (!bWasSuccessful)
+	{
+		SchedulePlayerCountUpdate();
 	}
 }
 
@@ -696,10 +879,16 @@ void UFAOnlineSessionSubsystem::OnStartSessionComplete(FName SessionName, bool b
 	}
 	
 	OnSessionPreparedForMatch.Broadcast(bWasSuccessful);
+	SchedulePlayerCountUpdate();
 }
 
 void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful)
 {
+	if (SessionName != NAME_GameSession || OperationState != ESessionOperationState::Updating
+		|| UpdateSessionPurpose == EFAUpdateSessionPurpose::None)
+	{
+		return;
+	}
 	if (SessionInterface.IsValid())
 	{
 		SessionInterface
@@ -707,7 +896,23 @@ void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool 
 				UpdateSessionCompleteDelegateHandle);
 	}
 	const EFAUpdateSessionPurpose LastUpdateSessionPurpose = UpdateSessionPurpose;
+	UpdateSessionCompleteDelegateHandle.Reset();
 	UpdateSessionPurpose = EFAUpdateSessionPurpose::None;
+	OperationState = ESessionOperationState::Idle;
+	if (bWasSuccessful)
+	{
+		LastPublishedPlayerCount = InFlightPlayerCount;
+		PlayerCountUpdateFailures = 0;
+		UE_LOG(LogFAOSS, Log, TEXT("[PlayerCount] Published=%d UpdatePurpose=%d"),
+			LastPublishedPlayerCount, static_cast<int32>(LastUpdateSessionPurpose));
+	}
+
+	//단순 플레이어 수 갱신은 바로 정리한다.
+	if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::UpdatePlayerCount)
+	{
+		CompletePlayerCountUpdate(bWasSuccessful);
+		return;
+	}
 
 	// Prepare Update 도중 롤백이 요청됐으면 성공 여부와 무관하게 Start를 건너뛰고 복구한다.
 	if (LastUpdateSessionPurpose == EFAUpdateSessionPurpose::PrepareMatch
@@ -718,6 +923,7 @@ void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool 
 		return;
 	}
 	
+	//업데이트 실패 롤백
 	if (!bWasSuccessful)
 	{
 		OperationState = ESessionOperationState::Idle;
@@ -730,6 +936,7 @@ void UFAOnlineSessionSubsystem::OnUpdateSessionComplete(FName SessionName, bool 
 		{
 			CompleteReopenSessionForLobby(false);
 		}
+		SchedulePlayerCountUpdate();
 		return;
 	}
 	
@@ -751,6 +958,7 @@ void UFAOnlineSessionSubsystem::CompleteReopenSessionForLobby(bool bWasSuccessfu
 	bReopenLobbyRequested = false;
 	ClearPendingMatchContext();
 	OnSessionReopenedForLobby.Broadcast(bWasSuccessful);
+	SchedulePlayerCountUpdate();
 }
 
 void UFAOnlineSessionSubsystem::SetPendingMatchContext(FName MapId, int32 ExpectedPlayerCount)
@@ -777,6 +985,7 @@ bool UFAOnlineSessionSubsystem::GetPendingMatchContext(FFAPendingMatchContext& O
 
 void UFAOnlineSessionSubsystem::ClearPendingMatchContext()
 {
+	bPrepareMatchAfterPlayerCount = false;
 	PendingMatchContext.Reset();
 }
 

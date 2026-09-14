@@ -50,6 +50,21 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Draft", meta = (ClampMin = "0.5"))
 	float ChainDraftInterval = 2.0f;
 
+	/**
+	 * 회차별 드래프트 후보 3장의 요구 티어(GDD 4.2 티어 곡선, 밸런싱 워크북 "1_드래프트곡선" 시트).
+	 * 배열 인덱스 0 이 1회차 — X/Y/Z 가 그 회차의 슬롯 3개. 실제 회차가 배열 길이를 넘으면
+	 * 마지막 항목을 계속 쓴다(기본값 기준 6회차 이후 전부 {3,3,3}).
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Draft")
+	TArray<FIntVector> TierComposition = {
+		FIntVector(1, 1, 1), // 1회차
+		FIntVector(1, 1, 2), // 2회차
+		FIntVector(1, 2, 2), // 3회차
+		FIntVector(2, 2, 2), // 4회차
+		FIntVector(2, 2, 3), // 5회차
+		FIntVector(3, 3, 3)  // 6회차 이후
+	};
+
 	//~ ---------------- 조회 헬퍼 ----------------
 
 	/** 표를 동기 로드해서 돌려준다. 미지정이면 nullptr (로그 1회). */
@@ -68,6 +83,9 @@ public:
 
 	/** 연속 드래프트 1장당 간격(초). */
 	static float GetChainDraftInterval();
+
+	/** DraftIndex(1부터 시작) 회차의 후보 3장 각각의 요구 티어. */
+	static TArray<int32> GetTierComposition(int32 DraftIndex);
 
 	//~ ---------------- 표시 정보 (UI 공용) ----------------
 
