@@ -85,50 +85,6 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 		SessionHostNicknameText->SetText(
 			FText::FromString(DecodeSessionText(StoredHostNickname)));
 	}
-	/*
-	IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetWorld());
-	if (OnlineSubsystem->GetSubsystemName() == "NULL")
-	{
-		FString Servername;
-		if (Result.Session.SessionSettings.Get(FName("SERVER_NAME"), Servername))
-		{
-			SessionTitleText->SetText(FText::FromString(Servername));
-		}
-		
-		FString HostNickname;
-		if (Result.Session.SessionSettings.Get(FName("OwningUserNickname"), HostNickname))
-		{
-			// BindWidgetOptional 로 바꿔둔 동안 null 가드
-			if (SessionHostNicknameText)
-			{
-				SessionHostNicknameText->SetText(FText::FromString(HostNickname));
-			}
-		}
-	}else
-	{
-		//Steam
-		//방이름
-		
-		FString StoredServerName;
-		if (Result.Session.SessionSettings.Get(FName("SERVER_NAME"), StoredServerName)
-			&& SessionTitleText)
-		{
-			SessionTitleText->SetText(
-				FText::FromString(StoredServerName));
-		}
-
-		FString StoredHostNickname;
-		if (Result.Session.SessionSettings.Get(FName("OwningUserNickname"), StoredHostNickname)
-			&& SessionHostNicknameText)
-		{
-			SessionHostNicknameText->SetText(
-				FText::FromString(StoredHostNickname));
-		}
-		
-	}
-	
-	*/
-	
 	
 	// 이전 버전의 방처럼 커스텀 값이 없으면 기존 빈자리 계산으로 대체한다.
 	const int32 MaxConnection = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);
