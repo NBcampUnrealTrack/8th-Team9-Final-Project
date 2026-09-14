@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Network/FAOnlineSessionSubsystem.h"
@@ -14,8 +14,34 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 
+#include "Misc/Base64.h"
+
 DEFINE_LOG_CATEGORY(LogFAOSS);
 
+namespace
+{
+	const FString SessionTextPrefix(TEXT("B64:"));
+
+	FString EncodeSessionText(const FString& Text)
+	{
+		return SessionTextPrefix + FBase64::Encode(Text);
+	}
+
+	FString DecodeSessionText(const FString& StoredText)
+	{
+		if (!StoredText.StartsWith(SessionTextPrefix))
+		{
+			return StoredText; // 기존 영문 세션 호환
+		}
+
+		FString DecodedText;
+		const FString Payload = StoredText.RightChop(SessionTextPrefix.Len());
+
+		return FBase64::Decode(Payload, DecodedText)
+			? DecodedText
+			: StoredText;
+	}
+}
 namespace
 {
 	const FName ProjectSettingKey(TEXT("SPARTA_PROJECT")); //480 세션구분용
@@ -207,11 +233,10 @@ void UFAOnlineSessionSubsystem::CreateSession(int32 NumPublicConnections, const 
 		FName(TEXT("SESSION_STATE")),
 		FString(TEXT("Lobby")),
 		EOnlineDataAdvertisementType::ViaOnlineService);
-
-	LastSessionSettings->Set(NameSettingKey, ServerName, EOnlineDataAdvertisementType::ViaOnlineService);
 	
-	//호스트 닉네임을 설정.
-	LastSessionSettings->Set(OwningUserNickname, PendingNickname , EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(NameSettingKey, EncodeSessionText(*ServerName), EOnlineDataAdvertisementType::ViaOnlineService);
+	LastSessionSettings->Set(OwningUserNickname, EncodeSessionText(*PendingNickname) , EOnlineDataAdvertisementType::ViaOnlineService);
+
 
 	//현 세션 내 플레이어 수를 공개
 	LastSessionSettings->Set(CurrentPlayersSettingKey, 1, EOnlineDataAdvertisementType::ViaOnlineService);
