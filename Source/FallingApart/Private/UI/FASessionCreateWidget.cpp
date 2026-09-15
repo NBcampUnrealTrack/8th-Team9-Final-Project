@@ -80,7 +80,7 @@ bool UFASessionCreateWidget::ValidateCreateRequest(FFASessionCreateRequest& Requ
 		return false;
 	}
 
-	if (Request.Nickname.Len() < 2)
+	if (Request.Nickname.TrimStartAndEnd().Len() < 2)
 	{
 		OutErrorMessage = LOCTEXT("NicknameTooShort", "닉네임은 2자 이상 입력해주세요.");
 		return false;

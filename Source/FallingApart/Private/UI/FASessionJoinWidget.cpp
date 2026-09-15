@@ -9,7 +9,9 @@
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerState.h"
+#include "UI/FAGenericPopup.h"
 #include "UI/FASessionEntryWidget.h"
+#include "UI/FAUIMessageSubsystem.h"
 
 namespace FASessionJoinAudio
 {
@@ -147,6 +149,15 @@ void UFASessionJoinWidget::ClearList()
 
 void UFASessionJoinWidget::HandleSessionEntrySelected(const FOnlineSessionSearchResult& SessionResult)
 {
+	FString Nickname = GetNickname();
+	if (Nickname.IsEmpty() || Nickname.TrimStartAndEnd().Len()<2)
+	{
+		UFAUIMessageSubsystem::ShowMessage(
+			this,
+			NSLOCTEXT("FASessionJoinWidget","InvalidNicknameTitle", "닉네임 오류"),
+			NSLOCTEXT("FASessionJoinWidget","NicknameTooShort", "닉네임은 2자 이상 입력해주세요."));
+		return;
+	}
 	const FString Password = PasswordInput ? PasswordInput->GetText().ToString() : FString();
 	OnSessionJoinRequested.Broadcast(SessionResult, Password, GetNickname());
 }
