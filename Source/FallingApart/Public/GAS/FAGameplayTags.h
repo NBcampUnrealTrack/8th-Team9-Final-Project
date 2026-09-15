@@ -51,6 +51,9 @@ public:
 	/* Z11 착지 경직 /H09 착지 경직 - 착지 시 1초 정지  */
 	FGameplayTag Rule_Move_LandStun;
 
+	/** H15 얼어붙음 — 좀비가 5m 이내 진입하면 0.8초 경직. */
+	FGameplayTag Rule_Move_Freeze;
+
 	/* Z13 등반 불가 /H12 등반 불가 - 오르기·넘기 봉인  */
 	FGameplayTag Rule_Move_NoMantle;
 
@@ -87,6 +90,9 @@ public:
 
 	/* Z25 심박 왜곡 - 좀비 전용. 인간 근접 시 카메라 흔들림 심화 */
 	FGameplayTag Rule_Vision_Shake;
+
+	/** Z23 환청 — 룰 보유자에게만 주변의 가짜 발소리를 랜덤 재생한다. */
+	FGameplayTag Rule_Audio_Phantom;
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
