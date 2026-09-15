@@ -21,6 +21,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Team_Human  = AddTag(TEXT("Rule.Team.Human"),  TEXT("인간 진영이 보유한 룰 GE 에 붙는 태그. 감염 시 이 태그를 가진 GE 전부 제거."));
 
 	//~ 룰 — Move 계열
+	Rule_Move_Freeze = AddTag(TEXT("Rule.Move.Freeze"), TEXT("H15 얼어붙음 — 좀비 5m 이내 진입 시 0.8초 경직."));
 	Rule_Move_NoJump       = AddTag(TEXT("Rule.Move.NoJump"),       TEXT("Z01/H01 점프 불가 . GA_Jump 의 ActivationBlockedTags."));
 	Rule_Move_SpeedDown_S  = AddTag(TEXT("Rule.Move.SpeedDown.S"),  TEXT("Z02/H02 이동속도 -15%."));
 	Rule_Move_LowFriction  = AddTag(TEXT("Rule.Move.LowFriction"),  TEXT("Z04/H04 지면 마찰 -70%. 관성이 커져 미끄러진다."));
@@ -43,6 +44,9 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_NoZombie  = AddTag(TEXT("Rule.Vision.NoZombie"),  TEXT("H23 투명한 적 — 좀비가 보이지 않음(발소리·실루엣만)."));
 	Rule_Vision_NoAlly    = AddTag(TEXT("Rule.Vision.NoAlly"),    TEXT("H24 고독 / Z37 고립 — 다른 생존자가 보이지 않음."));
 	Rule_Vision_Shake     = AddTag(TEXT("Rule.Vision.Shake"),     TEXT("Z25 심박 왜곡 — 인간 근접 시 카메라 흔들림 심화."));
+
+	//~ 룰 - Audio
+	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("Z23 환청 — 가짜 발소리를 로컬에서 랜덤 재생."));
 
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
