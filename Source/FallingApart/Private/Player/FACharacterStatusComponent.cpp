@@ -6,6 +6,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "AttributeSet/FAAttributeSet.h"
+#include "Audio/FAAudioSubsystem.h"
 #include "GameFramework/Character.h"
 #include "GameplayEffect.h"
 #include "GAS/FAGameplayTags.h"
@@ -14,6 +15,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimMontage.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "Rule/FADeathMatchSubsystem.h"
@@ -46,13 +48,15 @@ void UFACharacterStatusComponent::BeginPlay()
 
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
-		if (OwnerCharacter->HasAuthority())
-		{
-			const FGameplayTag KnockbackTag = FAGameplayTags::Get().Rule_State_Knockback;
-			ASC->RegisterGameplayTagEvent(KnockbackTag, EGameplayTagEventType::NewOrRemoved)
-				.AddUObject(this, &ThisClass::HandleKnockbackRuleChanged);
-			HandleKnockbackRuleChanged(KnockbackTag, ASC->GetTagCount(KnockbackTag));
-		}
+		const FGameplayTag FreezeRuleTag = FAGameplayTags::Get().Rule_Move_Freeze;
+		ASC->RegisterGameplayTagEvent(FreezeRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleFreezeRuleChanged);
+		HandleFreezeRuleChanged(FreezeRuleTag, ASC->GetTagCount(FreezeRuleTag));
+
+		const FGameplayTag KnockbackTag = FAGameplayTags::Get().Rule_State_Knockback;
+		ASC->RegisterGameplayTagEvent(KnockbackTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleKnockbackRuleChanged);
+		HandleKnockbackRuleChanged(KnockbackTag, ASC->GetTagCount(KnockbackTag));
 
 		const FGameplayTag FlipRuleTag = FAGameplayTags::Get().Rule_Input_FlipLR;
 		ASC->RegisterGameplayTagEvent(FlipRuleTag, EGameplayTagEventType::NewOrRemoved)
@@ -117,7 +121,6 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this, &ThisClass::HandleTrailRuleChanged);
 		HandleTrailRuleChanged(TrailRuleTag, ASC->GetTagCount(TrailRuleTag));
 
-
 		const FGameplayTag DecayTag = FAGameplayTags::Get().Rule_State_Decay;
 		ASC->RegisterGameplayTagEvent(DecayTag, EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &ThisClass::HandleDecayRuleChanged);
@@ -128,17 +131,16 @@ void UFACharacterStatusComponent::BeginPlay()
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearFreeze();
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		const FAGameplayTags& Tags = FAGameplayTags::Get();
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Knockback,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(
-			FAGameplayTags::Get().Rule_Input_FlipLR,
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
 				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_WallPhase,
@@ -155,9 +157,10 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Trail,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Decay,
-	  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_Freeze,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
@@ -178,12 +181,103 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	Super::EndPlay(EndPlayReason);
 }
 
+void UFACharacterStatusComponent::HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount)
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const bool bEnabled = ASC && ASC->HasMatchingGameplayTag(Tags.Rule_Move_Freeze);
+	if (!bEnabled)
+	{
+		ClearFreeze();
+		return;
+	}
+
+	if (!GetWorld()->GetTimerManager().IsTimerActive(FreezeDetectionTimerHandle))
+	{
+		if (!FreezeStunEffect)
+		{
+			UE_LOG(LogTemp, Error, TEXT("[H15] FreezeStunEffect is not configured on %s"), *GetNameSafe(GetOwner()));
+			return;
+		}
+		GetWorld()->GetTimerManager().SetTimer(FreezeDetectionTimerHandle, this,
+			&ThisClass::ScanFreezeTargets, 0.1f, true);
+		// Already nearby zombies count as entry when the rule becomes active.
+		ScanFreezeTargets();
+	}
+}
+
+void UFACharacterStatusComponent::ScanFreezeTargets()
+{
+	AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!Character || !Character->HasAuthority() || !ASC)
+	{
+		return;
+	}
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	if (!ASC->HasMatchingGameplayTag(Tags.Rule_Move_Freeze))
+	{
+		ClearFreeze();
+		return;
+	}
+	const UFADetectionUnitComponent* Detection = Character->GetDetectionUnitComponent();
+	if (!Detection)
+	{
+		return;
+	}
+
+	TArray<AFACharacter*> NearbyZombies;
+	Detection->GetCharactersInRange(Tags.State_Zombie, 500.0f, NearbyZombies);
+	TSet<TWeakObjectPtr<AFACharacter>> CurrentTargets;
+	bool bNewEntry = false;
+	for (AFACharacter* Zombie : NearbyZombies)
+	{
+		CurrentTargets.Add(Zombie);
+		if (!PreviousFreezeTargets.Contains(Zombie))
+		{
+			bNewEntry = true;
+		}
+	}
+
+	PreviousFreezeTargets = MoveTemp(CurrentTargets);
+	if (bNewEntry && FreezeStunEffect && !ASC->HasMatchingGameplayTag(Tags.State_Stunned))
+	{
+		FreezeEffectHandle = ASC->ApplyGameplayEffectToSelf(
+			FreezeStunEffect->GetDefaultObject<UGameplayEffect>(),
+			1.0f,
+			ASC->MakeEffectContext());
+	}
+}
+
+void UFACharacterStatusComponent::ClearFreeze()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FreezeDetectionTimerHandle);
+	}
+	PreviousFreezeTargets.Reset();
+	if (FreezeEffectHandle.IsValid())
+	{
+		if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
+		{
+			ASC->RemoveActiveGameplayEffect(FreezeEffectHandle);
+		}
+		FreezeEffectHandle.Invalidate();
+	}
+}
+
 void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
+	UpdatePhantomAudio(DeltaTime);
 	if (!OwnerCharacter)
-	{
+	{ 
 		return;
 	}
 
@@ -211,6 +305,127 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		SetWallPhaseActive(bShouldPhase);
 	}
+}
+
+void UFACharacterStatusComponent::UpdatePhantomAudio(float DeltaTime)
+{
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled()
+		|| GetNetMode() == NM_DedicatedServer || !ASC
+		|| !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Audio_Phantom)
+		|| PhantomFootstepSoundIds.IsEmpty())
+	{
+		PhantomTimeRemaining = -1.0f;
+		PhantomBurstRemainings.Reset();
+		PhantomBurstStartDelays.Reset();
+		PhantomBurstStepTimers.Reset();
+		PhantomBurstLocations.Reset();
+		return;
+	}
+
+	const float MinInterval = FMath::Max(0.1f, PhantomMinInterval);
+	const float MaxInterval = FMath::Max(MinInterval, PhantomMaxInterval);
+	const float BurstMinDuration = FMath::Max(0.1f, PhantomBurstMinDuration);
+	const float BurstMaxDuration = FMath::Max(BurstMinDuration, PhantomBurstMaxDuration);
+	const float BurstMinStepInterval = FMath::Max(0.1f, PhantomBurstMinStepInterval);
+	const float BurstMaxStepInterval = FMath::Max(BurstMinStepInterval, PhantomBurstMaxStepInterval);
+
+	// 환청 묶음이 진행 중이면 세 위치에서 각자 랜덤 간격으로 발소리를 이어서 낸다.
+	if (PhantomBurstRemainings.Num() > 0)
+	{
+		bool bAnyEmitterActive = false;
+		for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
+		{
+			if (PhantomBurstStartDelays[Index] > 0.0f)
+			{
+				PhantomBurstStartDelays[Index] -= DeltaTime;
+				bAnyEmitterActive = true;
+				if (PhantomBurstStartDelays[Index] > 0.0f)
+				{
+					continue;
+				}
+				PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
+				PhantomBurstStepTimers[Index] = 0.0f;
+			}
+			const bool bWasActive = PhantomBurstRemainings[Index] > 0.0f;
+			if (!bWasActive)
+			{
+				continue;
+			}
+			PhantomBurstRemainings[Index] -= DeltaTime;
+			if (PhantomBurstRemainings[Index] <= 0.0f)
+			{
+				if (bWasActive)
+				{
+					// 다른 Emitter가 재생 중인 동안 즉시 새 발소리 묶음을 시작해 공백을 없앤다.
+					const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
+					const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
+					const float NewAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+					const float NewDistance = FMath::FRandRange(MinDistance, MaxDistance);
+					PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
+						+ FVector(FMath::Cos(NewAngle), FMath::Sin(NewAngle), 0.0f) * NewDistance;
+					PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
+					PhantomBurstStepTimers[Index] = FMath::FRandRange(
+						BurstMinStepInterval, BurstMaxStepInterval);
+					bAnyEmitterActive = true;
+				}
+				continue;
+			}
+			bAnyEmitterActive = true;
+			PhantomBurstStepTimers[Index] -= DeltaTime;
+			if (PhantomBurstStepTimers[Index] <= 0.0f)
+			{
+				if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
+				{
+					const FName SoundId = PhantomFootstepSoundIds[FMath::RandHelper(PhantomFootstepSoundIds.Num())];
+					const float MinVolume = FMath::Max(0.0f, PhantomMinVolumeMultiplier);
+					const float MaxVolume = FMath::Max(MinVolume, PhantomMaxVolumeMultiplier);
+					const float Volume = FMath::FRandRange(MinVolume, MaxVolume);
+					Audio->PlaySoundAtLocation(SoundId, PhantomBurstLocations[Index], Volume);
+				}
+			PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
+			}
+		}
+		if (!bAnyEmitterActive)
+		{
+			PhantomBurstRemainings.Reset();
+			PhantomBurstStepTimers.Reset();
+			PhantomBurstStartDelays.Reset();
+			PhantomBurstLocations.Reset();
+			PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
+		}
+		return;
+	}
+
+	if (PhantomTimeRemaining < 0.0f)
+	{
+		PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
+		return;
+	}
+
+	PhantomTimeRemaining -= DeltaTime;
+	if (PhantomTimeRemaining > 0.0f)
+	{
+		return;
+	}
+	const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
+	const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
+	PhantomBurstLocations.SetNum(3);
+	PhantomBurstRemainings.SetNum(3);
+	PhantomBurstStartDelays.SetNum(3);
+	PhantomBurstStepTimers.SetNum(3);
+	for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
+	{
+		const float EmitterAngle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float EmitterDistance = FMath::FRandRange(MinDistance, MaxDistance);
+		PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
+			+ FVector(FMath::Cos(EmitterAngle), FMath::Sin(EmitterAngle), 0.0f) * EmitterDistance;
+		PhantomBurstRemainings[Index] = 0.0f;
+		// 세 명의 생성 시작 시점 자체를 분리한다.
+		PhantomBurstStartDelays[Index] = FMath::FRandRange(0.1f, 0.5f);
+		PhantomBurstStepTimers[Index] = 0.0f;
+	}
+	PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
 }
 
 void UFACharacterStatusComponent::HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount)
@@ -303,6 +518,21 @@ void UFACharacterStatusComponent::HandleKnockbackHit(UPrimitiveComponent* HitCom
 		Zombie->ServerStopClimbing(false);
 	}
 	OwnerCharacter->LaunchCharacter(Direction * KnockbackSpeed + FVector(0.0f, 0.0f, KnockbackUpSpeed), true, true);
+	MulticastPlayKnockbackMontage();
+}
+
+void UFACharacterStatusComponent::MulticastPlayKnockbackMontage_Implementation()
+{
+	if (!OwnerCharacter || !KnockbackMontage)
+	{
+		return;
+	}
+
+	const float PlayedLength = OwnerCharacter->PlayAnimMontage(KnockbackMontage);
+	if (PlayedLength <= 0.0f)
+	{
+		return;
+	}
 }
 
 void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount)
@@ -351,7 +581,7 @@ void UFACharacterStatusComponent::HandleGhostRuleChanged(const FGameplayTag Tag,
 	// 델리게이트 시그니처를 맞추기 위한 인자다. ??
 	(void)Tag;
 
-	
+
 	RefreshGhostVisual();
 }
 
