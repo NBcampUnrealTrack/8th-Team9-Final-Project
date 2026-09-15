@@ -1,14 +1,41 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FASessionEntryWidget.h"
 
 #include "Audio/FAAudioSubsystem.h"
 #include "OnlineSessionSettings.h"
+#include "OnlineSubsystemUtils.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "Misc/Base64.h"
+
+namespace
+{
+	const FString SessionTextPrefix(TEXT("B64:"));
+
+	FString EncodeSessionText(const FString& Text)
+	{
+		return SessionTextPrefix + FBase64::Encode(Text);
+	}
+
+	FString DecodeSessionText(const FString& StoredText)
+	{
+		if (!StoredText.StartsWith(SessionTextPrefix))
+		{
+			return StoredText; // 기존 영문 세션 호환
+		}
+
+		FString DecodedText;
+		const FString Payload = StoredText.RightChop(SessionTextPrefix.Len());
+
+		return FBase64::Decode(Payload, DecodedText)
+			? DecodedText
+			: StoredText;
+	}
+}
 
 namespace FASessionEntryAudio
 {
@@ -42,28 +69,33 @@ void UFASessionEntryWidget::OnJoinButtonHovered()
 void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Result)
 {
 	EntryData = Result;
-	// 방 이름
-	FString ServerName;
-	Result.Session.SessionSettings.Get(FName("SERVER_NAME"), ServerName);
-	SessionTitleText->SetText(FText::FromString(ServerName));
 	
-	//호스트 닉네임
-	FString HostNickname;
-	
-	Result.Session.SessionSettings.Get(FName("OwningUserNickname"), HostNickname);
-	
-	// BindWidgetOptional 로 바꿔둔 동안 null 가드
-	if (SessionHostNicknameText)
+	FString StoredServerName;
+	if (Result.Session.SessionSettings.Get(FName("SERVER_NAME"), StoredServerName)
+		&& SessionTitleText)
 	{
-		SessionHostNicknameText->SetText(FText::FromString(HostNickname));
+		SessionTitleText->SetText(
+			FText::FromString(DecodeSessionText(StoredServerName)));
+	}
+
+	FString StoredHostNickname;
+	if (Result.Session.SessionSettings.Get(FName("OwningUserNickname"), StoredHostNickname)
+		&& SessionHostNicknameText)
+	{
+		SessionHostNicknameText->SetText(
+			FText::FromString(DecodeSessionText(StoredHostNickname)));
 	}
 	
-	// 참가자 수
-	int32 MaxConnection = Result.Session.SessionSettings.NumPublicConnections;
-	int32 CurrentConnection = MaxConnection - Result.Session.NumOpenPublicConnections;
-	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentConnection, MaxConnection));
+	// 이전 버전의 방처럼 커스텀 값이 없으면 기존 빈자리 계산으로 대체한다.
+	const int32 MaxConnection = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);
+	int32 CurrentPlayers = MaxConnection - Result.Session.NumOpenPublicConnections;
+	Result.Session.SessionSettings.Get(FName(TEXT("CURRENT_PLAYERS")), CurrentPlayers);
+	CurrentPlayers = FMath::Clamp(CurrentPlayers, 0, MaxConnection);
+
+	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentPlayers, MaxConnection));
 	CurrentConnectionText->SetText(ConnectionTextFormat);
 	
+
 	// 지연시간
 	int32 Ping = Result.PingInMs;
 	SessionPingText->SetText(FText::FromString(FString::Printf(TEXT("핑 : %d"), Ping)));

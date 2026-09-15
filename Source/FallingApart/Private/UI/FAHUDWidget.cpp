@@ -4,6 +4,10 @@
 #include "UI/FAHUDWidget.h"
 
 #include "Audio/FAAudioSubsystem.h"
+#include "Components/Image.h"
+#include "Components/TextBlock.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "Game/FAGameState.h"
 #include "Player/FACharacter.h"
@@ -42,9 +46,16 @@ void UFAHUDWidget::NativeConstruct()
 	RefreshBindings();
 	UpdatePolledValues(0.0f);
 
+	// 첫 프레임에 지운다. 값이 붙는 건 각 핸들러가 알아서 한다.
+	RefreshScoreTexts();
+	RefreshTeamText();
+	RefreshTeamCountTexts();
+	RefreshRoundText();
+
 	// 게이지·프롬프트의 시작 상태를 여기서 한 번 못박는다.
 	OnCaptureGaugeHidden();
 	OnContestPromptHidden();
+	SetInteractKeyVisible(false);
 }
 
 void UFAHUDWidget::NativeDestruct()
@@ -122,6 +133,28 @@ FText UFAHUDWidget::GetZombieCountText() const
 FText UFAHUDWidget::GetLocalScoreText() const
 {
 	return FText::AsNumber(GetLocalDisplayScore());
+}
+
+int32 UFAHUDWidget::GetLocalDisplayTeamScore() const
+{
+	const AFAPlayerState* FAPlayerState = CachedPlayerState.Get();
+	return FAPlayerState ? FAPlayerState->GetDisplayTeamScore() : 0;
+}
+
+FText UFAHUDWidget::GetLocalTeamScoreText() const
+{
+	return FText::AsNumber(GetLocalDisplayTeamScore());
+}
+
+int32 UFAHUDWidget::GetLocalDisplayPersonalScore() const
+{
+	const AFAPlayerState* FAPlayerState = CachedPlayerState.Get();
+	return FAPlayerState ? FAPlayerState->GetDisplayPersonalScore() : 0;
+}
+
+FText UFAHUDWidget::GetLocalPersonalScoreText() const
+{
+	return FText::AsNumber(GetLocalDisplayPersonalScore());
 }
 
 FText UFAHUDWidget::GetLocalTeamText() const
@@ -350,6 +383,9 @@ void UFAHUDWidget::UnbindGameState()
 	TickAccumulator = 0.0f;
 	bLastMinuteAnnounced = false;
 	bSawAboveTickWindow = false;
+
+	RefreshTeamCountTexts();
+	RefreshRoundText();
 }
 
 void UFAHUDWidget::BindPlayerState(AFAPlayerState* NewPlayerState)
@@ -384,6 +420,10 @@ void UFAHUDWidget::UnbindPlayerState()
 	bLastWasInfectedThisRound = false;
 	LastLocalTeam = EFATeam::None;
 	bHasTeamBaseline = false;
+
+	// 이전 주인의 점수·진영이 화면에 남지 않도록 되돌린다. 새 PlayerState 가 붙으면 곧바로 덮인다.
+	RefreshScoreTexts();
+	RefreshTeamText();
 }
 
 void UFAHUDWidget::UpdatePolledValues(float DeltaTime)
@@ -400,6 +440,8 @@ void UFAHUDWidget::UpdatePolledValues(float DeltaTime)
 	{
 		LastCurrentRound = CurrentRound;
 		LastMaxRound = CurrentMaxRound;
+
+		RefreshRoundText();
 		OnRoundChanged(CurrentRound, CurrentMaxRound);
 	}
 
@@ -504,6 +546,7 @@ void UFAHUDWidget::HandleTeamCountsChanged()
 		return;
 	}
 
+	RefreshTeamCountTexts();
 	OnTeamCountsChanged(FAGameState->GetSurvivorCount(), FAGameState->GetZombieCount());
 }
 
@@ -528,6 +571,7 @@ void UFAHUDWidget::HandleLocalTeamChanged(EFATeam NewTeam)
 	LastLocalTeam = NewTeam;
 	bHasTeamBaseline = true;
 
+	RefreshTeamText();
 	OnLocalTeamChanged(NewTeam);
 }
 
@@ -535,6 +579,7 @@ void UFAHUDWidget::HandleLocalScoreChanged()
 {
 	UpdateScoreFeedback();
 
+	RefreshScoreTexts();
 	OnLocalScoreChanged(GetLocalDisplayScore());
 }
 
@@ -610,6 +655,37 @@ float UFAHUDWidget::GetInteractHoldProgress() const
 	return Interaction ? Interaction->GetHoldProgress() : 0.0f;
 }
 
+FText UFAHUDWidget::GetInteractKeyText() const
+{
+	const APlayerController* PC = GetOwningPlayer();
+	const AFACharacter* Character = PC ? Cast<AFACharacter>(PC->GetPawn()) : nullptr;
+	if (!Character || !Character->InteractAction)
+	{
+		return FText::GetEmpty();
+	}
+
+	const ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+	const UEnhancedInputLocalPlayerSubsystem* Input =
+		LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	if (!Input)
+	{
+		return FText::GetEmpty();
+	}
+
+	const TArray<FKey> Keys = Input->QueryKeysMappedToAction(Character->InteractAction);
+
+	// 키보드·마우스를 먼저 고른다 — 패드가 꽂혀 있으면 그쪽이 먼저 잡혀서 "F" 자리에 패드 버튼이 뜬다.
+	for (const FKey& Key : Keys)
+	{
+		if (!Key.IsGamepadKey())
+		{
+			return Key.GetDisplayName(/*bLongDisplayName=*/false);
+		}
+	}
+
+	return Keys.Num() > 0 ? Keys[0].GetDisplayName(/*bLongDisplayName=*/false) : FText::GetEmpty();
+}
+
 void UFAHUDWidget::UpdateInteractPrompt()
 {
 	const UFAInteractionComponent* Interaction = GetLocalInteractionComponent();
@@ -624,6 +700,8 @@ void UFAHUDWidget::UpdateInteractPrompt()
 			bInteractPromptVisible = false;
 			LastInteractPrompt = FText::GetEmpty();
 			LastInteractHoldProgress = -1.0f;
+
+			SetInteractKeyVisible(false);
 			OnInteractPromptHidden();
 		}
 		return;
@@ -635,6 +713,18 @@ void UFAHUDWidget::UpdateInteractPrompt()
 	{
 		bInteractPromptVisible = true;
 		LastInteractPrompt = Prompt;
+
+		// 키 표기는 뜨는 순간에 한 번만 읽는다.
+		if (Text_InteractKey)
+		{
+			const FText KeyText = GetInteractKeyText();
+			if (!KeyText.IsEmpty())
+			{
+				Text_InteractKey->SetText(KeyText);
+			}
+		}
+
+		SetInteractKeyVisible(true);
 		OnInteractPromptShown(Prompt);
 	}
 	else if (!Prompt.EqualTo(LastInteractPrompt))
@@ -649,5 +739,62 @@ void UFAHUDWidget::UpdateInteractPrompt()
 	{
 		LastInteractHoldProgress = Progress;
 		OnInteractHoldProgressChanged(Progress);
+	}
+}
+
+void UFAHUDWidget::SetInteractKeyVisible(bool bVisible)
+{
+	// 문구(Text_InteractPrompt)의 WBP 바인딩과 같은 규칙 — 보일 때도 마우스 입력은 통과시킨다.
+	const ESlateVisibility NewVisibility = bVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
+
+	if (Text_InteractKey)
+	{
+		Text_InteractKey->SetVisibility(NewVisibility);
+	}
+	if (Image_InteractKey)
+	{
+		Image_InteractKey->SetVisibility(NewVisibility);
+	}
+}
+
+//~ ---------------- 직결 위젯 갱신 ----------------
+
+void UFAHUDWidget::RefreshScoreTexts()
+{
+	if (Text_TeamScore)
+	{
+		Text_TeamScore->SetText(GetLocalTeamScoreText());
+	}
+	if (Text_PlayerScore)
+	{
+		Text_PlayerScore->SetText(GetLocalPersonalScoreText());
+	}
+}
+
+void UFAHUDWidget::RefreshTeamText()
+{
+	if (Text_Team)
+	{
+		Text_Team->SetText(GetLocalTeamText());
+	}
+}
+
+void UFAHUDWidget::RefreshTeamCountTexts()
+{
+	if (Text_Survivor)
+	{
+		Text_Survivor->SetText(GetSurvivorCountText());
+	}
+	if (Text_Zombie)
+	{
+		Text_Zombie->SetText(GetZombieCountText());
+	}
+}
+
+void UFAHUDWidget::RefreshRoundText()
+{
+	if (Text_Round)
+	{
+		Text_Round->SetText(GetRoundText());
 	}
 }

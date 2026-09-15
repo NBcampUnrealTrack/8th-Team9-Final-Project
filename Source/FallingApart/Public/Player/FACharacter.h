@@ -41,6 +41,7 @@ public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaTime) override;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -426,6 +427,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
 	float FirstPersonEyeHeightOffset = -20.0f;
 
+	/** 일인칭 축소 렌더링에서도 원본 공격의 가까운 소매가 잘리지 않도록 측정한 근접면 거리. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (ClampMin = "1", Units = "cm"))
+	float FirstPersonNearClipPlane = 4.0f;
+
 	/** 실제 앉기 최종 포즈에서 측정한 눈높이. 정지와 이동 값을 속도에 따라 보간한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
 	float FirstPersonCrouchedIdleEyeHeightOffset = -11.5f;
@@ -482,6 +487,16 @@ public:
 	float OpponentCullCheckInterval = 0.2f;
 
 	float TimeSinceLastOpponentCullCheck = 0.0f;
+
+	//~ ---------------- 암전 명멸 연출 (Vision.Blackout) ----------------
+
+	/** 암전 명멸 주기(초). 이 주기마다 한 번씩 화면이 완전히 어두워진다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutPeriod = 5.0f;
+
+	/** 주기 안에서 완전 암전 상태가 유지되는 시간(초). BlackoutPeriod 보다 작아야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutFlashDuration = 1.0f;
 
 	//~ ---------------- 시야각 축소 연출 (Vision.NarrowFOV) ----------------
 	//~ 실제 카메라 FOV는 더 이상 건드리지 않는다 — 화면 테두리를 검게 좁히는 별도 PP 머티리얼로 대체.
