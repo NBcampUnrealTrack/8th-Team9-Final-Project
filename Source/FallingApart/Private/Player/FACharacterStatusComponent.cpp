@@ -48,10 +48,10 @@ void UFACharacterStatusComponent::BeginPlay()
 
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
-		const FAGameplayTags& Tags = FAGameplayTags::Get();
-		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_Freeze, EGameplayTagEventType::NewOrRemoved)
+		const FGameplayTag FreezeRuleTag = FAGameplayTags::Get().Rule_Move_Freeze;
+		ASC->RegisterGameplayTagEvent(FreezeRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleFreezeRuleChanged);
-		HandleFreezeRuleChanged(Tags.Rule_Move_Freeze, ASC->GetTagCount(Tags.Rule_Move_Freeze));
+		HandleFreezeRuleChanged(FreezeRuleTag, ASC->GetTagCount(FreezeRuleTag));
 
 		const FGameplayTag KnockbackTag = FAGameplayTags::Get().Rule_State_Knockback;
 		ASC->RegisterGameplayTagEvent(KnockbackTag, EGameplayTagEventType::NewOrRemoved)
