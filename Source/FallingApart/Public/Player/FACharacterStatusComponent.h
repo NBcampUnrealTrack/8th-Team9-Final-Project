@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "GameplayEffectTypes.h"
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
@@ -11,6 +12,7 @@ class AFACharacter;
 class UPrimitiveComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class UAnimMontage;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
 struct FGameplayTag;
 
@@ -37,8 +39,68 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	void UpdatePhantomAudio(float DeltaTime);
+
+	/** DT_Sound_Character의 발소리 RowName. 기존 음량·피치·감쇠 설정을 사용한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom")
+	TArray<FName> PhantomFootstepSoundIds = { FName(TEXT("Foot_Human_Run")) };
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomMinInterval = 3.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomMaxInterval = 7.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
+	float PhantomMinDistance = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
+	float PhantomMaxDistance = 50.0f;
+
+	// 로컬 소유권이 늦게 도착해도 Tick에서 시작하고, 룰 제거/소유권 상실 시 초기화한다.
+	float PhantomTimeRemaining = -1.0f;
+	// 한 번 발동하면 세 개의 가상 위치에서 4~7초 동안 반복 재생한다.
+	TArray<float> PhantomBurstRemainings;
+	TArray<float> PhantomBurstStartDelays;
+	TArray<float> PhantomBurstStepTimers;
+	TArray<FVector> PhantomBurstLocations;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMinDuration = 4.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMaxDuration = 7.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMinStepInterval = 0.1f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMaxStepInterval = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
+	float PhantomMinVolumeMultiplier = 3.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
+	float PhantomMaxVolumeMultiplier = 4.5f;
+
+	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);
+	void ScanFreezeTargets();
+	void ClearFreeze();
+
+	/** 에디터에서 만든 경직 GE. Has Duration 0.8초, Granted Tag = State.Stunned로 설정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Freeze")
+	TSubclassOf<UGameplayEffect> FreezeStunEffect;
+
+	FTimerHandle FreezeDetectionTimerHandle;
+	TSet<TWeakObjectPtr<AFACharacter>> PreviousFreezeTargets;
+	FActiveGameplayEffectHandle FreezeEffectHandle;
+
 	/** Z41 태그가 있을 때만 기존 캡슐의 Hit 이벤트를 연결한다. */
 	void HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount);
+
+	/** 서버에서 판정한 Z41 반발 몽타주를 모든 클라이언트에서 재생한다. */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayKnockbackMontage();
 
 	/** Z41: 기존 캡슐의 blocking Hit에서 인간 접촉을 판정한다. */
 	UFUNCTION()
@@ -54,6 +116,10 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.05", Units = "s"))
 	float KnockbackInterval = 0.5f;
+
+	/** Z41 반발이 발생할 때 재생할 몽타주. BP_FACharacter에서 새 몽타주를 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback")
+	TObjectPtr<UAnimMontage> KnockbackMontage;
 
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);

@@ -570,7 +570,7 @@ void UFAAudioSubsystem::PlaySound(FName SoundId)
 		Row->Concurrency.LoadSynchronous(), /*OwningActor=*/nullptr, /*bIsUISound=*/true);
 }
 
-void UFAAudioSubsystem::PlaySoundAtLocation(FName SoundId, FVector Location)
+void UFAAudioSubsystem::PlaySoundAtLocation(FName SoundId, FVector Location, float VolumeMultiplier)
 {
 	const FFASoundRow* Row = nullptr;
 	USoundBase* Sound = nullptr;
@@ -586,7 +586,7 @@ void UFAAudioSubsystem::PlaySoundAtLocation(FName SoundId, FVector Location)
 		: Row->Attenuation.LoadSynchronous();
 
 	UGameplayStatics::PlaySoundAtLocation(GetWorld(), Sound, Location, FRotator::ZeroRotator,
-		Row->VolumeMultiplier, Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous());
+		Row->VolumeMultiplier * FMath::Max(0.0f, VolumeMultiplier), Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous());
 }
 
 UAudioComponent* UFAAudioSubsystem::PlaySoundAttached(FName SoundId, USceneComponent* AttachTo)
