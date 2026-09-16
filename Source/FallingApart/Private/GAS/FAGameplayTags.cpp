@@ -61,6 +61,7 @@ void FAGameplayTags::AddAllTags()
 	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
 	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
 	State_Exposed		= AddTag(TEXT("State.Exposed"),		  TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
+	State_Vision_Blind  = AddTag(TEXT("State.Vision.Blind"),  TEXT("일시적인 완전 암전 상태"));
 
 	//~ 룰 - Trade
 	Rule_Trade_MutualSight = AddTag(TEXT("Rule.Trade.MutualSight"), TEXT("H48/Z48 상호 투시 — 상대 위치 표시 및 내 위치 노출"));
@@ -98,10 +99,12 @@ void FAGameplayTags::AddAllTags()
 	Rule_Bite_RangedDown = AddTag(TEXT("Rule.Bite.RangedDown"), TEXT("Z27 짧은 팔 — 포획 사거리 2.0m → 1.2m"));
 	Rule_Bite_FailStun = AddTag(TEXT("Rule.Bite.FailStun"), TEXT("Z28 빗나감 — 포획 실패 시 5초 경직"));
 	Rule_Bite_RootedGrab = AddTag(TEXT("Rule.Bite.RootedGrab"), TEXT("Z29 고정 턱 — 포획 중 완전 이동 불가"));
-	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));
+	Rule_Bite_RescueStun = AddTag(TEXT("Rule.Bite.RescueStun"), TEXT("Z30 구조 트라우마 — QTE 패배 시 8초 기절"));\
+	Rule_Bite_BlindAfter = AddTag(TEXT("Rule.Bite.BlindAfter"), TEXT("Z32 포식 후 실명 — 감염 성공 후 5초 암전"));
 	Rule_Bite_Cooldown = AddTag(TEXT("Rule.Bite.Cooldown"), TEXT("Z33 재장전 — 포획 쿨타임 8초"));
 
 	//~ 룰 - Social
+	Rule_Social_ForceNoise = AddTag(TEXT("Rule.Social.ForceNoise"), TEXT("Z34 신음 강박 — 3초마다 자동으로 큰 소리 발생"));
 	Rule_Social_Exposed = AddTag(TEXT("Rule.Social.Exposed"), TEXT("Z38 상시 표적 — 내 위치가 인간 전원에게 상시 표시"));
 	Rule_Social_Repel = AddTag(TEXT("Rule.Social.Repel"), TEXT("Z39 좀비 혐오 — 가까운 좀비와 3m 이내 시 이속 -40%"));
 	State_Social_Repel = AddTag(TEXT("State.Social.Repel"), TEXT("Z39 좀비 혐오 — 3m 이내 조건 충족 상태"));
@@ -133,6 +136,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Move_CrouchOnly = AddTag(TEXT("Rule.Move.CrouchOnly"), TEXT("H07 웅크린 상태로만 이동"));
 	Rule_Move_Burden = AddTag(TEXT("Rule.Move.Burden"), TEXT("H11 이동속도-25%,점프높이 -40%"));
 	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));
+	Rule_Move_NoisyJump = AddTag(TEXT("Rule.Move.NoisyJump"), TEXT("H13 삐걱대는 무릎 — 점프 시 반경 25m에 소음 발생."));
 
 	//~ 룰 - Rescue
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));

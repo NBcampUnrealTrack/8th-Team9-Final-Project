@@ -121,6 +121,11 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this, &ThisClass::HandleTrailRuleChanged);
 		HandleTrailRuleChanged(TrailRuleTag, ASC->GetTagCount(TrailRuleTag));
 
+		const FGameplayTag ForceNoiseRuleTag = FAGameplayTags::Get().Rule_Social_ForceNoise;
+		ASC->RegisterGameplayTagEvent(ForceNoiseRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleForceNoiseRuleChanged);
+		HandleForceNoiseRuleChanged(ForceNoiseRuleTag, ASC->GetTagCount(ForceNoiseRuleTag));
+
 		const FGameplayTag DecayTag = FAGameplayTags::Get().Rule_State_Decay;
 		ASC->RegisterGameplayTagEvent(DecayTag, EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &ThisClass::HandleDecayRuleChanged);
@@ -135,29 +140,31 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Knockback,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Knockback,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Input_FlipLR,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
-				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_WallPhase,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_Ghost,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_WallPhase,
 		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Hidden,
+		ASC->RegisterGameplayTagEvent(Tags.State_Hidden,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_SecondLife,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_SecondLife,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Speed,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Gamble_Speed,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Recall,
-		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Heartbeat,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Recall,
+		    EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Heartbeat,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Trail,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Trail,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Decay,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Social_ForceNoise,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Decay,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_Freeze,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -168,7 +175,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	ClearGambleSpeed();
 	ClearRecall();
 	StopHeartbeatDetection();
-	// 저게서
 	SetGhostVisualActive(false);
 	GhostDynamicMaterials.Reset();
 
@@ -177,6 +183,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 		OwnerCharacter->LandedDelegate.RemoveDynamic(this,&ThisClass::HandleLanded);
 		OwnerCharacter->GetCapsuleComponent()->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
 	}
+
+	ClearForcedNoise();
 	ClearDecay();
 	Super::EndPlay(EndPlayReason);
 }
@@ -277,7 +285,7 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
 	UpdatePhantomAudio(DeltaTime);
 	if (!OwnerCharacter)
-	{ 
+	{
 		return;
 	}
 
@@ -1364,6 +1372,64 @@ void UFACharacterStatusComponent::ClearRecall()
 	{
 		// 귀환 태그가 제거되거나 캐릭터가 종료될 때 반복 타이머를 정리한다.
 		World->GetTimerManager().ClearTimer(RecallTimerHandle);
+	}
+}
+
+void UFACharacterStatusComponent::HandleForceNoiseRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	// 반복 소음은 서버에서만 관리한다.
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	ClearForcedNoise();
+
+	if (NewCount <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// 첫 소음은 3초 뒤, 이후 3초마다 반복.
+	World->GetTimerManager().SetTimer(ForceNoiseTimerHandle, this, &ThisClass::PlayForcedNoise, ForceNoiseInterval, true);
+}
+
+void UFACharacterStatusComponent::PlayForcedNoise()
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		ClearForcedNoise();
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+
+	if (!ASC || !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Social_ForceNoise))
+	{
+		ClearForcedNoise();
+		return;
+	}
+
+	AFACharacter* FACharacter = Cast<AFACharacter>(OwnerCharacter);
+	if (!FACharacter)
+	{
+		return;
+	}
+
+	FACharacter->Multicast_PlayFASoundAtLocation(ForceNoiseSoundId);
+}
+
+void UFACharacterStatusComponent::ClearForcedNoise()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ForceNoiseTimerHandle);
 	}
 }
 
