@@ -12,9 +12,9 @@
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerState.h"
-#include "Misc/Base64.h"
 #include "UI/FASessionEntryWidget.h"
 #include "UI/FAUIMessageSubsystem.h"
+#include "Utils/FASessionTextCodec.h"
 
 namespace FASessionJoinAudio
 {
@@ -24,25 +24,6 @@ namespace FASessionJoinAudio
 	/** 목록이 채워졌을 때 / 한 방도 못 찾았을 때. */
 	static const FName Success(TEXT("UI_Success"));
 	static const FName Denied(TEXT("UI_Denied"));
-}
-
-namespace
-{
-	const FName SessionNameSettingKey(TEXT("SERVER_NAME"));
-	const FString SessionTextPrefix(TEXT("B64:"));
-
-	FString DecodeSessionText(const FString& StoredText)
-	{
-		if (!StoredText.StartsWith(SessionTextPrefix))
-		{
-			return StoredText;
-		}
-
-		FString DecodedText;
-		return FBase64::Decode(StoredText.RightChop(SessionTextPrefix.Len()), DecodedText)
-			? DecodedText
-			: StoredText;
-	}
 }
 
 bool UFASessionJoinWidget::Initialize()
@@ -126,13 +107,14 @@ bool UFASessionJoinWidget::DoesSessionTitleMatchSearch(
 		return true;
 	}
 
+	static const FName SessionNameSettingKey(TEXT("SERVER_NAME"));
 	FString StoredSessionName;
 	if (!SessionResult.Session.SessionSettings.Get(SessionNameSettingKey, StoredSessionName))
 	{
 		return false;
 	}
 
-	return DecodeSessionText(StoredSessionName).Contains(NormalizedSearchText, ESearchCase::IgnoreCase);
+	return FFASessionTextCodec::Decode(StoredSessionName).Contains(NormalizedSearchText, ESearchCase::IgnoreCase);
 }
 
 void UFASessionJoinWidget::HandleSessionSearchTextChanged(const FText& Text)
