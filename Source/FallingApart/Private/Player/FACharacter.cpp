@@ -43,6 +43,7 @@ namespace FACharacterAudio
 	static const FName CrouchIn(TEXT("Crouch_In"));
 	static const FName CrouchOut(TEXT("Crouch_Out"));
 	static const FName JumpStart(TEXT("Jump_Start"));
+	static const FName JumpNoisy(TEXT("Jump_Noisy")); // H13 삐걱대는 무릎
 	static const FName JumpLand(TEXT("Jump_Land"));
 	static const FName LandHeavy(TEXT("Land_Heavy"));
 	static const FName GrowlZombieLoop(TEXT("Growl_Zombie_Loop"));
@@ -1339,7 +1340,10 @@ void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 P
 		// 위로 솟는 속도가 있으면 스스로 뛴 것.
 		if (Movement && Movement->Velocity.Z > JumpDetectSpeed)
 		{
-			Audio->PlaySoundAtLocation(FACharacterAudio::JumpStart, GetActorLocation());
+			// H13 룰 카드 확인
+			const bool bNoisyJump = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Move_NoisyJump);
+			const FName JumpSoundId = bNoisyJump ? FACharacterAudio::JumpNoisy : FACharacterAudio::JumpStart;
+			Audio->PlaySoundAtLocation(JumpSoundId, GetActorLocation());
 		}
 		return;
 	}
@@ -1350,8 +1354,7 @@ void AFACharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 P
 		const bool bHeavy = PeakFallSpeed >= HeavyLandSpeed;
 		PeakFallSpeed = 0.0f;
 
-		Audio->PlaySoundAtLocation(bHeavy ? FACharacterAudio::LandHeavy : FACharacterAudio::JumpLand,
-			GetActorLocation());
+		Audio->PlaySoundAtLocation(bHeavy ? FACharacterAudio::LandHeavy : FACharacterAudio::JumpLand, GetActorLocation());
 	}
 }
 
@@ -1928,6 +1931,7 @@ void AFACharacter::UpdateVisionEffects()
 	const bool bForceFirstPerson = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_ForceFPS);
 	const bool bDesaturate = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Desaturate);
 	const bool bBlackout = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_Blackout);
+	const bool bForcedBlind = AbilitySystemComponent->HasMatchingGameplayTag(FATags.State_Vision_Blind); // [Z32 포식 후 실명]
 	const bool bNoAlly = AbilitySystemComponent->HasMatchingGameplayTag(FATags.Rule_Vision_NoAlly); // [H24 고독]
 
 	// 시야각 축소 (Vision.NarrowFOV) — 카메라 실제 FOV는 더 이상 건드리지 않는다.
@@ -2014,7 +2018,11 @@ void AFACharacter::UpdateVisionEffects()
 	// 명멸/암전 (Vision.Blackout) — GE 는 태그만 부여. 주기적인 깜빡임은 여기서 직접 계산한다.
 	// 주기·지속시간은 BlackoutPeriod/BlackoutFlashDuration(Class Defaults)에서 튜닝한다.
 	float BlackoutAmount = 0.0f;
-	if (bBlackout && GetWorld())
+	if (bForcedBlind) // Z32 포식 후 실명 — 5초간 계속 완전 암전
+	{
+		BlackoutAmount = 1.0f;
+	}
+	else if (bBlackout && GetWorld()) // Vision.Blackout — 주기적인 명멸
 	{
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
 		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
