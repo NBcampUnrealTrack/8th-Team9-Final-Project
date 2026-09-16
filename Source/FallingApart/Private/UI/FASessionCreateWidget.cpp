@@ -8,6 +8,9 @@
 #include "Components/EditableText.h"
 #include "Components/SpinBox.h"
 #include "GameFramework/PlayerState.h"
+#include "UI/FAUIMessageSubsystem.h"
+
+#define LOCTEXT_NAMESPACE "FASessionCreateWidget"
 
 namespace FASessionCreateAudio
 {
@@ -43,11 +46,48 @@ void UFASessionCreateWidget::SubmitCreateRequest()
 {
 	FFASessionCreateRequest Request;
 	Request.MaxConnections = GetMaxConnections();
-	Request.ServerName = GetSessionName().TrimStartAndEnd();
+	Request.ServerName = GetSessionName();
 	Request.Password = GetPasswordString();
 	Request.Nickname = GetNickname();
+
+	FText ValidationError;
+	if (!ValidateCreateRequest(Request, ValidationError))
+	{
+		UFAUIMessageSubsystem::ShowMessage(
+			this,
+			LOCTEXT("InvalidCreateRequestTitle", "입력 오류"),
+			ValidationError);
+		return;
+	}
 	
 	OnCreateSessionRequested.Broadcast(Request);
+}
+
+bool UFASessionCreateWidget::ValidateCreateRequest(FFASessionCreateRequest& Request, FText& OutErrorMessage)
+{
+	Request.ServerName = Request.ServerName.TrimStartAndEnd();
+	Request.Nickname = Request.Nickname.TrimStartAndEnd();
+
+	if (Request.ServerName.IsEmpty())
+	{
+		OutErrorMessage = LOCTEXT("SessionNameRequired", "방 제목을 입력해주세요.");
+		return false;
+	}
+
+	if (Request.Password.Len() < 4)
+	{
+		OutErrorMessage = LOCTEXT("PasswordTooShort", "비밀번호는 4자 이상 입력해주세요.");
+		return false;
+	}
+
+	if (Request.Nickname.TrimStartAndEnd().Len() < 2)
+	{
+		OutErrorMessage = LOCTEXT("NicknameTooShort", "닉네임은 2자 이상 입력해주세요.");
+		return false;
+	}
+
+	OutErrorMessage = FText::GetEmpty();
+	return true;
 }
 
 FString UFASessionCreateWidget::GetSessionName() const
@@ -73,3 +113,5 @@ void UFASessionCreateWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 }
+
+#undef LOCTEXT_NAMESPACE

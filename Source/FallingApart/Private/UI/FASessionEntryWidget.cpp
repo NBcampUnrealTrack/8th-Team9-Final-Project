@@ -5,7 +5,6 @@
 
 #include "Audio/FAAudioSubsystem.h"
 #include "OnlineSessionSettings.h"
-#include "OnlineSubsystemUtils.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
