@@ -15,11 +15,6 @@ namespace
 {
 	const FString SessionTextPrefix(TEXT("B64:"));
 
-	FString EncodeSessionText(const FString& Text)
-	{
-		return SessionTextPrefix + FBase64::Encode(Text);
-	}
-
 	FString DecodeSessionText(const FString& StoredText)
 	{
 		if (!StoredText.StartsWith(SessionTextPrefix))
