@@ -78,18 +78,25 @@ protected:
 	/** 포획 실패 시 적용할 Effect (경직) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<UGameplayEffect> FailStunEffectClass;
-	
+
 	/**
-  * Z50 확률 판정 실패 시 좀비에게 적용할 GE.
-  *
-  * 이 GE는 에디터에서 다음과 같이 설정한다.
-  *
-  * Duration Policy = Has Duration
-  * Duration = 20.0
-  * Granted Tag = State.Stunned
-  */
+	 * Z50 확률 판정 실패 시 좀비에게 적용할 GE.
+	 *
+	 * 이 GE는 에디터에서 다음과 같이 설정한다.
+	 *
+	 * Duration Policy = Has Duration
+	 * Duration = 20.0
+	 * Granted Tag = State.Stunned
+	 */
 	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="GAS|Effects|Gamble")
 	TSubclassOf<UGameplayEffect> PlagueFailStunEffectClass;
+
+	/**
+	 * Z32 포식 후 실명.
+	 * 감염 성공 시 감염자에게 5초간 State.Vision.Blind를 부여한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects|Bite")
+	TSubclassOf<UGameplayEffect> BlindAfterEffectClass;
 
 	/**
 	 * 인질이 최대로 저항했을 때 감염 시간이 몇 배로 늘어나는가.
@@ -129,7 +136,7 @@ private:
 
 	/** 진행도가 1 에 닿았다. 진영 전환·점수·연속 드래프트는 게임모드가 맡는다. */
 	void CompleteInfection();
-	
+
 	// GameMode, 1차 피해자, 감염자는 함수 내부에서 가져온다.
 	void ResolvePlagueGamble();
 
@@ -151,7 +158,7 @@ private:
 
 	/** 저항이 0 일 때의 감염 시간(초). 포획 시작 시 InfectDuration Attribute 에서 받아 둔다. */
 	float BaseInfectDuration = 0.0f;
-	
+
 	/**
 	 * 최대 저항 시 감염 시간 배율.
 	 *

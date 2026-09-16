@@ -5,37 +5,11 @@
 
 #include "Audio/FAAudioSubsystem.h"
 #include "OnlineSessionSettings.h"
-#include "OnlineSubsystemUtils.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Network/FAOnlineSessionSubsystem.h"
-#include "Misc/Base64.h"
-
-namespace
-{
-	const FString SessionTextPrefix(TEXT("B64:"));
-
-	FString EncodeSessionText(const FString& Text)
-	{
-		return SessionTextPrefix + FBase64::Encode(Text);
-	}
-
-	FString DecodeSessionText(const FString& StoredText)
-	{
-		if (!StoredText.StartsWith(SessionTextPrefix))
-		{
-			return StoredText; // 기존 영문 세션 호환
-		}
-
-		FString DecodedText;
-		const FString Payload = StoredText.RightChop(SessionTextPrefix.Len());
-
-		return FBase64::Decode(Payload, DecodedText)
-			? DecodedText
-			: StoredText;
-	}
-}
+#include "Utils/FASessionTextCodec.h"
 
 namespace FASessionEntryAudio
 {
@@ -75,7 +49,7 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 		&& SessionTitleText)
 	{
 		SessionTitleText->SetText(
-			FText::FromString(DecodeSessionText(StoredServerName)));
+			FText::FromString(FFASessionTextCodec::Decode(StoredServerName)));
 	}
 
 	FString StoredHostNickname;
@@ -83,7 +57,7 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 		&& SessionHostNicknameText)
 	{
 		SessionHostNicknameText->SetText(
-			FText::FromString(DecodeSessionText(StoredHostNickname)));
+			FText::FromString(FFASessionTextCodec::Decode(StoredHostNickname)));
 	}
 	
 	// 이전 버전의 방처럼 커스텀 값이 없으면 기존 빈자리 계산으로 대체한다.

@@ -100,7 +100,7 @@ bool UFACharacterMovementComponent::IsUsingFirstPersonFacing() const
 {
 	if (!bFirstPersonFacingForMove || !HasValidData() || !CharacterOwner->GetController()
 		|| CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy || CharacterOwner->IsHidden()
-		|| !(IsMovingOnGround() || IsFalling()))
+		|| !(IsMovingOnGround() || IsFalling() || IsSwimming()))
 	{
 		return false;
 	}
