@@ -7,6 +7,7 @@
 #include "AbilitySystemInterface.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Audio/FAAudioSubsystem.h"
+#include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음] 실제 오디오 처리는 청취 클래스에 맡긴다.
 #include "GameFramework/Character.h"
 #include "GameplayEffect.h"
 #include "GAS/FAGameplayTags.h"
@@ -131,6 +132,12 @@ void UFACharacterStatusComponent::BeginPlay()
 		.AddUObject(this, &ThisClass::HandleDecayRuleChanged);
 
 		HandleDecayRuleChanged(DecayTag, ASC->GetTagCount(DecayTag));
+
+		// [Z22 귀먹음] 태그 변경을 등록하고 이미 적용된 룰도 초기 반영한다.
+		const FGameplayTag DeafRuleTag = FAGameplayTags::Get().Rule_Audio_Deaf;
+		ASC->RegisterGameplayTagEvent(DeafRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleDeafRuleChanged);
+		HandleDeafRuleChanged(DeafRuleTag, ASC->GetTagCount(DeafRuleTag));
 	}
 }
 
@@ -140,6 +147,9 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
+		// [Z22 귀먹음] 다른 룰과 동일하게 종료 시 태그 이벤트 연결을 해제한다.
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Deaf,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Knockback,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Input_FlipLR,
@@ -187,6 +197,22 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	ClearForcedNoise();
 	ClearDecay();
 	Super::EndPlay(EndPlayReason);
+}
+
+// [Z22 귀먹음] 룰 실행 진입점은 Status에 두고, 볼륨 적용은 공통 클래스를 재사용한다.
+void UFACharacterStatusComponent::HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	(void)NewCount;
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
+	{
+		// 콜백 인자 대신 현재 ASC 상태를 확인해 초기 적용과 중첩 해제를 함께 처리한다.
+		Hearing->UpdateHearingState();
+	}
 }
 
 void UFACharacterStatusComponent::HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount)
@@ -373,8 +399,7 @@ void UFACharacterStatusComponent::UpdatePhantomAudio(float DeltaTime)
 					PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
 						+ FVector(FMath::Cos(NewAngle), FMath::Sin(NewAngle), 0.0f) * NewDistance;
 					PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-					PhantomBurstStepTimers[Index] = FMath::FRandRange(
-						BurstMinStepInterval, BurstMaxStepInterval);
+					PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
 					bAnyEmitterActive = true;
 				}
 				continue;

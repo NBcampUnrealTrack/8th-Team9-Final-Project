@@ -47,6 +47,8 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Audio
 	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("Z23 환청 — 가짜 발소리를 로컬에서 랜덤 재생."));
+	// [Z22 귀먹음 추가] 청취 서브시스템에서 조회할 공통 태그를 등록한다.
+	Rule_Audio_Deaf = AddTag(TEXT("Rule.Audio.Deaf"), TEXT("Z22 귀먹음 — 발소리와 수신 음성 차단."));
 
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
