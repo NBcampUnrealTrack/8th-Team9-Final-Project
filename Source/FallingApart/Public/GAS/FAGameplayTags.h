@@ -126,6 +126,9 @@ public:
 	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
 	FGameplayTag State_Hiding;
 
+	/** 일시적인 완전 암전 상태 */
+	FGameplayTag State_Vision_Blind;
+
 	//~ ========================= Group =========================
 
 	/* H34 무리 강박 . 가장 가까운 생존자와 15m 초과 시 이동속도 -40% */
@@ -210,10 +213,16 @@ public:
 	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
 	FGameplayTag Rule_Bite_RescueStun;
 
+	/** Z32 포식 후 실명 — 감염 성공 후 5초 암전 */
+	FGameplayTag Rule_Bite_BlindAfter;
+
 	/* Z33 재장전. 포획 쿨타임 8초 */
 	FGameplayTag Rule_Bite_Cooldown;
 
 	// Social
+	/** Z34 신음 강박 — 3초마다 자동으로 큰 소리 발생 */
+	FGameplayTag Rule_Social_ForceNoise;
+
 	/* Z38 상시 표적 . 내 위치 상시 노출 */
 	FGameplayTag Rule_Social_Exposed;
 
@@ -234,6 +243,7 @@ public:
 
 	/* Z44 유령. 반투명, 이동속도 -35% */
 	FGameplayTag Rule_Trade_Ghost;
+
 	// ~ ====== State
 	// * H36 뿌리내림 /  */
 	FGameplayTag Rule_State_Camp;
@@ -267,6 +277,9 @@ public:
 	FGameplayTag Rule_Move_Burden;
 
 	FGameplayTag Rule_Move_SlowTurn;
+
+	/** H13 삐걱대는 무릎 — 점프 소리가 반경 25m까지 들림 */
+	FGameplayTag Rule_Move_NoisyJump;
 
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
