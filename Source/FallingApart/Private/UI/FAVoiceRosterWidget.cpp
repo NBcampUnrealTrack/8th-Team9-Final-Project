@@ -5,6 +5,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/CheckBox.h"
+#include "Components/EditableText.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/PanelWidget.h"
@@ -16,6 +17,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "SettingsKitMenuWidget.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
@@ -76,6 +78,18 @@ void UFAVoiceRosterEntryWidget::NativeConstruct()
 		Slider_Volume->OnValueChanged.AddUniqueDynamic(this, &UFAVoiceRosterEntryWidget::HandleVolumeChanged);
 	}
 
+	// 값 칸이 EditableText 면 직접 입력(0~200). 재구성 때 이전 연결부터 뗀다.
+	if (VolumeFieldBinding)
+	{
+		VolumeFieldBinding->Unbind();
+		VolumeFieldBinding = nullptr;
+	}
+	if (Slider_Volume && Text_VolumeValue)
+	{
+		VolumeFieldBinding = NewObject<USKValueFieldBinding>(this);
+		VolumeFieldBinding->Init(Slider_Volume, Text_VolumeValue, 100.f, 0);
+	}
+
 	if (Check_Mute)
 	{
 		Check_Mute->OnCheckStateChanged.RemoveAll(this);
@@ -119,7 +133,24 @@ void UFAVoiceRosterEntryWidget::RefreshFromSettings()
 
 	if (Text_VolumeValue)
 	{
-		Text_VolumeValue->SetText(bMuted ? LOCTEXT("Muted", "음소거") : FText::AsPercent(Volume));
+		// 음소거 중에는 슬라이더처럼 값 칸도 막는다 — 안내 문구를 숫자로 고쳐 쓰지 못하게.
+		Text_VolumeValue->SetIsEnabled(!bMuted);
+		if (VolumeFieldBinding)
+		{
+			if (bMuted)
+			{
+				VolumeFieldBinding->SetStatusText(LOCTEXT("Muted", "음소거"));
+			}
+			else
+			{
+				VolumeFieldBinding->SetDisplayedValue(Volume);
+			}
+		}
+		else
+		{
+			USKValueFieldBinding::SetWidgetText(Text_VolumeValue,
+				bMuted ? LOCTEXT("Muted", "음소거") : USKValueFieldBinding::FormatValue(Volume, 100.f, 0));
+		}
 	}
 
 	if (Check_Mute)
@@ -141,9 +172,13 @@ void UFAVoiceRosterEntryWidget::HandleVolumeChanged(float NewValue)
 		VoiceSettings->SetPlayerVolume(PlayerKey, NewValue);
 	}
 
-	if (Text_VolumeValue)
+	if (VolumeFieldBinding)
 	{
-		Text_VolumeValue->SetText(FText::AsPercent(NewValue));
+		VolumeFieldBinding->SetDisplayedValue(NewValue);
+	}
+	else if (Text_VolumeValue)
+	{
+		USKValueFieldBinding::SetWidgetText(Text_VolumeValue, USKValueFieldBinding::FormatValue(NewValue, 100.f, 0));
 	}
 }
 
@@ -183,8 +218,15 @@ void UFAVoiceRosterEntryWidget::BuildFallbackRow()
 		SliderSlot->SetPadding(FMargin(0.f, 2.f, 8.f, 2.f));
 	}
 
-	Text_VolumeValue = FAVoiceRosterUI::MakeText(WidgetTree, FText::GetEmpty(), 12, FAVoiceRosterUI::LabelColor);
-	Text_VolumeValue->SetMinDesiredWidth(56.f);
+	// 값 칸은 직접 입력이 되도록 EditableText 로 만든다.
+	UEditableText* VolumeField = WidgetTree->ConstructWidget<UEditableText>(UEditableText::StaticClass());
+	FEditableTextStyle VolumeStyle = VolumeField->WidgetStyle;
+	VolumeStyle.Font.Size = 12;
+	VolumeStyle.SetColorAndOpacity(FSlateColor(FAVoiceRosterUI::LabelColor));
+	VolumeField->SetWidgetStyle(VolumeStyle);
+	VolumeField->SetMinimumDesiredWidth(56.f);
+	VolumeField->SetJustification(ETextJustify::Right);
+	Text_VolumeValue = VolumeField;
 	if (UHorizontalBoxSlot* ValueSlot = Row->AddChildToHorizontalBox(Text_VolumeValue))
 	{
 		ValueSlot->SetVerticalAlignment(VAlign_Center);

@@ -10,6 +10,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
+#include "Components/EditableText.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -92,7 +93,7 @@ UVerticalBox* USKSettingsMenuWidget::MakeFallbackTab(UWidgetSwitcher* Switcher, 
 	return Column;
 }
 
-USlider* USKSettingsMenuWidget::AddFallbackSlider(UVerticalBox* Column, const FText& Label, float Min, float Max, TObjectPtr<UTextBlock>& OutValueLabel)
+USlider* USKSettingsMenuWidget::AddFallbackSlider(UVerticalBox* Column, const FText& Label, float Min, float Max, TObjectPtr<UWidget>& OutValueLabel)
 {
 	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 
@@ -113,9 +114,15 @@ USlider* USKSettingsMenuWidget::AddFallbackSlider(UVerticalBox* Column, const FT
 		SliderSlot->SetPadding(FMargin(12.f, 0.f));
 	}
 
-	OutValueLabel = MakeFallbackText(FText::GetEmpty(), 14, SKFallback::LabelColor);
-	OutValueLabel->SetMinDesiredWidth(48.f);
-	OutValueLabel->SetJustification(ETextJustify::Right);
+	// 값 칸은 직접 입력이 되도록 EditableText 로 만든다.
+	UEditableText* ValueField = WidgetTree->ConstructWidget<UEditableText>(UEditableText::StaticClass());
+	FEditableTextStyle ValueStyle = ValueField->WidgetStyle;
+	ValueStyle.SetFont(FCoreStyle::GetDefaultFontStyle("Regular", 14));
+	ValueStyle.SetColorAndOpacity(FSlateColor(SKFallback::LabelColor));
+	ValueField->SetWidgetStyle(ValueStyle);
+	ValueField->SetMinimumDesiredWidth(48.f);
+	ValueField->SetJustification(ETextJustify::Right);
+	OutValueLabel = ValueField;
 	if (UHorizontalBoxSlot* ValueSlot = Row->AddChildToHorizontalBox(OutValueLabel))
 	{
 		ValueSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
@@ -307,7 +314,7 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		// 세부 화질은 0~3 단계라 옆에 숫자를 붙여도 읽히지 않는다. 라벨은 만들되 감춘다.
 		auto AddQualitySlider = [this, Tab](const FText& Label) -> USlider*
 		{
-			TObjectPtr<UTextBlock> HiddenLabel = nullptr;
+			TObjectPtr<UWidget> HiddenLabel = nullptr;
 			USlider* Slider = AddFallbackSlider(Tab, Label, 0.f, 3.f, HiddenLabel);
 			Slider->SetStepSize(1.f);
 			Slider->MouseUsesStep = true;
