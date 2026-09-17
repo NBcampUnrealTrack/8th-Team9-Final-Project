@@ -2,6 +2,7 @@
 #include "GAS/FAGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "Player/FACharacter.h"
+#include "GAS/Abilities/FAGA_RescueContest.h"
 
 namespace FAContestAudio
 {
@@ -63,11 +64,11 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	switch (Role)
 	{
 	case EFAContestRole::Zombie:
-		ScoreDelta = -4.0f; // 좀비는 누를 때마다 게이지 감소
+		ScoreDelta = ZombieMashDelta; // 좀비는 누를 때마다 게이지 감소
 		break;
 
 	case EFAContestRole::Victim:
-		ScoreDelta = 1.0f; // 잡힌 인간
+		ScoreDelta = VictimMashDelta; // 잡힌 인간 — 감염 중이라 기여는 미미하다
 
 		// 인질만 몸부림 소리를 낸다 — 구조자 쪽에서 나면 누가 잡혀 있는지 헷갈린다.
 		// 연타 주기보다 훨씬 성기게 내보낸다.
@@ -83,7 +84,7 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		break;
 
 	case EFAContestRole::Rescuer:
-		ScoreDelta = 2.0f; // 구출하러 온 인간
+		ScoreDelta = RescuerMashDelta; // 구출하러 온 인간
 		break;
 
 	default:
@@ -102,6 +103,11 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(MashEffectClass);
 			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, ScoreDelta);
 			TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+
+			if (UFAGA_RescueContest* Contest = UFAGA_RescueContest::FindActiveInstance(TargetASC))
+			{
+				Contest->RecordMash(Role);
+			}
 		}
 	}
 
