@@ -39,10 +39,10 @@ void UFAHearingSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	UpdateHearingState();
 }
 
-// [Z22 귀먹음] 일반 효과음은 제외하고 현재 데이터의 발소리 ID만 분류한다.
 bool UFAHearingSubsystem::IsFootstepSound(FName SoundId)
 {
-	return SoundId.ToString().StartsWith(TEXT("Foot_")) || SoundId == FName(TEXT("Ladder_Step"));
+	return SoundId.ToString().
+	StartsWith(TEXT("Foot_")) || SoundId == FName(TEXT("Ladder_Step"));
 }
 
 UAudioComponent* UFAHearingSubsystem::TrackFootstep(FName SoundId, UAudioComponent* Component)
@@ -70,6 +70,7 @@ bool UFAHearingSubsystem::IsDeaf() const
 {
 	// 화자가 아닌 청취자의 현재 Pawn을 조회하여 관전/리스폰 이후에도 갱신한다.
 	const APlayerController* Controller = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	
 	APawn* Pawn = Controller && Controller->IsLocalController() ? Controller->GetPawn() : nullptr;
 	if (!IsValid(Pawn) || Pawn->IsActorBeingDestroyed())
 	{
