@@ -565,26 +565,6 @@ bool AFACharacter::ShouldShowRuleMarker() const
 	{
 		return false;
 	}
-
-	if (RuleMarkerCullDistance > 0.0f)
-	{
-		const UWorld* World = GetWorld();
-		const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
-		if (!LocalController)
-		{
-			return false;
-		}
-
-		FVector ViewLocation;
-		FRotator ViewRotation;
-		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-
-		if (FVector::DistSquared(ViewLocation, GetActorLocation()) > FMath::Square(RuleMarkerCullDistance))
-		{
-			return false;
-		}
-	}
-
 	return true;
 }
 
@@ -691,17 +671,21 @@ void AFACharacter::RefreshCustomDepth()
 	CharacterMesh->SetRenderInMainPass(!bSilhouetteOnly);
 }
 
-bool AFACharacter::ShouldShowOverheadWidget() const
+bool AFACharacter::ShouldShowOverheadWidget()
 {
+	//참고 : Local~ : 플레이어의 소유 / this, GetActor~ : 대상 캐릭터
+	
 	// 이름표, 이름 상단의 위젯이 보여야하는지 조건 체크.
 	// 가벼운 조건부터 체크하여, 무거운 라인트레이스를 마지막에 체크함.
 
 	//로컬에서 자신의 위젯을 보일 필요가 없음.
 	if (IsLocallyControlled() == true)
 	{
+		bRuleMarkerOccluded = true;
 		return false;
 	}
-
+	
+	
 	const UWorld* World = GetWorld();
 	const APlayerController* LocalController = World ? World->GetFirstPlayerController() : nullptr;
 
@@ -711,30 +695,86 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 	FVector FootLocation = GetActorLocation() + FVector(0.0f, 0.0f, -70.0f);
 	if (LocalController)
 	{
+		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
+		
+		//특수 룰카드 존재 체크
+		if (LocalCharacter 
+			&& LocalCharacter->GetAbilitySystemComponent() )
+		{
+			//H45 은둔의 반투명 상태 / Z44 유령의 반투명 상태. 
+			if (this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().State_Hidden)
+				|| this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost))
+			{
+				if (this->LastKnownTeam != LocalCharacter->LastKnownTeam)
+				{
+					bRuleMarkerOccluded = true;
+					return false;
+				}
+			}
+			
+			//H24 고독 / Z37 고립, 같은 팀원이 보이지 않음.
+			if (LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_NoAlly))
+			{
+				if (this->LastKnownTeam == LocalCharacter->LastKnownTeam)
+				{
+					bRuleMarkerOccluded = true;
+					return false;
+				}
+			}
+			
+			//H23 투명한 적. 내가 생존자일때, 좀비가 보이지 않음.
+			if (LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_NoZombie))
+			{
+				if (this->LastKnownTeam == EFATeam::Zombie 
+					&& LocalCharacter->LastKnownTeam == EFATeam::Human)
+				{
+					bRuleMarkerOccluded = true;
+					return false;
+				}
+			}
+			
+		}
+		
 		// 거리 제한, 룰마커와 동일한 거리값을 임시로 사용.
 		FVector ViewLocation;
 		FRotator ViewRotation;
 		LocalController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 
-		//안개 디버프 먹었을때 제한할 필요가 있음.
-		AFACharacter* LocalCharacter = Cast<AFACharacter>(LocalController->GetCharacter());
-		float CullDistance = 4000.f;
+		//Z18 안개 / H19 안개 보이는 거리 제한.
+		float CullDistance = OverheadWidgetCullDistance;
 		if (LocalCharacter && LocalCharacter->GetAbilitySystemComponent() &&
 			LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Fog))
 		{
+			//시야 제한 거리를 가져올 데이터가 있다면 여기 변경.
 			CullDistance = 800.f;
 		}
 
 		if (FVector::DistSquared(ViewLocation, NameLocation) > FMath::Square(CullDistance))
 		{
+			bRuleMarkerOccluded = true;
 			return false;
 		}
 
-		//이름표가 보일 시야각의 제한, 임시 90도 사용.
+		//이름표가 보일 시야각의 제한, 기본은 90
+		float PlayerFOV = 90.f;
+		if (LocalCharacter && LocalCharacter->GetAbilitySystemComponent())
+		{
+			if (LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_NarrowFOV))
+			{
+				PlayerFOV -= 35.f;
+			}
+			if (LocalCharacter->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_ForceFPS))
+			{
+				PlayerFOV -= 10.f;
+			}
+		}
+		
 		const FVector ToTarget = (NameLocation - ViewLocation).GetSafeNormal();
 		const FVector CameraForward = ViewRotation.Vector();
-		if (FVector::DotProduct(CameraForward, ToTarget) < FMath::Cos(FMath::DegreesToRadians(90.0f/2)))
+		if (FVector::DotProduct(CameraForward, ToTarget) 
+			< FMath::Cos(FMath::DegreesToRadians(PlayerFOV/2)))
 		{
+			bRuleMarkerOccluded = true;
 			return false;
 		}
 
@@ -743,6 +783,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		if (!LocalController->ProjectWorldLocationToScreen(
 				NameLocation, ScreenPosition, false))
 		{
+			bRuleMarkerOccluded = true;
 			return false;
 		}
 
@@ -762,6 +803,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 
 		if (!bInsideSafeArea)
 		{
+			bRuleMarkerOccluded = true;
 			return false;
 		}
 
@@ -778,7 +820,7 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		}
 
 
-
+		//채널을 변경하여 세부적인 트레이스 조건 수정 가능.
 		FHitResult Hit;
 		const bool bHeadBlocked = World->LineTraceSingleByChannel(
 			Hit,
@@ -796,10 +838,13 @@ bool AFACharacter::ShouldShowOverheadWidget() const
 		//머리와 발 모두 보일때 표기함. 머리카락 조금 보였다고 이름표가 보이면 숨는 의미가없음.
 		if (bHeadBlocked || bBodyBlocked)
 		{
+			bRuleMarkerOccluded = true;
 			return false;
 		}
+		bRuleMarkerOccluded = false;
 		return true;
 	}
+	bRuleMarkerOccluded = true;
 	return false;
 }
 
@@ -883,31 +928,34 @@ void AFACharacter::SetHeartbeatRevealActive(bool bActive)
 	RefreshCustomDepth();
 }
 
-void AFACharacter::UpdateRuleMarker(float DeltaTime)
+void AFACharacter::UpdateOverheadWidget(float DeltaTime)
 {
-	if (!RuleMarker)
+	if (!RuleMarker || !NicknameMarker)
 	{
 		return;
 	}
 
-	if (bHideRuleMarkerWhenOccluded)
+	
+	
+	OverheadWidgetOcclusionTimer += DeltaTime;
+	if (OverheadWidgetOcclusionTimer >= OverheadWidgetOcclusionInterval)
 	{
-		RuleMarkerOcclusionTimer += DeltaTime;
-		if (RuleMarkerOcclusionTimer >= RuleMarkerOcclusionInterval)
+		OverheadWidgetOcclusionTimer = 0.0f;
+		bool IsCharacterVisible = ShouldShowOverheadWidget();
+		if (IsCharacterVisible != NicknameMarker->IsVisible())
 		{
-			RuleMarkerOcclusionTimer = 0.0f;
-			UpdateRuleMarkerOcclusion();
+			NicknameMarker->SetVisibility(IsCharacterVisible);
 		}
 	}
+	
+	const bool bShouldShowRuleMaker = ShouldShowRuleMarker();
 
-	const bool bShouldShow = ShouldShowRuleMarker();
-
-	if (bShouldShow != RuleMarker->IsVisible())
+	if (bShouldShowRuleMaker != RuleMarker->IsVisible())
 	{
-		RuleMarker->SetVisibility(bShouldShow);
+		RuleMarker->SetVisibility(bShouldShowRuleMaker);
 	}
 
-	if (!bShouldShow)
+	if (!bShouldShowRuleMaker)
 	{
 		return;
 	}
@@ -942,7 +990,7 @@ void AFACharacter::UpdateRuleMarker(float DeltaTime)
 		bAbbreviated = RuleMarkerAbbreviateDistance > 0.0f && Distance > RuleMarkerAbbreviateDistance;
 
 		// 거리 감쇠 — 가까운 상대가 크게 보여야 '누구의 룰인지'가 헷갈리지 않는다.
-		const float FadeEnd = FMath::Max(RuleMarkerCullDistance, RuleMarkerFullScaleDistance + 1.0f);
+		const float FadeEnd = FMath::Max(OverheadWidgetCullDistance, RuleMarkerFullScaleDistance + 1.0f);
 		const float Alpha = FMath::Clamp(
 			(Distance - RuleMarkerFullScaleDistance) / (FadeEnd - RuleMarkerFullScaleDistance), 0.0f, 1.0f);
 
@@ -1508,8 +1556,8 @@ void AFACharacter::Tick(float DeltaTime)
 
 	// 포획 상태는 복제로만 들어오므로 이벤트가 없다 — HUD 게이지와 같은 방식으로 폴링한다.
 	UpdateCaptureMarker();
-	UpdateRuleMarker(DeltaTime);
-
+	UpdateOverheadWidget(DeltaTime);
+	/*
 	//이름표 임시, RuleMarker와 중복된 내용이 있어 병합 필요함.
 	//ShouldShowOverheadWidget의 내용과 UpdateRuleMarkerOcclusion의 내용 팀원과 확인 후 병합작업 필요.
 	NicknameMarkerOcclusionTimer += DeltaTime;
@@ -1522,6 +1570,7 @@ void AFACharacter::Tick(float DeltaTime)
 			NicknameMarker->SetVisibility(ShouldVisible);
 		}
 	}
+	*/
 	UpdateClimbing(DeltaTime);
 
 	// 캐비넷 액터가 파괴된 경우의 복구.
