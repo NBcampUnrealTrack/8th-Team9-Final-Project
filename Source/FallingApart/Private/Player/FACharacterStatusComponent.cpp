@@ -7,6 +7,7 @@
 #include "AbilitySystemInterface.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Audio/FAAudioSubsystem.h"
+#include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음] 실제 오디오 처리는 청취 클래스에 맡긴다.
 #include "GameFramework/Character.h"
 #include "GameplayEffect.h"
 #include "GAS/FAGameplayTags.h"
@@ -121,11 +122,22 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this, &ThisClass::HandleTrailRuleChanged);
 		HandleTrailRuleChanged(TrailRuleTag, ASC->GetTagCount(TrailRuleTag));
 
+		const FGameplayTag ForceNoiseRuleTag = FAGameplayTags::Get().Rule_Social_ForceNoise;
+		ASC->RegisterGameplayTagEvent(ForceNoiseRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleForceNoiseRuleChanged);
+		HandleForceNoiseRuleChanged(ForceNoiseRuleTag, ASC->GetTagCount(ForceNoiseRuleTag));
+
 		const FGameplayTag DecayTag = FAGameplayTags::Get().Rule_State_Decay;
 		ASC->RegisterGameplayTagEvent(DecayTag, EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &ThisClass::HandleDecayRuleChanged);
 
 		HandleDecayRuleChanged(DecayTag, ASC->GetTagCount(DecayTag));
+
+		// [Z22 귀먹음] 태그 변경을 등록하고 이미 적용된 룰도 초기 반영한다.
+		const FGameplayTag DeafRuleTag = FAGameplayTags::Get().Rule_Audio_Deaf;
+		ASC->RegisterGameplayTagEvent(DeafRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleDeafRuleChanged);
+		HandleDeafRuleChanged(DeafRuleTag, ASC->GetTagCount(DeafRuleTag));
 	}
 }
 
@@ -135,29 +147,34 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Knockback,
+		// [Z22 귀먹음] 다른 룰과 동일하게 종료 시 태그 이벤트 연결을 해제한다.
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Deaf,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Input_FlipLR,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Knockback,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Move_CrouchOnly,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_Ghost,
-				EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_WallPhase,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_CrouchOnly,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_Ghost,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_WallPhase,
 		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Hidden,
+		ASC->RegisterGameplayTagEvent(Tags.State_Hidden,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Trade_SecondLife,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_SecondLife,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Gamble_Speed,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Gamble_Speed,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Recall,
-		  EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Heartbeat,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Recall,
+		    EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Heartbeat,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Trail,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Trail,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_State_Decay,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Social_ForceNoise,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Decay,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_Freeze,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -168,7 +185,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	ClearGambleSpeed();
 	ClearRecall();
 	StopHeartbeatDetection();
-	// 저게서
 	SetGhostVisualActive(false);
 	GhostDynamicMaterials.Reset();
 
@@ -177,8 +193,26 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 		OwnerCharacter->LandedDelegate.RemoveDynamic(this,&ThisClass::HandleLanded);
 		OwnerCharacter->GetCapsuleComponent()->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
 	}
+
+	ClearForcedNoise();
 	ClearDecay();
 	Super::EndPlay(EndPlayReason);
+}
+
+// [Z22 귀먹음] 룰 실행 진입점은 Status에 두고, 볼륨 적용은 공통 클래스를 재사용한다.
+void UFACharacterStatusComponent::HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	(void)NewCount;
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
+	{
+		// 콜백 인자 대신 현재 ASC 상태를 확인해 초기 적용과 중첩 해제를 함께 처리한다.
+		Hearing->UpdateHearingState();
+	}
 }
 
 void UFACharacterStatusComponent::HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount)
@@ -277,7 +311,7 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
 	UpdatePhantomAudio(DeltaTime);
 	if (!OwnerCharacter)
-	{ 
+	{
 		return;
 	}
 
@@ -365,8 +399,7 @@ void UFACharacterStatusComponent::UpdatePhantomAudio(float DeltaTime)
 					PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
 						+ FVector(FMath::Cos(NewAngle), FMath::Sin(NewAngle), 0.0f) * NewDistance;
 					PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-					PhantomBurstStepTimers[Index] = FMath::FRandRange(
-						BurstMinStepInterval, BurstMaxStepInterval);
+					PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
 					bAnyEmitterActive = true;
 				}
 				continue;
@@ -1364,6 +1397,64 @@ void UFACharacterStatusComponent::ClearRecall()
 	{
 		// 귀환 태그가 제거되거나 캐릭터가 종료될 때 반복 타이머를 정리한다.
 		World->GetTimerManager().ClearTimer(RecallTimerHandle);
+	}
+}
+
+void UFACharacterStatusComponent::HandleForceNoiseRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	// 반복 소음은 서버에서만 관리한다.
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	ClearForcedNoise();
+
+	if (NewCount <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// 첫 소음은 3초 뒤, 이후 3초마다 반복.
+	World->GetTimerManager().SetTimer(ForceNoiseTimerHandle, this, &ThisClass::PlayForcedNoise, ForceNoiseInterval, true);
+}
+
+void UFACharacterStatusComponent::PlayForcedNoise()
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		ClearForcedNoise();
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+
+	if (!ASC || !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Social_ForceNoise))
+	{
+		ClearForcedNoise();
+		return;
+	}
+
+	AFACharacter* FACharacter = Cast<AFACharacter>(OwnerCharacter);
+	if (!FACharacter)
+	{
+		return;
+	}
+
+	FACharacter->Multicast_PlayFASoundAtLocation(ForceNoiseSoundId);
+}
+
+void UFACharacterStatusComponent::ClearForcedNoise()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ForceNoiseTimerHandle);
 	}
 }
 

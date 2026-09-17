@@ -163,6 +163,14 @@ private:
 	// H43 / Z40 공용 귀환 반복 타이머 정리
 	void ClearRecall();
 
+	/** Z34 신음 강박 태그 추가/제거 처리 */
+	void HandleForceNoiseRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** Z34 소음 1회 발생 */
+	void PlayForcedNoise();
+
+	/** Z34 반복 타이머 정리 */
+	void ClearForcedNoise();
 
 	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
 	void SetGhostVisualActive(bool bActive);
@@ -180,6 +188,9 @@ private:
 	//Rule.State.Heartbeat 태그가 추가되거나 제거됐을 때 호출된다.
 	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	// [Z22 귀먹음] 기존 룰처럼 Status에서 태그 추가·제거 이벤트를 처리한다.
+	void HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	//각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
 	void StartHeartbeatDetection();
@@ -277,6 +288,16 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.0"))
 	float HeartbeatBlinkVisibleDuration = 0.4f;
 
+	// Z34 신음 강박
+	/** Z34 신음 발생 주기 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Status|ForceNoise", meta = (ClampMin = "0.1"))
+	float ForceNoiseInterval = 3.0f;
+
+	/** DT_Sound_Character에 추가할 SoundId */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Status|ForceNoise")
+	FName ForceNoiseSoundId = TEXT("Zombie_ForceNoise");
+
+	FTimerHandle ForceNoiseTimerHandle;
 
 	// Z42 붕괴
 	// 반복 검사

@@ -3,6 +3,7 @@
 #include "Audio/FAAudioSubsystem.h"
 
 #include "Audio/FAAudioSettings.h"
+#include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음] 청취 판정과 발소리 추적을 공통 클래스로 위임한다.
 #include "Components/AudioComponent.h"
 #include "Engine/World.h"
 #include "Game/FAGameState.h"
@@ -15,6 +16,16 @@
 
 namespace FAAudioIds
 {
+	// [Z22 귀먹음] 생성한 소리를 반환하면서 발소리만 추적한다. 다른 소리는 그대로 통과한다.
+	UAudioComponent* TrackFootstep(const UObject* Context, FName SoundId, UAudioComponent* Component)
+	{
+		if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(Context))
+		{
+			return Hearing->TrackFootstep(SoundId, Component);
+		}
+		return Component;
+	}
+
 	// 라운드 진행 사운드. 표의 RowName 과 같아야 한다 (DT_Sound_Game).
 	static const FName RoundCountdown(TEXT("Round_Countdown"));
 	static const FName RoundStart(TEXT("Round_Start"));
@@ -277,12 +288,12 @@ UAudioComponent* UFAAudioSubsystem::PlayLoopAtLocation(FName SoundId, FVector Lo
 
 	if (Row->bIs2D)
 	{
-		return UGameplayStatics::SpawnSound2D(GetWorld(), Sound, Row->VolumeMultiplier, Pitch, 0.0f,
-			Row->Concurrency.LoadSynchronous(), false, /*bAutoDestroy=*/false);
+		return FAAudioIds::TrackFootstep(this, SoundId, UGameplayStatics::SpawnSound2D(GetWorld(), Sound, Row->VolumeMultiplier, Pitch, 0.0f,
+			Row->Concurrency.LoadSynchronous(), false, /*bAutoDestroy=*/false));
 	}
 
-	return UGameplayStatics::SpawnSoundAtLocation(GetWorld(), Sound, Location, FRotator::ZeroRotator,
-		Row->VolumeMultiplier, Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous(), /*bAutoDestroy=*/false);
+	return FAAudioIds::TrackFootstep(this, SoundId, UGameplayStatics::SpawnSoundAtLocation(GetWorld(), Sound, Location, FRotator::ZeroRotator,
+		Row->VolumeMultiplier, Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous(), /*bAutoDestroy=*/false));
 }
 
 void UFAAudioSubsystem::UpdateMusicForPhase(EFARoundPhase Phase)
@@ -488,6 +499,16 @@ bool UFAAudioSubsystem::ResolveSound(FName SoundId, const FFASoundRow*& OutRow, 
 	OutSound = nullptr;
 	OutPitch = 1.0f;
 
+	// [Z22 귀먹음] 발소리 요청만 차단한다. 음악·UI·일반 효과음은 기존 흐름을 유지한다.
+	if (UFAHearingSubsystem::IsFootstepSound(SoundId))
+	{
+		const UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this);
+		if (Hearing && Hearing->IsDeaf())
+		{
+			return false;
+		}
+	}
+
 	if (!CanPlay() || SoundId.IsNone())
 	{
 		return false;
@@ -566,6 +587,13 @@ void UFAAudioSubsystem::PlaySound(FName SoundId)
 		WarnOnce(SoundId, TEXT("3D 사운드를 위치 없이 불렀다 — PlaySoundAtLocation 을 쓸 것"));
 	}
 
+	// [Z22 귀먹음] 적용 전에 시작한 발소리도 멈출 수 있도록 컴포넌트를 얻어 기록한다.
+	if (UFAHearingSubsystem::IsFootstepSound(SoundId))
+	{
+		FAAudioIds::TrackFootstep(this, SoundId, UGameplayStatics::SpawnSound2D(GetWorld(), Sound,
+			Row->VolumeMultiplier, Pitch, 0.0f, Row->Concurrency.LoadSynchronous()));
+		return;
+	}
 	UGameplayStatics::PlaySound2D(GetWorld(), Sound, Row->VolumeMultiplier, Pitch, 0.0f,
 		Row->Concurrency.LoadSynchronous(), /*OwningActor=*/nullptr, /*bIsUISound=*/true);
 }
@@ -585,6 +613,14 @@ void UFAAudioSubsystem::PlaySoundAtLocation(FName SoundId, FVector Location, flo
 		? UFAAudioSettings::GetDefaultAttenuation(Row->Category)
 		: Row->Attenuation.LoadSynchronous();
 
+	// [Z22 귀먹음] 일반·환청·사다리 발소리를 같은 경로로 추적한다.
+	if (UFAHearingSubsystem::IsFootstepSound(SoundId))
+	{
+		FAAudioIds::TrackFootstep(this, SoundId, UGameplayStatics::SpawnSoundAtLocation(GetWorld(), Sound,
+			Location, FRotator::ZeroRotator, Row->VolumeMultiplier * FMath::Max(0.0f, VolumeMultiplier),
+			Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous()));
+		return;
+	}
 	UGameplayStatics::PlaySoundAtLocation(GetWorld(), Sound, Location, FRotator::ZeroRotator,
 		Row->VolumeMultiplier * FMath::Max(0.0f, VolumeMultiplier), Pitch, 0.0f, Attenuation, Row->Concurrency.LoadSynchronous());
 }
@@ -610,9 +646,10 @@ UAudioComponent* UFAAudioSubsystem::PlaySoundAttached(FName SoundId, USceneCompo
 		: Row->Attenuation.LoadSynchronous();
 
 	// 루프는 호출부가 직접 멈춰야 하므로 자동 파괴를 끈다. 단발은 끝나면 알아서 사라진다.
-	return UGameplayStatics::SpawnSoundAttached(Sound, AttachTo, NAME_None, FVector::ZeroVector,
+	// [Z22 귀먹음] 부착 재생도 동일한 추적 함수를 재사용한다.
+	return FAAudioIds::TrackFootstep(this, SoundId, UGameplayStatics::SpawnSoundAttached(Sound, AttachTo, NAME_None, FVector::ZeroVector,
 		EAttachLocation::KeepRelativeOffset, Row->bStopOnOwnerDestroy, Row->VolumeMultiplier, Pitch, 0.0f,
-		Attenuation, Row->Concurrency.LoadSynchronous(), /*bAutoDestroy=*/!Row->bLooping);
+		Attenuation, Row->Concurrency.LoadSynchronous(), /*bAutoDestroy=*/!Row->bLooping));
 }
 
 void UFAAudioSubsystem::PlayRuleSound(FName RuleId, const FGameplayTagContainer& RuleTags, int32 Tier)

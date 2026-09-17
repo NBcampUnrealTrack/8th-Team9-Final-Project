@@ -39,6 +39,10 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 
 	// InstancedPerActor 라 인스턴스가 QTE 사이에 재사용된다 — 안 지우면 두 번째 QTE 가 아예 판정되지 않는다.
 	bOutcomeResolved = false;
+	ContestStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	ZombieMashCount = 0;
+	VictimMashCount = 0;
+	RescuerMashCount = 0;
 
 	// 페이로드에서 참가자 3명 정보 파싱
 	Rescuer = Cast<AFACharacter>(const_cast<AActor*>(TriggerEventData->Instigator.Get()));
@@ -110,6 +114,42 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	TaskDelay->ReadyForActivation();
 }
 
+UFAGA_RescueContest* UFAGA_RescueContest::FindActiveInstance(UAbilitySystemComponent* ASC)
+{
+	if (!ASC)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		for (UGameplayAbility* Instance : Spec.GetAbilityInstances())
+		{
+			if (UFAGA_RescueContest* Contest = Cast<UFAGA_RescueContest>(Instance))
+			{
+				return Contest;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void UFAGA_RescueContest::RecordMash(EFAContestRole Role)
+{
+	switch (Role)
+	{
+	case EFAContestRole::Zombie:	++ZombieMashCount;	break;
+	case EFAContestRole::Victim:	++VictimMashCount;	break;
+	case EFAContestRole::Rescuer:	++RescuerMashCount;	break;
+	default: break;
+	}
+}
+
 void UFAGA_RescueContest::OnHumanWin()
 {
 	ResolveContestOutcome(true);
@@ -167,6 +207,23 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 	bOutcomeResolved = true;
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
+
+	// QTE 밸런스 확인용 — 누가 몇 번 눌렀고 게이지가 어디서 끝났는지 한 줄로 남긴다.
+	{
+		const UAbilitySystemComponent* SourceASC = GetAbilitySystemComponentFromActorInfo();
+		const float FinalGauge = SourceASC ? SourceASC->GetNumericAttribute(UFAAttributeSet::GetContestGaugeAttribute()) : -1.0f;
+		const float Elapsed = (GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f) - ContestStartTime;
+		auto NameOf = [](const TWeakObjectPtr<AFACharacter>& Char)
+		{
+			const APlayerState* PS = Char.IsValid() ? Char->GetPlayerState() : nullptr;
+			return PS ? PS->GetPlayerName() : FString(TEXT("None"));
+		};
+		UE_LOG(LogTemp, Log, TEXT("[QTE] 결과=%s | 경과=%.2fs | 게이지=%.1f | 좀비(%s)=%d회 | 구조자(%s)=%d회 | 인질(%s)=%d회"),
+			bHumanWon ? TEXT("인간승") : TEXT("좀비승"), Elapsed, FinalGauge,
+			*NameOf(TargetZombie), ZombieMashCount,
+			*NameOf(Rescuer), RescuerMashCount,
+			*NameOf(GrabbedVictim), VictimMashCount);
+	}
 
 	if (bHumanWon)
 	{
