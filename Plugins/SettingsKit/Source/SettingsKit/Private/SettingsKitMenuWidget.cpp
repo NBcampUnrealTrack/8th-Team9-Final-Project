@@ -13,6 +13,8 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/CheckBox.h"
+#include "Components/EditableText.h"
+#include "Components/EditableTextBox.h"
 #include "Components/ComboBoxString.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
@@ -104,6 +106,7 @@ void USKSettingsMenuWidget::NativeConstruct()
 	// 그 시점엔 붙일 위젯이 아직 없다.
 	ApplySliderRanges();
 	BindCallbacks();
+	BindValueFields();
 	BuildTabExtensions();
 
 	OpenSettings();
@@ -359,23 +362,263 @@ void USKSettingsMenuWidget::PopulateResolutionCombo()
 // ============================================================
 // 저장값 → 위젯
 // ============================================================
-void USKSettingsMenuWidget::SetPercentLabel(UTextBlock* Label, float Value01) const
+static USKValueFieldBinding* FindValueFieldBinding(const TArray<TObjectPtr<USKValueFieldBinding>>& Bindings, const UWidget* Label)
 {
-	if (Label)
+	for (const TObjectPtr<USKValueFieldBinding>& Binding : Bindings)
 	{
-		Label->SetText(FText::AsNumber(FMath::RoundToInt(Value01 * 100.f)));
+		if (Binding && Binding->GetField() == Label)
+		{
+			return Binding.Get();
+		}
+	}
+	return nullptr;
+}
+
+void USKSettingsMenuWidget::SetPercentLabel(UWidget* Label, float Value01) const
+{
+	if (!Label)
+	{
+		return;
+	}
+	if (USKValueFieldBinding* Binding = FindValueFieldBinding(ValueFieldBindings, Label))
+	{
+		Binding->SetDisplayedValue(Value01);
+		return;
+	}
+	USKValueFieldBinding::SetWidgetText(Label, USKValueFieldBinding::FormatValue(Value01, 100.f, 0));
+}
+
+void USKSettingsMenuWidget::SetNumberLabel(UWidget* Label, float Value, int32 Decimals) const
+{
+	if (!Label)
+	{
+		return;
+	}
+	if (USKValueFieldBinding* Binding = FindValueFieldBinding(ValueFieldBindings, Label))
+	{
+		Binding->SetDisplayedValue(Value);
+		return;
+	}
+	USKValueFieldBinding::SetWidgetText(Label, USKValueFieldBinding::FormatValue(Value, 1.f, Decimals));
+}
+
+void USKSettingsMenuWidget::BindValueFields()
+{
+	for (USKValueFieldBinding* Binding : ValueFieldBindings)
+	{
+		if (Binding)
+		{
+			Binding->Unbind();
+		}
+	}
+	ValueFieldBindings.Reset();
+
+	// 표시 배율 · 소수 자릿수는 SetPercentLabel(×100, 정수) / SetNumberLabel 호출부와 같아야 한다.
+	auto Add = [this](USlider* Slider, UWidget* Field, float DisplayScale, int32 Decimals)
+	{
+		if (!Slider || !Field)
+		{
+			return;
+		}
+		USKValueFieldBinding* Binding = NewObject<USKValueFieldBinding>(this);
+		Binding->Init(Slider, Field, DisplayScale, Decimals);
+		ValueFieldBindings.Add(Binding);
+	};
+
+	Add(Sld_Master, Txt_MasterValue, 100.f, 0);
+	Add(Sld_Music, Txt_MusicValue, 100.f, 0);
+	Add(Sld_SFX, Txt_SFXValue, 100.f, 0);
+	Add(Sld_UI, Txt_UIValue, 100.f, 0);
+	Add(Sld_VoiceOutput, Txt_VoiceOutputValue, 100.f, 0);
+	Add(Sld_VoiceInput, Txt_VoiceInputValue, 100.f, 0);
+	Add(Sld_VoiceGate, Txt_VoiceGateValue, 100.f, 0);
+	Add(Sld_Gamma, Txt_GammaValue, 1.f, 2);
+	Add(Sld_FOV, Txt_FOVValue, 1.f, 0);
+	Add(Sld_SubtitleScale, Txt_SubtitleScaleValue, 1.f, 2);
+	Add(Sld_MouseSensitivity, Txt_MouseSensitivityValue, 1.f, 2);
+}
+
+// ============================================================
+// 값 칸 직접 입력
+// ============================================================
+void USKValueFieldBinding::Init(USlider* InSlider, UWidget* InField, float InDisplayScale, int32 InDecimals)
+{
+	Slider = InSlider;
+	Field = InField;
+	DisplayScale = InDisplayScale;
+	Decimals = InDecimals;
+
+	if (UEditableText* Edit = Cast<UEditableText>(InField))
+	{
+		Edit->OnTextChanged.AddUniqueDynamic(this, &USKValueFieldBinding::HandleTextChanged);
+		Edit->OnTextCommitted.AddUniqueDynamic(this, &USKValueFieldBinding::HandleTextCommitted);
+		Edit->SetSelectAllTextWhenFocused(true);
+		Edit->SetKeyboardType(EVirtualKeyboardType::Number);
+	}
+	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(InField))
+	{
+		EditBox->OnTextChanged.AddUniqueDynamic(this, &USKValueFieldBinding::HandleTextChanged);
+		EditBox->OnTextCommitted.AddUniqueDynamic(this, &USKValueFieldBinding::HandleTextCommitted);
+		EditBox->SetSelectAllTextWhenFocused(true);
+	}
+
+	if (InSlider)
+	{
+		SetDisplayedValue(InSlider->GetValue());
 	}
 }
 
-void USKSettingsMenuWidget::SetNumberLabel(UTextBlock* Label, float Value, int32 Decimals) const
+void USKValueFieldBinding::Unbind()
 {
-	if (Label)
+	if (UEditableText* Edit = Cast<UEditableText>(Field.Get()))
 	{
-		FNumberFormattingOptions Options;
-		Options.MinimumFractionalDigits = Decimals;
-		Options.MaximumFractionalDigits = Decimals;
-		Label->SetText(FText::AsNumber(Value, &Options));
+		Edit->OnTextChanged.RemoveDynamic(this, &USKValueFieldBinding::HandleTextChanged);
+		Edit->OnTextCommitted.RemoveDynamic(this, &USKValueFieldBinding::HandleTextCommitted);
 	}
+	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Field.Get()))
+	{
+		EditBox->OnTextChanged.RemoveDynamic(this, &USKValueFieldBinding::HandleTextChanged);
+		EditBox->OnTextCommitted.RemoveDynamic(this, &USKValueFieldBinding::HandleTextCommitted);
+	}
+}
+
+FText USKValueFieldBinding::FormatValue(float Value, float InDisplayScale, int32 InDecimals)
+{
+	// 천 단위 구분 기호가 들어가면 입력 칸에서 다시 못 읽는다.
+	FNumberFormattingOptions Options;
+	Options.UseGrouping = false;
+
+	if (InDecimals <= 0)
+	{
+		return FText::AsNumber(FMath::RoundToInt(Value * InDisplayScale), &Options);
+	}
+
+	Options.MinimumFractionalDigits = InDecimals;
+	Options.MaximumFractionalDigits = InDecimals;
+	return FText::AsNumber(Value * InDisplayScale, &Options);
+}
+
+void USKValueFieldBinding::SetWidgetText(UWidget* Widget, const FText& Text)
+{
+	if (UTextBlock* Block = Cast<UTextBlock>(Widget))
+	{
+		Block->SetText(Text);
+	}
+	else if (UEditableText* Edit = Cast<UEditableText>(Widget))
+	{
+		Edit->SetText(Text);
+	}
+	else if (UEditableTextBox* EditBox = Cast<UEditableTextBox>(Widget))
+	{
+		EditBox->SetText(Text);
+	}
+}
+
+void USKValueFieldBinding::SetFieldTextSilently(const FText& Text)
+{
+	TGuardValue<bool> Guard(bSettingText, true);
+	SetWidgetText(Field.Get(), Text);
+}
+
+void USKValueFieldBinding::SetDisplayedValue(float Value)
+{
+	LastValidText = FormatValue(Value, DisplayScale, Decimals);
+	SetFieldTextSilently(LastValidText);
+}
+
+void USKValueFieldBinding::SetStatusText(const FText& Text)
+{
+	SetFieldTextSilently(Text);
+}
+
+bool USKValueFieldBinding::IsAcceptableInput(const FString& Input) const
+{
+	// 입력 중에는 빈 칸도 허용한다 — 다 지우고 새로 치는 게 가장 흔한 입력이다.
+	if (Input.IsEmpty())
+	{
+		return true;
+	}
+
+	int32 DotIndex = INDEX_NONE;
+	for (int32 i = 0; i < Input.Len(); ++i)
+	{
+		const TCHAR Ch = Input[i];
+		if (FChar::IsDigit(Ch))
+		{
+			continue;
+		}
+		// 소수점은 소수 자릿수가 있는 항목에서 한 번만.
+		if (Ch == TEXT('.') && Decimals > 0 && DotIndex == INDEX_NONE)
+		{
+			DotIndex = i;
+			continue;
+		}
+		return false;
+	}
+
+	if (DotIndex != INDEX_NONE && Input.Len() - DotIndex - 1 > Decimals)
+	{
+		return false;
+	}
+
+	// 최대값 초과는 거부. 최소값 미만은 여기서 막으면 "6" 을 거쳐 "60" 을 칠 수가 없어서 확정 때 끌어올린다.
+	const USlider* S = Slider.Get();
+	const double DisplayMax = S ? static_cast<double>(S->GetMaxValue()) * DisplayScale : TNumericLimits<double>::Max();
+	return FCString::Atod(*Input) <= DisplayMax + KINDA_SMALL_NUMBER;
+}
+
+void USKValueFieldBinding::HandleTextChanged(const FText& Text)
+{
+	if (bSettingText)
+	{
+		return;
+	}
+
+	if (IsAcceptableInput(Text.ToString()))
+	{
+		LastValidText = Text;
+	}
+	else
+	{
+		SetFieldTextSilently(LastValidText);
+	}
+}
+
+void USKValueFieldBinding::HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+	if (bSettingText)
+	{
+		return;
+	}
+
+	USlider* S = Slider.Get();
+	if (!S)
+	{
+		return;
+	}
+
+	const FString Input = Text.ToString();
+
+	// Esc 로 취소했거나, 비었거나, 소수점만 남았으면 슬라이더의 현재 값으로 되돌린다.
+	if (CommitMethod == ETextCommit::OnCleared || Input.IsEmpty() || Input == TEXT(".") || !IsAcceptableInput(Input))
+	{
+		SetDisplayedValue(S->GetValue());
+		return;
+	}
+
+	float NewValue = static_cast<float>(FCString::Atod(*Input)) / DisplayScale;
+	NewValue = FMath::Clamp(NewValue, S->GetMinValue(), S->GetMaxValue());
+
+	// 표시 정밀도로 맞춰 둔다 — 퍼센트 90 이면 정확히 0.9.
+	const float Precision = FMath::Pow(10.f, static_cast<float>(Decimals)) * DisplayScale;
+	NewValue = FMath::RoundToFloat(NewValue * Precision) / Precision;
+
+	// USlider::SetValue 는 OnValueChanged 를 안 쏜다. 드래그와 똑같은 경로(저장·미리듣기·라벨)를 태우려고 직접 쏜다.
+	S->SetValue(NewValue);
+	S->OnValueChanged.Broadcast(S->GetValue());
+
+	// 핸들러가 없는 슬라이더여도 칸 글자는 확정값으로 맞춘다.
+	SetDisplayedValue(S->GetValue());
 }
 
 void USKSettingsMenuWidget::PopulateFromSettings()
@@ -796,23 +1039,7 @@ void USKSettingsMenuWidget::SetTab(ESKSettingsTab Tab)
 	{
 		TabSwitcher->SetActiveWidgetIndex(static_cast<int32>(Tab));
 	}
-	UpdateTabButtonColors();
-}
-
-void USKSettingsMenuWidget::UpdateTabButtonColors()
-{
-	auto Tint = [this](UButton* Button, ESKSettingsTab Tab)
-	{
-		if (Button)
-		{
-			Button->SetBackgroundColor(CurrentTab == Tab ? TabActiveColor : TabInactiveColor);
-		}
-	};
-
-	Tint(Btn_TabAudio, ESKSettingsTab::Audio);
-	Tint(Btn_TabVoice, ESKSettingsTab::Voice);
-	Tint(Btn_TabVideo, ESKSettingsTab::Video);
-	Tint(Btn_TabControls, ESKSettingsTab::Controls);
+	// 탭 버튼 모양은 코드가 건드리지 않는다 — WBP 의 Normal/Hovered/Pressed 이미지가 그대로 나와야 한다.
 }
 
 // ============================================================

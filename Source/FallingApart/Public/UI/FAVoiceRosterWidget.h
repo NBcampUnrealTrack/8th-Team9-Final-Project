@@ -10,9 +10,11 @@ class UButton;
 class UCheckBox;
 class UPanelWidget;
 class UScrollBox;
+class USKValueFieldBinding;
 class USlider;
 class UTextBlock;
 class UVerticalBox;
+class UWidget;
 
 /**
  * 접속자 한 명의 음량 한 줄 — 이름 · 슬라이더 · 값 · 뮤트.
@@ -41,8 +43,12 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Voice")
 	TObjectPtr<USlider> Slider_Volume;
 
+	/**
+	 * 음량 값 칸(0~200). TextBlock 이면 표시만, EditableText / EditableTextBox 면 직접 입력.
+	 * 입력 검사는 설정창 값 칸과 같은 USKValueFieldBinding 이 맡는다.
+	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Voice")
-	TObjectPtr<UTextBlock> Text_VolumeValue;
+	TObjectPtr<UWidget> Text_VolumeValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "FallingApart|Voice")
 	TObjectPtr<UCheckBox> Check_Mute;
@@ -55,6 +61,10 @@ private:
 	void HandleMuteChanged(bool bChecked);
 
 	void BuildFallbackRow();
+
+	/** 값 칸 ↔ 슬라이더 연결. 슬라이더와 값 칸이 둘 다 있을 때만 만든다. */
+	UPROPERTY(Transient)
+	TObjectPtr<USKValueFieldBinding> VolumeFieldBinding;
 
 	/** UniqueNetId 기준 저장 키. 이름이 아니다 — 이름은 중복·변경된다. */
 	FString PlayerKey;
