@@ -191,6 +191,7 @@ private:
 
 	// [Z22 귀먹음] 기존 룰처럼 Status에서 태그 추가·제거 이벤트를 처리한다.
 	void HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	void HandleNoStepRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	//각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
 	void StartHeartbeatDetection();

@@ -138,6 +138,11 @@ void UFACharacterStatusComponent::BeginPlay()
 		ASC->RegisterGameplayTagEvent(DeafRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleDeafRuleChanged);
 		HandleDeafRuleChanged(DeafRuleTag, ASC->GetTagCount(DeafRuleTag));
+
+		const FGameplayTag NoStepRuleTag = FAGameplayTags::Get().Rule_Audio_NoStep;
+		ASC->RegisterGameplayTagEvent(NoStepRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleNoStepRuleChanged);
+		HandleNoStepRuleChanged(NoStepRuleTag, ASC->GetTagCount(NoStepRuleTag));
 	}
 }
 
@@ -147,6 +152,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_NoStep,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		// [Z22 귀먹음] 다른 룰과 동일하게 종료 시 태그 이벤트 연결을 해제한다.
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Deaf,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -211,6 +218,18 @@ void UFACharacterStatusComponent::HandleDeafRuleChanged(const FGameplayTag Tag, 
 	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
 	{
 		// 콜백 인자 대신 현재 ASC 상태를 확인해 초기 적용과 중첩 해제를 함께 처리한다.
+		Hearing->UpdateHearingState();
+	}
+}
+
+void UFACharacterStatusComponent::HandleNoStepRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
+	{
 		Hearing->UpdateHearingState();
 	}
 }

@@ -95,6 +95,7 @@ public:
 	FGameplayTag Rule_Audio_Phantom;
 	/** [Z22 귀먹음 추가] GE가 부여하는 청취 차단 태그. */
 	FGameplayTag Rule_Audio_Deaf;
+	FGameplayTag Rule_Audio_NoStep;
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
