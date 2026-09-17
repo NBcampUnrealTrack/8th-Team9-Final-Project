@@ -74,7 +74,7 @@ bool UFASessionCreateWidget::ValidateCreateRequest(FFASessionCreateRequest& Requ
 		return false;
 	}
 
-	if (Request.Password.Len() < 4)
+	if (Request.Password.Len() > 0 && Request.Password.Len() < 4)
 	{
 		OutErrorMessage = LOCTEXT("PasswordTooShort", "비밀번호는 4자 이상 입력해주세요.");
 		return false;
