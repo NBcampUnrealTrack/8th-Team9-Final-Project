@@ -53,6 +53,8 @@ public:
 	 * 말하고 있지 않은 화자는 다음 발화 시작 때 새 값을 집는다.
 	 */
 	static void RefreshAllTalkingVolumes();
+	/** [Z22 귀먹음 추가] 같은 월드의 기존 발화에 청취 상태 변경을 반영한다. */
+	static void RefreshTalkingVolumesForWorld(const UWorld* World);
 
 	/** 실제로 오디오 컴포넌트에 곱해질 최종 배수 (화자별 배수 × 사용자 출력 볼륨). */
 	float GetEffectivePlaybackVolume() const;

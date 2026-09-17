@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Voice/FAVoiceTalker.h"
+#include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음 추가] 재사용 가능한 청취 배수 조회.
 
 #include "Components/AudioComponent.h"
 #include "GameFramework/PlayerState.h"
@@ -155,7 +156,11 @@ void UFAVoiceTalker::SetPlaybackVolumeMultiplier(float NewMultiplier)
 float UFAVoiceTalker::GetEffectivePlaybackVolume() const
 {
 	const float UserVolume = FMath::Max(0.f, FAVoiceTalkerInternal::CVarVoiceOutputVolume.GetValueOnGameThread());
-	return PlaybackVolumeMultiplier * UserVolume;
+	// [Z22 귀먹음 변경 시작] 사용자/화자별 볼륨과 마이크 송신은 유지하고 출력 배수만 곱한다.
+	const UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this);
+	const float HearingMultiplier = Hearing ? Hearing->GetVoiceHearingMultiplier() : 1.0f;
+	return PlaybackVolumeMultiplier * UserVolume * HearingMultiplier;
+	// [Z22 귀먹음 변경 끝]
 }
 
 void UFAVoiceTalker::ApplyPlaybackVolume()
@@ -181,6 +186,24 @@ void UFAVoiceTalker::RefreshAllTalkingVolumes()
 		}
 	}
 }
+
+// [Z22 귀먹음 추가 시작] static 목록의 다른 PIE 월드에 영향을 주지 않도록 월드를 구분한다.
+void UFAVoiceTalker::RefreshTalkingVolumesForWorld(const UWorld* World)
+{
+	if (!World)
+	{
+		return;
+	}
+	for (const TWeakObjectPtr<UFAVoiceTalker>& Entry : TalkingTalkers)
+	{
+		UFAVoiceTalker* Talker = Entry.Get();
+		if (Talker && Talker->GetWorld() == World)
+		{
+			Talker->ApplyPlaybackVolume();
+		}
+	}
+}
+// [Z22 귀먹음 추가 끝]
 
 void UFAVoiceTalker::SetTalkingState(bool bNewTalking)
 {
