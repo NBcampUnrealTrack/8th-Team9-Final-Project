@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GAS/FAGameplayAbility.h"
+#include "Game/FAGameTypes.h"
 #include "FAGA_RescueContest.generated.h"
 
 class AFACharacter;
@@ -21,6 +22,12 @@ public:
 
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
+
+	/** 좀비 ASC 에서 지금 돌고 있는 줄다리기 인스턴스. 없으면 nullptr. */
+	static UFAGA_RescueContest* FindActiveInstance(UAbilitySystemComponent* ASC);
+
+	/** 연타 1회 집계 — 밸런스 확인용 로그에만 쓴다. */
+	void RecordMash(EFAContestRole Role);
 
 protected:
 	/** QTE 중 부여할 상태 (State.Contesting + 이동/행동 불가) */
@@ -84,4 +91,10 @@ private:
 	 * 그러면 구출 점수가 두 번 붙는다.
 	 */
 	bool bOutcomeResolved = false;
+
+	//~ 밸런스 확인용 집계. 판정이 끝날 때 한 줄로 로그에 남긴다.
+	float ContestStartTime = 0.0f;
+	int32 ZombieMashCount = 0;
+	int32 VictimMashCount = 0;
+	int32 RescuerMashCount = 0;
 };
