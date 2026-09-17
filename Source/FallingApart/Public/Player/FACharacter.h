@@ -22,6 +22,7 @@ class UAudioComponent;
 class UMaterialInterface;
 class AFAPlayerState;
 class UFACharacterStatusComponent;
+class UFAPhantomAudioComponent;
 class UFACaptureMarkerWidget;
 class UFARuleMarkerWidget;
 class UWidgetComponent;
@@ -593,6 +594,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="FallingApart|Audio", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFAPhantomAudioComponent> PhantomAudioComponent;
 
 	//~ ---------------- 진영 외형 ----------------
 	//~ 둘 다 비워두면 메시에 원래 물려 있는 머티리얼이 그대로 쓰인다

@@ -7,6 +7,7 @@
 #include "AbilitySystemInterface.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Audio/FAAudioSubsystem.h"
+#include "Audio/FAPhantomAudioComponent.h"
 #include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음] 실제 오디오 처리는 청취 클래스에 맡긴다.
 #include "GameFramework/Character.h"
 #include "GameplayEffect.h"
@@ -143,6 +144,15 @@ void UFACharacterStatusComponent::BeginPlay()
 		ASC->RegisterGameplayTagEvent(NoStepRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleNoStepRuleChanged);
 		HandleNoStepRuleChanged(NoStepRuleTag, ASC->GetTagCount(NoStepRuleTag));
+
+		const FGameplayTag PhantomRuleTag = FAGameplayTags::Get().Rule_Audio_Phantom;
+		ASC->RegisterGameplayTagEvent(PhantomRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandlePhantomRuleChanged);
+		HandlePhantomRuleChanged(PhantomRuleTag, ASC->GetTagCount(PhantomRuleTag));
+
+		// 룰 태그가 유지된 상태의 감염/진영 전환도 같은 콜백으로 처리한다.
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Human, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandlePhantomRuleChanged);
 	}
 }
 
@@ -152,6 +162,10 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Phantom,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.State_Human,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_NoStep,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		// [Z22 귀먹음] 다른 룰과 동일하게 종료 시 태그 이벤트 연결을 해제한다.
@@ -328,7 +342,6 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
-	UpdatePhantomAudio(DeltaTime);
 	if (!OwnerCharacter)
 	{
 		return;
@@ -360,124 +373,14 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	}
 }
 
-void UFACharacterStatusComponent::UpdatePhantomAudio(float DeltaTime)
+void UFACharacterStatusComponent::HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount)
 {
 	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled()
-		|| GetNetMode() == NM_DedicatedServer || !ASC
-		|| !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Audio_Phantom)
-		|| PhantomFootstepSoundIds.IsEmpty())
+	const bool bActive = ASC && ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Audio_Phantom);
+	if (UFAPhantomAudioComponent* Phantom = GetOwner()->FindComponentByClass<UFAPhantomAudioComponent>())
 	{
-		PhantomTimeRemaining = -1.0f;
-		PhantomBurstRemainings.Reset();
-		PhantomBurstStartDelays.Reset();
-		PhantomBurstStepTimers.Reset();
-		PhantomBurstLocations.Reset();
-		return;
+		Phantom->SetRuleActive(bActive);
 	}
-
-	const float MinInterval = FMath::Max(0.1f, PhantomMinInterval);
-	const float MaxInterval = FMath::Max(MinInterval, PhantomMaxInterval);
-	const float BurstMinDuration = FMath::Max(0.1f, PhantomBurstMinDuration);
-	const float BurstMaxDuration = FMath::Max(BurstMinDuration, PhantomBurstMaxDuration);
-	const float BurstMinStepInterval = FMath::Max(0.1f, PhantomBurstMinStepInterval);
-	const float BurstMaxStepInterval = FMath::Max(BurstMinStepInterval, PhantomBurstMaxStepInterval);
-
-	// 환청 묶음이 진행 중이면 세 위치에서 각자 랜덤 간격으로 발소리를 이어서 낸다.
-	if (PhantomBurstRemainings.Num() > 0)
-	{
-		bool bAnyEmitterActive = false;
-		for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
-		{
-			if (PhantomBurstStartDelays[Index] > 0.0f)
-			{
-				PhantomBurstStartDelays[Index] -= DeltaTime;
-				bAnyEmitterActive = true;
-				if (PhantomBurstStartDelays[Index] > 0.0f)
-				{
-					continue;
-				}
-				PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-				PhantomBurstStepTimers[Index] = 0.0f;
-			}
-			const bool bWasActive = PhantomBurstRemainings[Index] > 0.0f;
-			if (!bWasActive)
-			{
-				continue;
-			}
-			PhantomBurstRemainings[Index] -= DeltaTime;
-			if (PhantomBurstRemainings[Index] <= 0.0f)
-			{
-				if (bWasActive)
-				{
-					// 다른 Emitter가 재생 중인 동안 즉시 새 발소리 묶음을 시작해 공백을 없앤다.
-					const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
-					const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
-					const float NewAngle = FMath::FRandRange(0.0f, 2.0f * PI);
-					const float NewDistance = FMath::FRandRange(MinDistance, MaxDistance);
-					PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
-						+ FVector(FMath::Cos(NewAngle), FMath::Sin(NewAngle), 0.0f) * NewDistance;
-					PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-					PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
-					bAnyEmitterActive = true;
-				}
-				continue;
-			}
-			bAnyEmitterActive = true;
-			PhantomBurstStepTimers[Index] -= DeltaTime;
-			if (PhantomBurstStepTimers[Index] <= 0.0f)
-			{
-				if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
-				{
-					const FName SoundId = PhantomFootstepSoundIds[FMath::RandHelper(PhantomFootstepSoundIds.Num())];
-					const float MinVolume = FMath::Max(0.0f, PhantomMinVolumeMultiplier);
-					const float MaxVolume = FMath::Max(MinVolume, PhantomMaxVolumeMultiplier);
-					const float Volume = FMath::FRandRange(MinVolume, MaxVolume);
-					Audio->PlaySoundAtLocation(SoundId, PhantomBurstLocations[Index], Volume);
-				}
-			PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
-			}
-		}
-		if (!bAnyEmitterActive)
-		{
-			PhantomBurstRemainings.Reset();
-			PhantomBurstStepTimers.Reset();
-			PhantomBurstStartDelays.Reset();
-			PhantomBurstLocations.Reset();
-			PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
-		}
-		return;
-	}
-
-	if (PhantomTimeRemaining < 0.0f)
-	{
-		PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
-		return;
-	}
-
-	PhantomTimeRemaining -= DeltaTime;
-	if (PhantomTimeRemaining > 0.0f)
-	{
-		return;
-	}
-	const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
-	const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
-	PhantomBurstLocations.SetNum(3);
-	PhantomBurstRemainings.SetNum(3);
-	PhantomBurstStartDelays.SetNum(3);
-	PhantomBurstStepTimers.SetNum(3);
-	for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
-	{
-		const float EmitterAngle = FMath::FRandRange(0.0f, 2.0f * PI);
-		const float EmitterDistance = FMath::FRandRange(MinDistance, MaxDistance);
-		PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
-			+ FVector(FMath::Cos(EmitterAngle), FMath::Sin(EmitterAngle), 0.0f) * EmitterDistance;
-		PhantomBurstRemainings[Index] = 0.0f;
-		// 세 명의 생성 시작 시점 자체를 분리한다.
-		PhantomBurstStartDelays[Index] = FMath::FRandRange(0.1f, 0.5f);
-		PhantomBurstStepTimers[Index] = 0.0f;
-	}
-	PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
 }
 
 void UFACharacterStatusComponent::HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount)

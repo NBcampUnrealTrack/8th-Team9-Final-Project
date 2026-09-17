@@ -30,6 +30,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
+#include "Audio/FAPhantomAudioComponent.h"
 #include "Settings/FASettingsBridge.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
@@ -133,6 +134,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	PhantomAudioComponent = CreateDefaultSubobject<UFAPhantomAudioComponent>(TEXT("PhantomAudioComponent"));
 	TrailComponent = CreateDefaultSubobject<UFATrailComponent>(TEXT("TrailComponent"));
 
 	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));

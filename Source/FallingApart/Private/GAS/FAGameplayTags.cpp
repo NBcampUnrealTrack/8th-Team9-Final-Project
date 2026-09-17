@@ -46,7 +46,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_Shake     = AddTag(TEXT("Rule.Vision.Shake"),     TEXT("Z25 심박 왜곡 — 인간 근접 시 카메라 흔들림 심화."));
 
 	//~ 룰 - Audio
-	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("Z23 환청 — 가짜 발소리를 로컬에서 랜덤 재생."));
+	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("환청 — H26 가짜 비명 / Z23 가짜 발소리를 로컬에서 랜덤 재생."));
 	// [Z22 귀먹음 추가] 청취 서브시스템에서 조회할 공통 태그를 등록한다.
 	Rule_Audio_Deaf = AddTag(TEXT("Rule.Audio.Deaf"), TEXT("Z22 귀먹음 — 발소리와 수신 음성 차단."));
 	Rule_Audio_NoStep = AddTag(TEXT("Rule.Audio.NoStep"), TEXT("H25 이명 — 좀비 발소리 차단."));

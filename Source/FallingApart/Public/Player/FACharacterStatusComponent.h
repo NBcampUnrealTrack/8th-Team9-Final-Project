@@ -39,49 +39,7 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
-	void UpdatePhantomAudio(float DeltaTime);
-
-	/** DT_Sound_Character의 발소리 RowName. 기존 음량·피치·감쇠 설정을 사용한다. */
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom")
-	TArray<FName> PhantomFootstepSoundIds = { FName(TEXT("Foot_Human_Run")) };
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomMinInterval = 3.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomMaxInterval = 7.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
-	float PhantomMinDistance = 10.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
-	float PhantomMaxDistance = 50.0f;
-
-	// 로컬 소유권이 늦게 도착해도 Tick에서 시작하고, 룰 제거/소유권 상실 시 초기화한다.
-	float PhantomTimeRemaining = -1.0f;
-	// 한 번 발동하면 세 개의 가상 위치에서 4~7초 동안 반복 재생한다.
-	TArray<float> PhantomBurstRemainings;
-	TArray<float> PhantomBurstStartDelays;
-	TArray<float> PhantomBurstStepTimers;
-	TArray<FVector> PhantomBurstLocations;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMinDuration = 4.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMaxDuration = 7.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMinStepInterval = 0.1f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMaxStepInterval = 0.5f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
-	float PhantomMinVolumeMultiplier = 3.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
-	float PhantomMaxVolumeMultiplier = 4.5f;
+	void HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount);
 
 	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);
 	void ScanFreezeTargets();
