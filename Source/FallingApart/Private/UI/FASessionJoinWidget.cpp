@@ -4,12 +4,17 @@
 #include "UI/FASessionJoinWidget.h"
 
 #include "Audio/FAAudioSubsystem.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
+#include "Components/EditableTextBox.h"
+#include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/PlayerState.h"
 #include "UI/FASessionEntryWidget.h"
+#include "UI/FAUIMessageSubsystem.h"
+#include "Utils/FASessionTextCodec.h"
 
 namespace FASessionJoinAudio
 {
@@ -38,6 +43,11 @@ bool UFASessionJoinWidget::Initialize()
 	{
 		RefreshButton->OnClicked.AddUniqueDynamic(this, &ThisClass::RefreshButtonClicked);
 		RefreshButton->OnHovered.AddUniqueDynamic(this, &ThisClass::HandleButtonHovered);
+	}
+
+	if (SessionSearchInput)
+	{
+		SessionSearchInput->OnTextChanged.AddUniqueDynamic(this, &ThisClass::HandleSessionSearchTextChanged);
 	}
 
 	return true;
@@ -79,18 +89,60 @@ void UFASessionJoinWidget::SetSearchInProgress(bool bIsSearching)
 
 void UFASessionJoinWidget::ShowSearchResults(const TArray<FOnlineSessionSearchResult>& SessionResults)
 {
-	ClearList();
-	for (const FOnlineSessionSearchResult& SessionResult : SessionResults)
-	{
-		AddSessionSearchResult(SessionResult);
-	}
-
-	ShowStatusMessage(FText::GetEmpty());
+	CachedSessionResults = SessionResults;
+	RebuildFilteredSessionList();
 
 	// 검색은 몇 초씩 걸린다 — 목록을 계속 쳐다보지 않아도 끝났다는 걸 알아야 한다.
 	UFAAudioSubsystem::PlayFASound(this, SessionResults.Num() > 0
 		? FASessionJoinAudio::Success
 		: FASessionJoinAudio::Denied);
+}
+
+bool UFASessionJoinWidget::DoesSessionTitleMatchSearch(
+	const FOnlineSessionSearchResult& SessionResult, const FString& SearchText)
+{
+	const FString NormalizedSearchText = SearchText.TrimStartAndEnd();
+	if (NormalizedSearchText.IsEmpty())
+	{
+		return true;
+	}
+
+	static const FName SessionNameSettingKey(TEXT("SERVER_NAME"));
+	FString StoredSessionName;
+	if (!SessionResult.Session.SessionSettings.Get(SessionNameSettingKey, StoredSessionName))
+	{
+		return false;
+	}
+
+	return FFASessionTextCodec::Decode(StoredSessionName).Contains(NormalizedSearchText, ESearchCase::IgnoreCase);
+}
+
+void UFASessionJoinWidget::HandleSessionSearchTextChanged(const FText& Text)
+{
+	RebuildFilteredSessionList();
+}
+
+void UFASessionJoinWidget::RebuildFilteredSessionList()
+{
+	ClearList();
+
+	const FString SearchText = SessionSearchInput
+		? SessionSearchInput->GetText().ToString()
+		: FString();
+	int32 VisibleResultCount = 0;
+	for (const FOnlineSessionSearchResult& SessionResult : CachedSessionResults)
+	{
+		if (DoesSessionTitleMatchSearch(SessionResult, SearchText))
+		{
+			AddSessionSearchResult(SessionResult);
+			++VisibleResultCount;
+		}
+	}
+
+	const bool bHasActiveFilter = !SearchText.TrimStartAndEnd().IsEmpty();
+	ShowStatusMessage(bHasActiveFilter && VisibleResultCount == 0 && CachedSessionResults.Num() > 0
+		? NSLOCTEXT("FASessionJoinWidget", "NoMatchingSessions", "검색 조건과 일치하는 방이 없습니다.")
+		: FText::GetEmpty());
 }
 
 void UFASessionJoinWidget::ShowStatusMessage(const FText& Message)
@@ -105,6 +157,24 @@ void UFASessionJoinWidget::ShowStatusMessage(const FText& Message)
 void UFASessionJoinWidget::SetJoinInProgress(bool bIsJoining)
 {
 	SetIsEnabled(!bIsJoining);
+}
+
+void UFASessionJoinWidget::ShowInvitedSession(const FOnlineSessionSearchResult& InviteResult)
+{
+	CachedSessionResults.Reset();
+	CachedSessionResults.Add(InviteResult);
+	if (SessionSearchInput)
+	{
+		SessionSearchInput->SetText(FText::GetEmpty());
+	}
+	RebuildFilteredSessionList();
+	
+	//임시 메세지 출력
+	ShowStatusMessage(
+		NSLOCTEXT(
+			"SessionJoinWidget",
+			"ShowPlatformInvitedSession",
+			"친구 초대로 참가할 방입니다."));
 }
 
 FString UFASessionJoinWidget::GetNickname() const
@@ -134,6 +204,15 @@ void UFASessionJoinWidget::ClearList()
 
 void UFASessionJoinWidget::HandleSessionEntrySelected(const FOnlineSessionSearchResult& SessionResult)
 {
+	FString Nickname = GetNickname();
+	if (Nickname.IsEmpty() || Nickname.TrimStartAndEnd().Len()<2)
+	{
+		UFAUIMessageSubsystem::ShowMessage(
+			this,
+			NSLOCTEXT("FASessionJoinWidget","InvalidNicknameTitle", "닉네임 오류"),
+			NSLOCTEXT("FASessionJoinWidget","NicknameTooShort", "닉네임은 2자 이상 입력해주세요."));
+		return;
+	}
 	const FString Password = PasswordInput ? PasswordInput->GetText().ToString() : FString();
 	OnSessionJoinRequested.Broadcast(SessionResult, Password, GetNickname());
 }

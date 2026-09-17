@@ -4,11 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "GameplayEffectTypes.h"
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
+class AFACharacter;
+class UPrimitiveComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class UAnimMontage;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
 struct FGameplayTag;
 
@@ -23,7 +27,7 @@ class FALLINGAPART_API UFACharacterStatusComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	// Sets default values for this component's properties
 	UFACharacterStatusComponent();
 
@@ -31,10 +35,92 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
+
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
-	
+
 private:
+	void UpdatePhantomAudio(float DeltaTime);
+
+	/** DT_Sound_Character의 발소리 RowName. 기존 음량·피치·감쇠 설정을 사용한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom")
+	TArray<FName> PhantomFootstepSoundIds = { FName(TEXT("Foot_Human_Run")) };
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomMinInterval = 3.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomMaxInterval = 7.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
+	float PhantomMinDistance = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
+	float PhantomMaxDistance = 50.0f;
+
+	// 로컬 소유권이 늦게 도착해도 Tick에서 시작하고, 룰 제거/소유권 상실 시 초기화한다.
+	float PhantomTimeRemaining = -1.0f;
+	// 한 번 발동하면 세 개의 가상 위치에서 4~7초 동안 반복 재생한다.
+	TArray<float> PhantomBurstRemainings;
+	TArray<float> PhantomBurstStartDelays;
+	TArray<float> PhantomBurstStepTimers;
+	TArray<FVector> PhantomBurstLocations;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMinDuration = 4.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMaxDuration = 7.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMinStepInterval = 0.1f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
+	float PhantomBurstMaxStepInterval = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
+	float PhantomMinVolumeMultiplier = 3.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
+	float PhantomMaxVolumeMultiplier = 4.5f;
+
+	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);
+	void ScanFreezeTargets();
+	void ClearFreeze();
+
+	/** 에디터에서 만든 경직 GE. Has Duration 0.8초, Granted Tag = State.Stunned로 설정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Freeze")
+	TSubclassOf<UGameplayEffect> FreezeStunEffect;
+
+	FTimerHandle FreezeDetectionTimerHandle;
+	TSet<TWeakObjectPtr<AFACharacter>> PreviousFreezeTargets;
+	FActiveGameplayEffectHandle FreezeEffectHandle;
+
+	/** Z41 태그가 있을 때만 기존 캡슐의 Hit 이벤트를 연결한다. */
+	void HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount);
+
+	/** 서버에서 판정한 Z41 반발 몽타주를 모든 클라이언트에서 재생한다. */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayKnockbackMontage();
+
+	/** Z41: 기존 캡슐의 blocking Hit에서 인간 접촉을 판정한다. */
+	UFUNCTION()
+	void HandleKnockbackHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	double NextKnockbackTime = 0.0;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackSpeed = 600.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.0", Units = "cm/s"))
+	float KnockbackUpSpeed = 150.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback", meta = (ClampMin = "0.05", Units = "s"))
+	float KnockbackInterval = 0.5f;
+
+	/** Z41 반발이 발생할 때 재생할 몽타주. BP_FACharacter에서 새 몽타주를 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rules|Knockback")
+	TObjectPtr<UAnimMontage> KnockbackMontage;
+
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
 
@@ -43,17 +129,21 @@ private:
 
 	//* 포복용
 	void HandleCrouchOnlyRuleChanged(const FGameplayTag Tag, int32 NewCount);
-	
+
 	/** Rule.Trade.Ghost 태그 추가·제거에 따라 유령 외형을 변경한다. */
 	void HandleGhostRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
 	void HandleSecondLifeRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void UpdateHideRule(float DeltaTime);
 	void SetHideActive(bool bActive);
-	
+
+	// [H45 RPC 추가] 서버에서 관련 클라이언트로 은둔 외형을 전달한다.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastSetHideVisual(bool bActive);
+
 	void UpdateCampRule(float DeltaTime);
 	void SetCampActive(bool bActive);
-	
+
 	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
 	void RefreshGhostVisual();
 
@@ -63,20 +153,28 @@ private:
 	void RollGambleSpeed();
 	/** H50 타이머와 현재 속도 효과를 모두 제거한다. */
 	void ClearGambleSpeed();
-	
-	// Rule.Gamble.Blink 추가·제거 이벤트 처리
-	void HandleGambleBlinkRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
-	// 무작위 Human PlayerStart로 순간이동
-	void BlinkToRandomPlayerStart();
+	// Rule.State.Recall 추가·제거 이벤트 처리
+	void HandleRecallRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
-	// H43 반복 타이머 정리
-	void ClearGambleBlink();
+	// H43 / Z40: 공유 스폰 지점(Human PlayerStart) 중 무작위 위치로 이동
+	void RecallToRandomPlayerStart();
 
+	// H43 / Z40 공용 귀환 반복 타이머 정리
+	void ClearRecall();
+
+	/** Z34 신음 강박 태그 추가/제거 처리 */
+	void HandleForceNoiseRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** Z34 소음 1회 발생 */
+	void PlayForcedNoise();
+
+	/** Z34 반복 타이머 정리 */
+	void ClearForcedNoise();
 
 	/** 현재 캐릭터 메시의 GhostOpacity 값을 변경한다. */
 	void SetGhostVisualActive(bool bActive);
-	
+
 	/** Z46 Gameplay Tag 추가·제거 이벤트를 처리한다. */
 	void HandleWallPhaseRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	/** 캐릭터 캡슐의 PhaseWall 충돌 응답을 변경한다. */
@@ -86,15 +184,31 @@ private:
 	void ToggleInputFlip();
 
 	void SetInputFlipActive(bool bActive);
-	
-	
-	
+
+	//Rule.State.Heartbeat 태그가 추가되거나 제거됐을 때 호출된다.
+	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
+	void HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	// [Z22 귀먹음] 기존 룰처럼 Status에서 태그 추가·제거 이벤트를 처리한다.
+	void HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	//각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
+	void StartHeartbeatDetection();
+
+	// H41 타이머를 중지하고 보유자의 로컬 아웃라인을 해제한다.
+	void StopHeartbeatDetection();
+
+	// 로컬 관찰자가 15m 이내 좀비이면 H41 보유자의 위치를 점멸 표시한다.
+	void ScanHeartbeatTargets();
+
+	// Z42 붕괴
+	void HandleDecayRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	void UpdateDecay();
+	void ClearDecay();
+
 	UAbilitySystemComponent* GetOwnerAbilitySystem() const;
-	
-	/**
-		* 착지 시 적용할 상태 GE.
-		* Has Duration 1초, Granted Tag는 State.Stunned로 설정한다.
-		*/
+
+	/* 착지 시 적용할 상태 GE. Has Duration 1초, Granted Tag는 State.Stunned로 설정한다. */
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Landing")
 	TSubclassOf<UGameplayEffect> LandStunEffect;
 
@@ -106,7 +220,7 @@ private:
 
 	FTimerHandle InputFlipTimerHandle;
 	bool bInputFlipActive = false;
-	
+
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Ghost")
 	float GhostActiveOpacity = 0.35f;
 
@@ -130,7 +244,7 @@ private:
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
 	float CampStationarySpeedTolerance = 3.0f;
-	
+
 	float CampStationaryElapsed = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.1"))
@@ -143,13 +257,61 @@ private:
 	float GambleSpeedMaxMultiplier = 1.5f;
 
 	FTimerHandle GambleSpeedTimerHandle;
-		
-	
-	// H43 순간이동 반복 간격.
-	// 룰 획득 후 40초 뒤 첫 순간이동이 발생한다.
-	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="1.0"))
-	float GambleBlinkInterval = 40.0f;
 
-	// H43 반복 타이머
-	FTimerHandle GambleBlinkTimerHandle;
+
+	// H43 / Z40 공용 귀환 반복 간격.
+	// 룰 획득 후 40초 뒤 첫 순간이동이 발생한다.
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Recall",meta=(ClampMin="1.0"))
+	float RecallInterval = 40.0f;
+
+	// H43 / Z40 공용 귀환 반복 타이머
+	FTimerHandle RecallTimerHandle;
+
+	/** H41 주변 좀비 탐색 타이머 */
+	FTimerHandle HeartbeatDetectionTimerHandle;
+
+	/** 로컬 좀비가 범위에 진입한 시각. 범위 밖에서는 -1. */
+	double HeartbeatRevealStartTime = -1.0;
+
+	/** H41 탐색 거리: 1500uu = 15m */
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.0"))
+	float HeartbeatDetectionRadius = 1500.0f;
+
+	/** H41 탐색 주기: 초당 5회 */
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Heartbeat",meta=(ClampMin="0.05"))
+	float HeartbeatDetectionInterval = 0.2f;
+
+	/** 위치 점멸 주기와 한 주기 내 표시 시간 (초). */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.1"))
+	float HeartbeatBlinkPeriod = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Heartbeat", meta=(ClampMin="0.0"))
+	float HeartbeatBlinkVisibleDuration = 0.4f;
+
+	// Z34 신음 강박
+	/** Z34 신음 발생 주기 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Status|ForceNoise", meta = (ClampMin = "0.1"))
+	float ForceNoiseInterval = 3.0f;
+
+	/** DT_Sound_Character에 추가할 SoundId */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Status|ForceNoise")
+	FName ForceNoiseSoundId = TEXT("Zombie_ForceNoise");
+
+	FTimerHandle ForceNoiseTimerHandle;
+
+	// Z42 붕괴
+	// 반복 검사
+	FTimerHandle DecayTimerHandle;
+
+	// 탐지 반경 10m
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "1.0"))
+	float DecayRadius = 1000.0f;
+
+	// 최대 감속 비율 35%
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DecayMaxSlowRatio = 0.35f;
+
+	// 거리 검사 주기
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Decay",meta = (ClampMin = "0.05"))
+	float DecayUpdateInterval = 0.2f;
 };

@@ -100,13 +100,14 @@ void UFAGA_Grab::ActivateAbility(
 		}
 		return;
 	}
+	const float MontagePlayRate = FMath::Max(0.1f, GrabMontagePlayRate);
 
 	UAbilityTask_PlayMontageAndWait* MontageTask =
 		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this,
 			TEXT("GrabAttemptMontage"),
 			GrabAttemptMontage,
-			1.0f,
+			MontagePlayRate,
 			NAME_None,
 			/*bStopWhenAbilityEnds=*/true);
 
@@ -131,7 +132,14 @@ void UFAGA_Grab::ActivateAbility(
 	}
 
 	// 서버의 월드 타이머를 판정 기준으로 삼는다. Dedicated Server 의 Mesh Tick/Notify 설정과 무관하다.
-	const float ImpactDelay = FMath::Clamp(GrabImpactDelay, 0.0f, GrabAttemptMontage->GetPlayLength());
+	const float MontageDuration =
+		GrabAttemptMontage->GetPlayLength() / MontagePlayRate;
+
+	const float ImpactDelay = FMath::Clamp(
+		GrabImpactDelay / MontagePlayRate,
+		0.0f,
+		MontageDuration);
+
 	if (ImpactDelay <= 0.0f)
 	{
 		ResolveGrabAttempt();
@@ -416,7 +424,6 @@ void UFAGA_Grab::CompleteInfection()
 
 		// 진영 전환 · 감염 점수 +2 · 인간 룰 제거 · 연속 드래프트 · 생존자 수 갱신 ·
 		AFACharacter* ZombieChar = Cast<AFACharacter>(GetAvatarActorFromActorInfo());
-
 		AFAPlayerState* VictimState = GrabbedVictim->GetPlayerState<AFAPlayerState>();
 		AFAPlayerState* InfectorState = ZombieChar ? ZombieChar->GetPlayerState<AFAPlayerState>() : nullptr;
 
@@ -424,8 +431,38 @@ void UFAGA_Grab::CompleteInfection()
 		{
 			if (AFAGameMode* GameMode = World->GetAuthGameMode<AFAGameMode>())
 			{
+				// HandleInfection() 호출 전에 인간이었는지 기록한다.
+				// 이미 감염된 대상 등에게 Z32가 잘못 발동하는 것을 방지한다.
+				const bool bWasHuman = VictimState && VictimState->IsHuman();
 				GameMode->HandleInfection(VictimState, InfectorState);
+
+				// 감염 처리 이후 실제 좀비로 변경됐는지 확인한다.
+				const bool bInfectionSucceeded = bWasHuman && VictimState && VictimState->IsZombie();
+
+				// Z32 포식 후 실명
+				// 감염에 성공했고, 감염자가 해당 룰 카드를 가지고 있다면 자신에게 5초 암전 GE를 적용한다.
+				if (bInfectionSucceeded && ZombieChar)
+				{
+					if (UAbilitySystemComponent* InfectorASC = ZombieChar->GetAbilitySystemComponent())
+					{
+						const FAGameplayTags& Tags = FAGameplayTags::Get();
+						if (InfectorASC->HasMatchingGameplayTag(Tags.Rule_Bite_BlindAfter))
+						{
+							if (BlindAfterEffectClass)
+							{
+								FGameplayEffectSpecHandle BlindSpec = MakeOutgoingGameplayEffectSpec(BlindAfterEffectClass);
+
+								if (BlindSpec.IsValid() && BlindSpec.Data.IsValid())
+								{
+									InfectorASC->ApplyGameplayEffectSpecToSelf(*BlindSpec.Data.Get());
+								}
+							}
+						}
+					}
+				}
 			}
+
+			// Z50 전염 도박 처리
 			ResolvePlagueGamble();
 		}
 	}

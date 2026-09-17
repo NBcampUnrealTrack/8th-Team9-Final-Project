@@ -51,6 +51,9 @@ public:
 	/* Z11 착지 경직 /H09 착지 경직 - 착지 시 1초 정지  */
 	FGameplayTag Rule_Move_LandStun;
 
+	/** H15 얼어붙음 — 좀비가 5m 이내 진입하면 0.8초 경직. */
+	FGameplayTag Rule_Move_Freeze;
+
 	/* Z13 등반 불가 /H12 등반 불가 - 오르기·넘기 봉인  */
 	FGameplayTag Rule_Move_NoMantle;
 
@@ -79,7 +82,19 @@ public:
 	/* Z21 상하 반전 / H22 상하 반전 - 입력 Y축 반전 */
 	FGameplayTag Rule_Vision_FlipY;
 
+	/* H23 투명한 적 - 좀비가 보이지 않음 (발소리·실루엣만, CustomDepth 아웃라인으로 표시) */
+	FGameplayTag Rule_Vision_NoZombie;
 
+	/* H24 고독 / Z37 고립 - 같은 진영의 다른 플레이어가 보이지 않음 */
+	FGameplayTag Rule_Vision_NoAlly;
+
+	/* Z25 심박 왜곡 - 좀비 전용. 인간 근접 시 카메라 흔들림 심화 */
+	FGameplayTag Rule_Vision_Shake;
+
+	/** Z23 환청 — 룰 보유자에게만 주변의 가짜 발소리를 랜덤 재생한다. */
+	FGameplayTag Rule_Audio_Phantom;
+	/** [Z22 귀먹음 추가] GE가 부여하는 청취 차단 태그. */
+	FGameplayTag Rule_Audio_Deaf;
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -112,6 +127,24 @@ public:
 
 	/** 캐비넷 안에 숨어 있는 동안. 포획 제외 · 애니메이션 분기 · 룰 판정이 이 태그를 본다. */
 	FGameplayTag State_Hiding;
+
+	/** 일시적인 완전 암전 상태 */
+	FGameplayTag State_Vision_Blind;
+
+	//~ ========================= Group =========================
+
+	/* H34 무리 강박 . 가장 가까운 생존자와 15m 초과 시 이동속도 -40% */
+	FGameplayTag Rule_Group_Leash;
+	FGameplayTag State_Group_Leash;
+
+	/* H35 대인 기피 . 가장 가까운 생존자와 5m 이내 시 이동속도 -30% */
+	FGameplayTag Rule_Group_Repel;
+	FGameplayTag State_Group_Repel;
+
+	//~ ========================= Social 태그 =========================
+
+	/** H29 / Z35 침묵 — 보이스 송신 차단 */
+	FGameplayTag Rule_Social_Mute;
 
 	//~ ========================= Trade Tag =========================
 
@@ -147,8 +180,8 @@ public:
 	/* Z50 전염 도박 .  감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) */
 	FGameplayTag Rule_Gamble_Plague;
 
-	/* H43 도박꾼.  40초마다 맵 랜덤 위치로 순간이동 */
-	FGameplayTag Rule_Gamble_Blink;
+	/* H43 도박꾼 / Z40 귀환. 40초마다 공유 스폰 지점 중 무작위 위치로 순간이동 */
+	FGameplayTag Rule_State_Recall;
 
 	//~ ========================= Cooldown Tag =========================
 
@@ -182,12 +215,22 @@ public:
 	/* Z30 구조 트라우마 . QTE 패배 시 8초 기절 */
 	FGameplayTag Rule_Bite_RescueStun;
 
+	/** Z32 포식 후 실명 — 감염 성공 후 5초 암전 */
+	FGameplayTag Rule_Bite_BlindAfter;
+
 	/* Z33 재장전. 포획 쿨타임 8초 */
 	FGameplayTag Rule_Bite_Cooldown;
 
 	// Social
+	/** Z34 신음 강박 — 3초마다 자동으로 큰 소리 발생 */
+	FGameplayTag Rule_Social_ForceNoise;
+
 	/* Z38 상시 표적 . 내 위치 상시 노출 */
 	FGameplayTag Rule_Social_Exposed;
+
+	/* Z39 좀비 혐오 . 다른 좀비 3m 이내 시 이동속도 -40% */
+	FGameplayTag Rule_Social_Repel;
+	FGameplayTag State_Social_Repel;
 
 	// Trade
 	/* Z43 광폭 . 이동속도 +35%, 감염 시간 6초 */
@@ -218,6 +261,10 @@ public:
 	// 4초 정지 조건을 충족한 상태
 	FGameplayTag State_Camp;
 
+	/** Z42 — 인간에게 가까워질수록 최대 35% 감속 */
+	FGameplayTag Rule_State_Decay;
+	FGameplayTag Rule_State_Knockback;
+
 #pragma endregion
 
 #pragma region Human Rule
@@ -232,6 +279,9 @@ public:
 	FGameplayTag Rule_Move_Burden;
 
 	FGameplayTag Rule_Move_SlowTurn;
+
+	/** H13 삐걱대는 무릎 — 점프 소리가 반경 25m까지 들림 */
+	FGameplayTag Rule_Move_NoisyJump;
 
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
@@ -248,10 +298,14 @@ public:
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
-	FGameplayTag Rule_Trade_SecondLife;
-	FGameplayTag State_SecondLife_Consumed;
 	FGameplayTag State_Hidden;
 
+	FGameplayTag Rule_Trade_SecondLife;
+	FGameplayTag State_SecondLife_Consumed;
+
+	/** H41 — 15m 이내 좀비에게 보유자의 위치를 점멸 표시한다. */
+	FGameplayTag Rule_State_Heartbeat;
+	FGameplayTag Rule_State_Trail;
 #pragma endregion
 
 private:

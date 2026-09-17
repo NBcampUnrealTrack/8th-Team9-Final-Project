@@ -14,8 +14,9 @@
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "UI/FASessionCreateWidget.h"
 #include "UI/FASessionJoinWidget.h"
+#include "UI/FAUIMessageSubsystem.h"
 
-#define LOCTEXT_NAMESPACE "PrototypeMainMenu"
+#define LOCTEXT_NAMESPACE "MainMenu"
 
 namespace FAMainMenuAudio
 {
@@ -105,7 +106,15 @@ void UFAMainMenuWidget::NativeConstruct()
 		OnlineSessionSubsystem->MultiplayerOnFindSessionsComplete.AddUObject(this, &ThisClass::OnFindSessionComplete);
 		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.RemoveAll(this);
 		OnlineSessionSubsystem->MultiplayerOnJoinSessionComplete.AddUObject(this, &ThisClass::OnJoinSessionComplete);
+		
+		OnlineSessionSubsystem->OnPendingInviteJoinAvailable.RemoveAll(this);
+		OnlineSessionSubsystem->OnPendingInviteJoinAvailable.AddUObject(this, &ThisClass::HandlePendingInviteJoin);
+		
+		//만약 이 단계에서 PendingSession이 있다면(게임 중 참가 / 참가를 통한 게임 시작) 바로 적용하도록 명시
+		HandlePendingInviteJoin();
 	}
+	
+	
 }
 void UFAMainMenuWidget::NativeDestruct()
 {
@@ -183,6 +192,20 @@ void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 	}
 }
 
+void UFAMainMenuWidget::ShowPageByInvite(const FOnlineSessionSearchResult& InviteResult)
+{
+	if (!WidgetSwitcher_Page || !SessionJoinWidget)
+	{
+		return;
+	}
+	
+	WidgetSwitcher_Page->SetActiveWidgetIndex(
+		static_cast<int32>(EPrototypeMenuPage::JoinSession));
+
+	//ActivatePage는 검색 갱신있어 사용하면 초기화됨.
+	SessionJoinWidget->ShowInvitedSession(InviteResult);
+}
+
 void UFAMainMenuWidget::HandleCreateSessionRequested(const FFASessionCreateRequest& Request)
 {
 	if (OnlineSessionSubsystem)
@@ -220,6 +243,30 @@ void UFAMainMenuWidget::HandleJoinSessionRequested(const FOnlineSessionSearchRes
 	OnlineSessionSubsystem->VerifyPasswordAndJoin(SessionResult, Password);
 	//VerifyPasswordAndJoin완료 성공시 JoinSession 요청됨.
 	//OnlineSessionSubsystem->JoinSession(SessionResult);
+}
+
+void UFAMainMenuWidget::HandlePendingInviteJoin()
+{
+	if (!OnlineSessionSubsystem || !SessionJoinWidget)
+	{
+		return;
+	}
+	
+	// 기존의 세션 상태를 확인하고, 정리되지 않았다면 소비하지않는다.
+	if (OnlineSessionSubsystem->GetCurrentSession()
+		|| OnlineSessionSubsystem->GetCurrentOperationState() != ESessionOperationState::Idle)
+	{
+		return;
+	}
+	
+	FOnlineSessionSearchResult InviteResult;
+	if (!OnlineSessionSubsystem->ConsumePendingInviteJoin(InviteResult))
+	{
+		return;
+	}
+	ShowPageByInvite(InviteResult);
+	
+	
 }
 
 void UFAMainMenuWidget::OnCreateSessionComplete(EFASessionRequestResult Result)
@@ -306,13 +353,17 @@ void UFAMainMenuWidget::OnJoinSessionComplete(EFASessionRequestResult Result, co
 
 	if (Result != EFASessionRequestResult::Success)
 	{
+		const FText ErrorMessage = Result == EFASessionRequestResult::InvalidPassword
+			? LOCTEXT("InvalidSessionPassword", "비밀번호가 올바르지 않습니다.")
+			: LOCTEXT("JoinSessionFailed", "선택한 방에 참가하지 못했습니다.");
 		if (SessionJoinWidget)
 		{
-			const FText ErrorMessage = Result == EFASessionRequestResult::InvalidPassword
-				? LOCTEXT("InvalidSessionPassword", "The session password is incorrect.")
-				: LOCTEXT("JoinSessionFailed", "Failed to join the selected session.");
 			SessionJoinWidget->ShowStatusMessage(ErrorMessage);
 		}
+		UFAUIMessageSubsystem::ShowMessage(
+			this,
+			LOCTEXT("JoinSessionErrorTitle", "접속 실패"),
+			ErrorMessage);
 		// 비밀번호 오류가 제일 흔하다 — 메시지를 안 보고 있어도 실패했다는 건 알아야 한다.
 		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
 

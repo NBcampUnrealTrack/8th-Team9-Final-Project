@@ -65,7 +65,7 @@ void UFADeathMatchSubsystem::StartDeathMatch(const TArray<AFAPlayerState*>& Cont
 		return;
 	}
 
-	// 진영 랜덤 배정 — 좀비 1명, 나머지 전원 인간 (GDD "좀비1 vs 인간2", 3인은 권장안 · 확정 필요).
+	// 진영 랜덤 배정 — 좀비 1명, 나머지 전원 인간.
 	TArray<AFAPlayerState*> Remaining = ValidContenders;
 	const int32 ZombieIndex = FMath::RandRange(0, Remaining.Num() - 1);
 	AFAPlayerState* Zombie = Remaining[ZombieIndex];
@@ -121,6 +121,52 @@ void UFADeathMatchSubsystem::NotifyContenderCaught(AFAPlayerState* CaughtHuman)
 	}
 
 	EndDeathMatch({ ActiveZombie.Get() }, MidPlacementPlayer, { CaughtHuman });
+}
+
+void UFADeathMatchSubsystem::NotifyContenderDisconnected(AFAPlayerState* Contender)
+{
+	if (!Contender)
+	{
+		return;
+	}
+
+	// 좀비 이탈 — 좀비가 패배(최하위), 남은 인간 전원 승리로 즉시 종료.
+	if (ActiveZombie.Get() == Contender)
+	{
+		TArray<AFAPlayerState*> Survivors;
+		for (const TWeakObjectPtr<AFAPlayerState>& Human : ActiveHumans)
+		{
+			if (Human.IsValid())
+			{
+				Survivors.Add(Human.Get());
+			}
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 좀비 %s 이탈 — 인간 승 처리"), *Contender->GetPlayerName());
+		EndDeathMatch(Survivors, nullptr, { Contender });
+		return;
+	}
+
+	const TWeakObjectPtr<AFAPlayerState> WeakContender(Contender);
+	if (!ActiveHumans.Remove(WeakContender))
+	{
+		// 데스매치 참가자가 아니면(이미 관전자 등) 무시.
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[DeathMatch] 인간 %s 이탈 — 패배 처리, 잔여 인간 %d명"),
+		*Contender->GetPlayerName(), ActiveHumans.Num());
+
+	if (ActiveHumans.Num() == 0)
+	{
+		// 남은 인간이 없다 — 좀비 승리로 즉시 종료 (2인 케이스, 또는 3인에서 마지막 인간까지 나간 경우).
+		EndDeathMatch({ ActiveZombie.Get() }, nullptr, { Contender });
+	}
+	else
+	{
+		// 3인 케이스: 남은 인간이 있으니 매치는 계속된다. 이탈자만 최하위로 즉시 확정.
+		Contender->SetDeathMatchPlacement(3);
+	}
 }
 
 void UFADeathMatchSubsystem::HandleTimeExpired()

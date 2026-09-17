@@ -4,6 +4,7 @@
 #include "Game/FAGameInstance.h"
 
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "UI/FAUIMessageSubsystem.h"
 
 UFAGameInstance::UFAGameInstance()
 {
@@ -35,6 +36,14 @@ void UFAGameInstance::HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver,
 {
 	// 서버 접속 실패, 접속 거부, Validate Fail 등 처리.
 	UE_LOG(LogFAOSS, Error, TEXT("UFAGameInstance::HandleNetworkFailure : Message %s"), *ErrorString)
+
+	if (FailureType == ENetworkFailure::ConnectionLost || FailureType == ENetworkFailure::ConnectionTimeout)
+	{
+		UFAUIMessageSubsystem::ShowMessageAfterTravel(
+			this,
+			NSLOCTEXT("FAGameInstance", "ConnectionEndedTitle", "연결 종료"),
+			NSLOCTEXT("FAGameInstance", "HostLeftMessage", "호스트와의 연결이 끊어져 메인 메뉴로 돌아왔습니다."));
+	}
 	
 	ProcessJoinFailure();
 }
@@ -57,4 +66,14 @@ void UFAGameInstance::ProcessJoinFailure()
 			SessionSubsystem->DestroySession();
 		}
 	}
+}
+
+void UFAGameInstance::SetLastSelectedMapId(FName MapId)
+{
+	LastSelectedMapId = MapId;
+}
+
+FName UFAGameInstance::GetLastSelectedMapId() const
+{
+	return LastSelectedMapId;
 }

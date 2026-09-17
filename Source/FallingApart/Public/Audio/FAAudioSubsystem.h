@@ -32,7 +32,7 @@ public:
 
 	/** 월드 특정 지점에서 재생. 행이 2D 로 되어 있어도 여기서는 3D 로 낸다. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|Audio")
-	void PlaySoundAtLocation(FName SoundId, FVector Location);
+	void PlaySoundAtLocation(FName SoundId, FVector Location, float VolumeMultiplier = 1.0f);
 
 	/**
 	 * 컴포넌트에 붙여서 재생 — 움직이는 소리(발소리·좀비 그르렁 루프)용.

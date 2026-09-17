@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "UI/FASessionEntryWidget.h"
@@ -9,6 +9,7 @@
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Network/FAOnlineSessionSubsystem.h"
+#include "Utils/FASessionTextCodec.h"
 
 namespace FASessionEntryAudio
 {
@@ -42,17 +43,33 @@ void UFASessionEntryWidget::OnJoinButtonHovered()
 void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Result)
 {
 	EntryData = Result;
-	// 방 이름
-	FString ServerName;
-	Result.Session.SessionSettings.Get(FName("SERVER_NAME"), ServerName);
-	SessionTitleText->SetText(FText::FromString(ServerName));
 	
-	// 참가자 수
-	int32 MaxConnection = Result.Session.SessionSettings.NumPublicConnections;
-	int32 CurrentConnection = MaxConnection - Result.Session.NumOpenPublicConnections;
-	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentConnection, MaxConnection));
+	FString StoredServerName;
+	if (Result.Session.SessionSettings.Get(FName("SERVER_NAME"), StoredServerName)
+		&& SessionTitleText)
+	{
+		SessionTitleText->SetText(
+			FText::FromString(FFASessionTextCodec::Decode(StoredServerName)));
+	}
+
+	FString StoredHostNickname;
+	if (Result.Session.SessionSettings.Get(FName("OwningUserNickname"), StoredHostNickname)
+		&& SessionHostNicknameText)
+	{
+		SessionHostNicknameText->SetText(
+			FText::FromString(FFASessionTextCodec::Decode(StoredHostNickname)));
+	}
+	
+	// 이전 버전의 방처럼 커스텀 값이 없으면 기존 빈자리 계산으로 대체한다.
+	const int32 MaxConnection = FMath::Max(0, Result.Session.SessionSettings.NumPublicConnections);
+	int32 CurrentPlayers = MaxConnection - Result.Session.NumOpenPublicConnections;
+	Result.Session.SessionSettings.Get(FName(TEXT("CURRENT_PLAYERS")), CurrentPlayers);
+	CurrentPlayers = FMath::Clamp(CurrentPlayers, 0, MaxConnection);
+
+	FText ConnectionTextFormat = FText::FromString(FString::Printf(TEXT("%d / %d"), CurrentPlayers, MaxConnection));
 	CurrentConnectionText->SetText(ConnectionTextFormat);
 	
+
 	// 지연시간
 	int32 Ping = Result.PingInMs;
 	SessionPingText->SetText(FText::FromString(FString::Printf(TEXT("핑 : %d"), Ping)));

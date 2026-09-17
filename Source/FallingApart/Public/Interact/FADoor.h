@@ -58,6 +58,9 @@ protected:
 	UFUNCTION()
 	void OnRep_IsLocked();
 
+	UFUNCTION()
+	void OnRep_OpenDirectionSign();
+
 	/** 복제된 상태를 목표 회전으로 바꾸고 보간을 켠다. 서버·클라 공통 경로. */
 	void ApplyOpenState(bool bPlaySound);
 
@@ -68,8 +71,29 @@ protected:
 	/** 지금 상태에 해당하는 피벗의 목표 상대 회전. */
 	FRotator GetTargetPivotRotation() const;
 
+	/**
+	 * 미는 사람 반대편으로 열리려면 어느 쪽으로 돌아야 하는가. +1 / -1 (월드 Yaw 기준).
+	 * 경첩에서 문짝으로 향하는 실측 방향을 기준으로 잡으므로 배치 회전이나 BP 마다
+	 * 다른 메시 정렬에 영향을 받지 않는다.
+	 */
+	int32 ComputeOpenDirectionSign(const AFACharacter* ByCharacter) const;
+
+	/**
+	 * 닫힌 자세에서 경첩 → 문짝 중심 방향을 한 번 재둔다(수평 성분만, 월드 공간).
+	 * 열린 뒤에 재면 이미 돌아간 자세가 잡히므로 반드시 BeginPlay 의 배치 그대로에서 잰다.
+	 */
+	void CacheClosedLeafDirection();
+
 	/** 거울 배치 보정 배수. 정상 배치면 1, Scale 부호가 뒤집힌 배치면 -1. */
 	float GetMirrorSign() const;
+
+	/** 회전 중에는 문짝의 Pawn 충돌을 끄고, 멈추면 되살린다. 서버·클라가 각자 로컬로 한다. */
+	void UpdatePawnCollisionForMotion(float DeltaTime, bool bMoving);
+
+	void SetPawnCollisionSuppressed(bool bSuppress);
+
+	/** 문짝 자리에 캐릭터가 들어와 있는가. 충돌을 되살리는 순간 밀어내는 것을 막기 위한 검사. */
+	bool IsPawnOverlappingDoorMesh() const;
 
 public:
 	//~ ---------------- 컴포넌트 ----------------
@@ -120,6 +144,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door")
 	bool bStartLocked = false;
 
+	//~ ---------------- 충돌 ----------------
+
+	/**
+	 * 여닫는 동안 문짝이 캐릭터를 밀지 않게 한다(Pawn 채널만 끈다 — 총알·시야는 그대로 막는다).
+	 * 회전이 끝나면 되살리되, 문짝 자리에 사람이 서 있으면 비켜날 때까지 기다린다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Collision")
+	bool bDisablePawnCollisionWhileMoving = true;
+
+	/**
+	 * 회전이 끝난 뒤 사람이 안 비켜도 충돌을 되살리기까지의 시간(초).
+	 * 0 이면 즉시 되살린다(엔진이 밀어낸다). 문틈에 서서 통과하는 것을 막는 안전장치다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FallingApart|Door|Collision", meta = (ClampMin = "0.0"))
+	float PawnCollisionRestoreGraceSeconds = 2.0f;
+
 	//~ ---------------- 캐릭터 애니메이션 ----------------
 
 	/** 캐릭터가 문을 열 때 재생할 몽타주. 비워두면 재생하지 않는다. */
@@ -163,9 +203,12 @@ protected:
 
 	/**
 	 * 이번에 열린 방향. +1 / -1. 서버가 미는 사람 위치를 보고 정하고 복제한다.
-	 * bIsOpen 과 같은 프레임에 도착한다는 보장이 없어서 OnRep 은 둘 다 ApplyOpenState 를 부른다.
+	 *
+	 * bIsOpen 보다 뒤에 선언돼 있어 같은 번치로 와도 OnRep_IsOpen 이 먼저 불린다 —
+	 * 그 시점에는 아직 이전 방향이 들어 있다. 그래서 이쪽에도 OnRep 을 달아 값이 도착한 뒤
+	 * 목표 회전을 한 번 더 잡는다. 없으면 클라이언트는 늘 직전(첫 개폐면 기본값 +1) 방향으로 연다.
 	 */
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_OpenDirectionSign)
 	int32 OpenDirectionSign = 1;
 
 private:
@@ -176,6 +219,20 @@ private:
 
 	bool bRotationInitialized = false;
 
+	/** 닫힌 자세에서 경첩 → 문짝 중심 방향(수평, 월드). CacheClosedLeafDirection 이 채운다. */
+	FVector ClosedLeafDirWorld = FVector::ZeroVector;
+
+	/** 문짝 중심이 경첩 바로 위라 방향을 못 잰 경우 false. 그때는 액터 앞뒤로 가르는 예전 방식으로 돈다. */
+	bool bLeafDirectionValid = false;
+
 	/** 소리를 낸 마지막 개폐 상태. 접속 직후 초기 복제로 소리가 나는 것을 막는다. */
 	bool bLastSoundedOpenState = false;
+
+	/** 배치 당시 문짝의 Pawn 채널 응답. 충돌을 되살릴 때 이 값으로 돌린다. */
+	TEnumAsByte<ECollisionResponse> SavedPawnCollisionResponse = ECR_Block;
+
+	bool bPawnCollisionSuppressed = false;
+
+	/** 회전이 멈춘 뒤 아직 충돌을 못 되살린 채 흐른 시간. */
+	float PawnCollisionSuppressedSeconds = 0.0f;
 };

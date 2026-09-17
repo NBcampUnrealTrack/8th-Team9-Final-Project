@@ -31,12 +31,13 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	
 	virtual void Logout(AController* Exiting) override;
+	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 	
 	
 	/// PlayerController에서 준비 입력받아 처리
 	void SetPlayerReady(APlayerController* NewPlayerController, bool bReady);
 
-	
+	void RequestSelectMap(APlayerController* RequestingPlayerController, FName RequestMapId);
 	
 protected:
 	virtual FString InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal = L"") override;
@@ -45,6 +46,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 private:
+	void RefreshAdvertisedPlayerCount(const AController* ExcludedController = nullptr);
 	bool IsSessionOwner(FUniqueNetIdRepl UniqueNetId);
 	/** GameState에 필요 데이터 전파. LobbyGameState->SetLobbySnapshot를 참고 */
 	void RefreshLobbyState();
@@ -85,12 +87,6 @@ private:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
 	bool bAutoStartCountdownWhenAllReady = true;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
-	TSoftObjectPtr<UWorld> DestinationMap;
-	
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Lobby")
-	FName DefaultMapId;
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UFAOnlineSessionSubsystem> OnlineSessionSubsystem;

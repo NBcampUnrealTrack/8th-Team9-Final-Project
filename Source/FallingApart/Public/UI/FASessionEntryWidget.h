@@ -38,6 +38,9 @@ private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UTextBlock> SessionTitleText;
 	
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> SessionHostNicknameText;
+	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UTextBlock> SessionPingText;
 	

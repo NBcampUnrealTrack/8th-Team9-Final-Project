@@ -10,6 +10,7 @@
 class UButton;
 class UTextBlock;
 class UListView;
+class UImage;
 class UFALobbyPlayerEntryWidget;
 class AFALobbyGameState;
 enum class EFALobbyPhase : uint8;
@@ -114,4 +115,43 @@ private:
 	 * 이게 false 인 동안 읽히는 값은 아직 복제 전 기본값이라 기준선으로 쓸 수 없다.
 	 */
 	bool bRosterAudioArmed = false;
+	
+public:
+	/** 다음/이전맵으로 변경을 적용하는 함수 */ 
+	UFUNCTION(BlueprintCallable)
+	void SelectRelativeMap(int32 Direction);
+private:
+	/** UI의 맵 정보 갱신 */
+	void RefreshMapInfo();
+	
+	/** 호스트여부/진행상황에 따른 맵 변경 제한 */
+	void RefreshMapSelectionButtons();
+	
+	UFUNCTION()
+	void OnPreviousMapClicked();
+	
+	UFUNCTION()
+	void OnNextMapClicked();
+	
+	
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_MapName;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_MapDescription;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_RecommendedPlayers;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UImage> Image_MapThumbnail;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> Button_PreviousMap;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> Button_NextMap;
+	
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> Text_HostDescription;
 };

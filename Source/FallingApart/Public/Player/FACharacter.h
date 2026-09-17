@@ -10,6 +10,7 @@
 #include "Rule/FARuleTypes.h"
 #include "FACharacter.generated.h"
 
+class UFAOverHeadWidget;
 class UFAAbilitySystemComponent;
 class UFACharacterMovementComponent;
 class UFAAttributeSet;
@@ -27,6 +28,9 @@ class UWidgetComponent;
 class UFAInteractionComponent;
 class AFACabinet;
 class AFALadder;
+class UAnimMontage;
+class UFADetectionUnitComponent;
+class UFATrailComponent;
 
 UCLASS()
 class FALLINGAPART_API AFACharacter : public ACharacter, public IAbilitySystemInterface
@@ -37,6 +41,7 @@ public:
 	AFACharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaTime) override;
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -207,9 +212,17 @@ protected:
 	/** ASC 에 아바타 정보를 물리고, 서버라면 기본 어빌리티를 지급한다. */
 	void InitializeAbilitySystem();
 
-	/** 진영에 딸린 연출(외형 · 그르렁 루프)을 현재 진영에 맞춘다. */
+	/** 진영에 딸린 연출(외형 · 그르렁 루프 · 감염 전환)을 현재 진영에 맞춘다. */
 	UFUNCTION()
 	void HandleTeamChanged(EFATeam NewTeam);
+
+	/** 감염 전환 연출을 시작한다. 진영이 Human -> Zombie 로 바뀐 순간에만 불린다. */
+	void StartInfectionSequence();
+
+	/**
+	 * 연출의 화면 효과 값을 지금 시각 기준으로 다시 계산한다. 다 끝났으면 스스로 꺼진다.
+	 */
+	void UpdateInfectionSequence();
 
 	/**
 	 * 진영에 맞는 머티리얼을 메시 전 슬롯에 적용한다.
@@ -218,6 +231,13 @@ protected:
 
 	/** 좀비인 동안만 도는 그르렁 루프를 켜고 끈다. */
 	void UpdateGrowlLoop(EFATeam NewTeam);
+
+public:
+	/** 감염 전환 연출이 도는 중인가. 화면이 아직 어두운 동안은 이동 입력을 받지 않는다. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Infection")
+	bool IsPlayingInfectionSequence() const { return bInfectionSequenceActive; }
+
+protected:
 
 	/** 물에 잠겨 있는 동안만 도는 첨벙 루프를 켜고 끈다. */
 	void UpdateWadeLoop(bool bInWater);
@@ -320,8 +340,18 @@ protected:
 	 */
 	void SetVisionBlendableActive(UMaterialInstanceDynamic* MID, bool bShouldBeActive) const;
 
-	/** FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음. */
-	void UpdateOpponentDistanceCulling(float FullDistance);
+	/**
+	 * FullDistance 보다 멀리 있는 상대를 로컬 화면에서만 숨긴다(렌더링 컬링). 서버·남의 화면엔 영향 없음.
+	 * @param bHideAllies [H24 고독] true면 거리와 무관하게 다른 인간(State.Human)을 전부 숨긴다.
+	 */
+	void UpdateOpponentDistanceCulling(float FullDistance, bool bHideAllies);
+
+	/**
+	 * [Z25 심박 왜곡] 가장 가까운 인간까지의 거리(제곱)를 ClosestHumanDistanceSq 에 캐싱한다.
+	 * 너무 잦은 전체 순회를 피하려고 ShakeCheckInterval 주기로만 갱신 — 흔들림 세기는 부드럽게
+	 * 이어지므로 캐시가 살짝 늦어도 체감상 문제없다.
+	 */
+	void UpdateClosestHumanDistance();
 
 	/** 좌클릭: 진영에 따른 포획(좀비) / 구출(인간) 어빌리티 발동 */
 	void TriggerPrimary();
@@ -348,6 +378,12 @@ protected:
 	/** 머리 위 보유 룰 아이콘 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupRuleMarker();
 
+	/** 머리 위 닉네임 위젯을 만들고 이 캐릭터를 표시 대상으로 주입한다. */
+	void SetupNicknameMarker();
+
+	/** PlayerState 도착 또는 빙의 변경 후 닉네임 위젯의 표시 대상을 다시 갱신한다. */
+	void RefreshNicknameMarker();
+
 	/**
 	 * 이 프레임에 머리 위 룰 아이콘을 그려야 하는가.
 	 *
@@ -365,8 +401,16 @@ protected:
 	void OnExposedTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void OnMutualSightTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
 
-	/** 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신 */
+	/**
+	 * 캐릭터의 윤곽선을 켤지 말지 최종 판단, 렌더링을 갱신.
+	 * [H23 투명한 적] 로컬 뷰어가 NoZombie 룰을 갖고 있으면 좀비·인간 구분 없이 this 의 본체는 숨기고
+	 * 아웃라인만 남긴다 — 좀비한테만 적용하면 실루엣 자체가 정체를 드러내므로 전원 대상으로 바꿨다.
+	 */
 	void RefreshCustomDepth();
+
+	bool ShouldShowOverheadWidget() const;
+
+	void UpdateGroupRules();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -374,13 +418,57 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class UCameraComponent* FollowCamera;
-	
+
+	/** 전신의 최종 포즈를 받는 표시용 팔. 로컬 플레이어의 일인칭에서만 보인다. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera|First Person")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+
+	/** 카툰 캐릭터에서 측정한 서기 눈높이 보정. 머리 애니메이션의 흔들림은 전달하지 않는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonEyeHeightOffset = -20.0f;
+
+	/** 일인칭 축소 렌더링에서도 원본 공격의 가까운 소매가 잘리지 않도록 측정한 근접면 거리. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (ClampMin = "1", Units = "cm"))
+	float FirstPersonNearClipPlane = 4.0f;
+
+	/** 실제 앉기 최종 포즈에서 측정한 눈높이. 정지와 이동 값을 속도에 따라 보간한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonCrouchedIdleEyeHeightOffset = -11.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (Units = "cm"))
+	float FirstPersonCrouchedMovingEyeHeightOffset = 8.7f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|First Person", meta = (ClampMin = "1.0", Units = "cm/s"))
+	float FirstPersonCrouchedEyeReferenceSpeed = 120.0f;
+
+private:
+	/** 시점 변경을 로컬 카메라와 이동 방향 요청에 함께 반영한다. */
+	void UpdateFirstPersonViewMode();
+	/** 팔 표시·틱·전신 본 갱신 정책을 같은 상태로 맞춘다. */
+	void SetFirstPersonArmsVisible(bool bVisible);
+	void UpdateFirstPersonPoseSource(bool bShowArms);
+	float GetFirstPersonEyeHeight() const;
+	void UpdateFirstPersonCameraPresentation(bool bFirstPersonView);
+
+	// 일인칭을 벗어날 때 복구할 기존 카메라 설정.
+	bool bFirstPersonCameraPresentationActive = false;
+	bool bSavedCameraTranslationLag = false;
+	bool bSavedMotionBlurOverride = false;
+	float SavedMotionBlurAmount = 0.0f;
+
+	// 팔을 숨기면 원래 정책으로 되돌려 전신의 불필요한 본 갱신을 막는다.
+	bool bFirstPersonSourceActive = false;
+	uint8 SavedBodyVisibilityTickOption = 0;
+	bool bSavedBodyUpdateRateOptimizations = false;
+
+public:
+
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	class UMaterialInterface* VisionFogMaterial = nullptr;
 
 	UPROPERTY(Transient)
 	class UMaterialInstanceDynamic* VisionFogMID = nullptr;
-	
+
 	// 평상시(FogAmount=0)엔 맵보다 훨씬 큰 값으로 둬서 사실상 안개·컬링이 발동하지 않게 한다.
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Fog")
 	float VisionFogStartDistanceMax = 20000.0f;   // FogAmount = 0 일 때 시작 거리
@@ -400,6 +488,16 @@ public:
 
 	float TimeSinceLastOpponentCullCheck = 0.0f;
 
+	//~ ---------------- 암전 명멸 연출 (Vision.Blackout) ----------------
+
+	/** 암전 명멸 주기(초). 이 주기마다 한 번씩 화면이 완전히 어두워진다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutPeriod = 5.0f;
+
+	/** 주기 안에서 완전 암전 상태가 유지되는 시간(초). BlackoutPeriod 보다 작아야 한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
+	float BlackoutFlashDuration = 1.0f;
+
 	//~ ---------------- 시야각 축소 연출 (Vision.NarrowFOV) ----------------
 	//~ 실제 카메라 FOV는 더 이상 건드리지 않는다 — 화면 테두리를 검게 좁히는 별도 PP 머티리얼로 대체.
 	//~ Vision.Fog(VisionFogMID)와는 완전히 분리된 블렌더블 슬롯 · 파라미터를 쓴다.
@@ -416,6 +514,35 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Narrow", meta = (ClampMin = "1.0"))
 	float NarrowAmountIntensity = 2.0f;
+
+	//~ ---------------- 심박 왜곡 연출 (Vision.Shake, Z25) ----------------
+	//~ 카메라 셰이크 애셋 없이 FollowCamera 의 RelativeRotation 을 매 프레임 직접 흔든다 —
+	//~ 이 룰이 꺼져 있으면 항상 ZeroRotator 로 되돌리므로 다른 카메라 로직과 안 겹친다.
+
+	/** 이 거리 이하로 가까워지면 흔들림이 최대치가 된다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMinDistance = 150.0f;
+
+	/** 이 거리보다 멀면 흔들림이 없다(uu). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxDistance = 800.0f;
+
+	/** 흔들림 최대 각도(도). 최대치일 때 카메라가 좌우/상하로 이 각도만큼 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeMaxAngle = 1.5f;
+
+	/** 흔들림 파형 속도. 값이 클수록 더 빠르게 떨린다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeFrequency = 18.0f;
+
+	/** 가장 가까운 인간 탐색 주기(초). 매 프레임 전체 캐릭터를 순회하지 않도록 주기적으로만 수행한다. */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Shake")
+	float ShakeCheckInterval = 0.2f;
+
+	float TimeSinceLastShakeCheck = 0.0f;
+
+	/** UpdateClosestHumanDistance() 가 채우는 캐시. 사람이 하나도 없으면 아주 큰 값(=흔들림 0)으로 유지. */
+	float ClosestHumanDistanceSq = TNumericLimits<float>::Max();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
 	float ThirdPersonArmLength;
@@ -480,6 +607,34 @@ public:
 	/** 좀비(감염) 외형. MI_CharacterInfected. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Appearance")
 	TObjectPtr<UMaterialInterface> ZombieMaterial;
+
+	//~ ---------------- 감염 전환 연출 ----------------
+	//~ 인간 -> 좀비 로 진영이 바뀐 순간 한 번 돈다. 암전 → 빨강에서 정상으로 → 기상.
+
+	/**
+	 * 쓰러진 자세에서 일어나는 몽타주. 비워두면 화면 효과만 돌고 캐릭터는 그대로 서 있는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection")
+	TObjectPtr<UAnimMontage> InfectionGetUpMontage;
+
+	/** 화면이 완전히 검은 채로 머무는 시간(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionBlackoutHoldSeconds = 1.0f;
+
+	/** 암전이 풀리며 밝아지는 데 걸리는 시간(초). 이 시간이 끝나야 이동 입력이 돌아온다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionDarkenReleaseSeconds = 0.6f;
+
+	/**
+	 * 빨간 화면이 정상 색으로 돌아오는 데 걸리는 시간(초).
+	 * 암전 해제와 같은 시점에 시작해서 더 길게 끈다 — 밝아지고 나서도 한동안 붉게 남는다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ForceUnits = "s"))
+	float InfectionRedFadeSeconds = 2.5f;
+
+	/** 빨강의 최대 강도(0~1). 1 이면 초록·파랑이 완전히 죽어 순수 빨강만 남는다. */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Infection", meta = (ClampMin = "0", ClampMax = "1"))
+	float InfectionRedTintStrength = 0.85f;
 
 	//~ ---------------- 머리 위 감염 게이지 ----------------
 
@@ -563,6 +718,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
 	float RuleMarkerOcclusionInterval = 0.2f;
 
+	/**
+	 *	닉네임 컴포넌트
+	 *	Rule과 마찬가지로 플레이어가 보일때만 가시성 활성.
+	 *	여건이 되면 위의 Rulemarker와 통합하는게 좋을듯?
+	*/
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	TSubclassOf<UFAOverHeadWidget> OverHeadWidgetClass;
+
+	void SetHeartbeatRevealActive(bool bActive);
+
+	UFADetectionUnitComponent* GetDetectionUnitComponent() const
+	{
+		return DetectionUnitComponent;
+	}
+
 private:
 	/**
 	 * 포획 진행 상태.
@@ -593,6 +763,16 @@ private:
 	/** 머리 위 보유 룰 아이콘. 서버 전용 인스턴스에서는 만들지 않는다. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWidgetComponent> RuleMarker;
+
+	/** 머리 닉네임 텍스트. 서버 전용 인스턴스에서는 만들지 않는다. */
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> NicknameMarker;
+
+	/** 머리 위 닉네임 텍스트 거림 검사 시간 확인용. */
+	float NicknameMarkerOcclusionTimer = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
+	FVector NicknameMarkerOffset = FVector(0.0f, 0.0f, 80.0f);
 
 	/** 룰 아이콘에 넘길 표시 사본. 매 프레임 새로 만들지 않도록 보유 목록이 바뀔 때만 다시 채운다. */
 	UPROPERTY(Transient)
@@ -671,6 +851,24 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> GrowlLoopComponent;
 
+	//~ 감염 전환 연출의 진행 상태. 전부 로컬 표현이라 복제하지 않는다.
+
+	bool bInfectionSequenceActive = false;
+
+	/** 연출이 시작된 월드 시각. 연출이 안 도는 동안에는 의미 없는 값이다. */
+	float InfectionSequenceStartTime = 0.0f;
+
+	/** 이번 프레임의 연출 화면 값. Tick 이 계산하고 UpdateVisionEffects 가 읽어 간다. */
+	float InfectionDarkenAmount = 0.0f;
+	float InfectionRedAmount = 0.0f;
+
+	/**
+	 * 마지막으로 본 진영. Human -> Zombie 로 '바뀌는 순간' 만 잡아내려고 들고 있는다.
+	 * 첫 호출은 기준만 잡는다
+	 */
+	EFATeam LastKnownTeam = EFATeam::None;
+	bool bHasTeamBaseline = false;
+
 	/**
 	 * 물에 잠겨 있는 동안 도는 첨벙 루프. MOVE_Swimming 진입/이탈로만 켜고 끈다.
 	 */
@@ -714,4 +912,13 @@ private:
 
 	/** Vision.ForceFPS 룰이 강제로 1인칭 전환시켰는가 — 룰이 빠질 때 되돌릴지 판단하는 데 쓴다. */
 	bool bVisionForcedFirstPerson = false;
+
+	bool bHeartbeatRevealActive = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="FallingApart|Trail", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFATrailComponent> TrailComponent;
+	UPROPERTY(VisibleAnywhere, Category = "FallingApart|Detection")
+	TObjectPtr<UFADetectionUnitComponent> DetectionUnitComponent;
+
+	// 거리 기반 룰(무리 강박, 대인 기피) 검사용 타이머
+	FTimerHandle GroupRuleTimerHandle;
 };
