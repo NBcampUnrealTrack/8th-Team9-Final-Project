@@ -6,9 +6,12 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "LoadingScreenSubsystem.h"
 #include "Components/Button.h"
+#include "Components/Image.h"
 #include "Components/ListView.h"
 #include "Components/TextBlock.h"
 #include "Game/FALobbyGameState.h"
+#include "Game/FAMapSettings.h"
+#include "Game/FAMapTypes.h"
 #include "Player/FALobbyPlayerController.h"
 #include "Player/FALobbyPlayerState.h"
 #include "UI/FALobbyPlayerEntryWidget.h"
@@ -45,6 +48,31 @@ void UFALobbyMainWidget::ShowLoadingScreen()
 	}
 }
 
+void UFALobbyMainWidget::InitializeLobby()
+{
+	AFALobbyGameState* LobbyGameState =
+		GetWorld()->GetGameState<AFALobbyGameState>();
+
+	if (!LobbyGameState)
+	{
+		return;
+	}
+	if (BoundedLobbyGameState && LobbyGameState != BoundedLobbyGameState)
+	{
+		
+		LobbyGameState->OnLobbyStateChanged.RemoveDynamic(
+			this,
+			&ThisClass::HandleLobbyStateChanged);
+	}
+	//
+	BoundedLobbyGameState = LobbyGameState;
+	BoundedLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
+		this,
+		&ThisClass::HandleLobbyStateChanged);
+
+	RefreshLobby();
+}
+
 void UFALobbyMainWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -67,11 +95,14 @@ void UFALobbyMainWidget::NativeOnInitialized()
 			Button_Start->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
-}
-
-void UFALobbyMainWidget::OnButtonHovered()
-{
-	UFAAudioSubsystem::PlayFASound(this, FALobbyAudio::Hover);
+	if (Button_PreviousMap)
+	{
+		Button_PreviousMap->OnClicked.AddDynamic(this, &UFALobbyMainWidget::OnPreviousMapClicked);
+	}
+	if (Button_NextMap)
+	{
+		Button_NextMap->OnClicked.AddDynamic(this, &UFALobbyMainWidget::OnNextMapClicked);
+	}
 }
 
 void UFALobbyMainWidget::NativeConstruct()
@@ -104,31 +135,6 @@ void UFALobbyMainWidget::HandleLobbyStateChanged()
 	bRosterAudioArmed = true;
 }
 
-void UFALobbyMainWidget::InitializeLobby()
-{
-	AFALobbyGameState* LobbyGameState =
-		GetWorld()->GetGameState<AFALobbyGameState>();
-
-	if (!LobbyGameState)
-	{
-		return;
-	}
-	if (BoundedLobbyGameState && LobbyGameState != BoundedLobbyGameState)
-	{
-		
-		LobbyGameState->OnLobbyStateChanged.RemoveDynamic(
-			this,
-			&ThisClass::HandleLobbyStateChanged);
-	}
-	//
-	BoundedLobbyGameState = LobbyGameState;
-	BoundedLobbyGameState->OnLobbyStateChanged.AddUniqueDynamic(
-		this,
-		&ThisClass::HandleLobbyStateChanged);
-
-	RefreshLobby();
-}
-
 void UFALobbyMainWidget::RefreshLobby()
 {
 	AFALobbyGameState* LobbyGameState = GetWorld()->GetGameState<AFALobbyGameState>();
@@ -156,6 +162,8 @@ void UFALobbyMainWidget::RefreshLobby()
 	{
 		StopCountdownUiTimer();
 	}
+	RefreshMapInfo();
+	RefreshMapSelectionButtons();
 }
 
 void UFALobbyMainWidget::RefreshPlayerList(TArray<TObjectPtr<APlayerState>> PlayerArray)
@@ -210,8 +218,8 @@ void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 	if (Button_Ready)
 	{
 		const bool bCanChangeReady = LobbyPhase == EFALobbyPhase::WaitingForPlayers
-								|| LobbyPhase == EFALobbyPhase::WaitingForReady
-								|| LobbyPhase == EFALobbyPhase::Countdown;
+			|| LobbyPhase == EFALobbyPhase::WaitingForReady
+			|| LobbyPhase == EFALobbyPhase::Countdown;
 		
 		Button_Ready->SetIsEnabled(bCanChangeReady);
 		
@@ -229,29 +237,6 @@ void UFALobbyMainWidget::RefreshInteractionState(EFALobbyPhase LobbyPhase)
 		// }
 	}
 	
-}
-
-void UFALobbyMainWidget::UpdateRosterAudio(int32 ConnectedCount)
-{
-	// 첫 복제 알림이 실어온 값이 진짜 기준선.
-	//
-	// InitializeLobby() 는 RefreshLobby() 를 직접 부르는데, 갓 접속한 클라이언트에서는 그 시점에
-	// AFALobbyGameState 의 인원수가 아직 복제되지 않아 기본값(1)이 읽힘. 그걸 기준으로 삼으면
-	// 곧이어 도착하는 진짜 값(예: 4)이 '3명 입장'으로 보여 입장음이 헛나김.
-	if (!bRosterAudioArmed)
-	{
-		LastConnectedCount = ConnectedCount;
-		return;
-	}
-
-	if (LastConnectedCount >= 0 && ConnectedCount != LastConnectedCount)
-	{
-		UFAAudioSubsystem::PlayFASound(this, ConnectedCount > LastConnectedCount
-			? FALobbyAudio::PlayerJoin
-			: FALobbyAudio::PlayerLeave);
-	}
-
-	LastConnectedCount = ConnectedCount;
 }
 
 void UFALobbyMainWidget::OnReadybuttonClicked()
@@ -325,11 +310,172 @@ void UFALobbyMainWidget::StartCountdownUiTimer()
 void UFALobbyMainWidget::StopCountdownUiTimer()
 {
 	GetWorld()->GetTimerManager().ClearTimer(
-	CountdownUiTimerHandle);
+		CountdownUiTimerHandle);
 
 	if (Text_Countdown)
 	{
 		Text_Countdown->SetVisibility(
 			ESlateVisibility::Collapsed);
 	}
+}
+
+void UFALobbyMainWidget::OnButtonHovered()
+{
+	UFAAudioSubsystem::PlayFASound(this, FALobbyAudio::Hover);
+}
+
+void UFALobbyMainWidget::UpdateRosterAudio(int32 ConnectedCount)
+{
+	// 첫 복제 알림이 실어온 값이 진짜 기준선.
+	//
+	// InitializeLobby() 는 RefreshLobby() 를 직접 부르는데, 갓 접속한 클라이언트에서는 그 시점에
+	// AFALobbyGameState 의 인원수가 아직 복제되지 않아 기본값(1)이 읽힘. 그걸 기준으로 삼으면
+	// 곧이어 도착하는 진짜 값(예: 4)이 '3명 입장'으로 보여 입장음이 헛나김.
+	if (!bRosterAudioArmed)
+	{
+		LastConnectedCount = ConnectedCount;
+		return;
+	}
+
+	if (LastConnectedCount >= 0 && ConnectedCount != LastConnectedCount)
+	{
+		UFAAudioSubsystem::PlayFASound(this, ConnectedCount > LastConnectedCount
+			                                     ? FALobbyAudio::PlayerJoin
+			                                     : FALobbyAudio::PlayerLeave);
+	}
+
+	LastConnectedCount = ConnectedCount;
+}
+
+void UFALobbyMainWidget::RefreshMapInfo()
+{
+	const AFALobbyGameState* LobbyState = GetWorld()->GetGameState<AFALobbyGameState>();
+	
+	if (!LobbyState)
+		return;
+	
+	//GameState에서 MapId를 가져오고 MapSettings에서 정보조회
+	const FName MapId = LobbyState->GetSelectedMapId();
+	const FFAMapDataRow* MapRow = UFAMapSettings::FindMap(MapId);
+	
+	if (!MapRow)
+		return;
+	
+	if (Text_MapName)
+	{
+		// 혹시 DisplayName이 없다면 Id출력.
+		Text_MapName->SetText(
+			MapRow->DisplayName.IsEmpty()
+				? FText::FromName(MapId)
+				: MapRow->DisplayName);
+	}
+	if (Text_MapDescription)
+	{
+		Text_MapDescription->SetText(MapRow->Description);
+	}
+	
+	if (Text_RecommendedPlayers)
+	{
+		Text_RecommendedPlayers->SetText(
+			FText::Format(
+				NSLOCTEXT(
+					"FALobby",
+					"RecommendedPlayers",
+					"권장 인원 : {0}~{1}명"),
+					FText::AsNumber(MapRow->RecommendedMinPlayers),
+					FText::AsNumber(MapRow->RecommendedMaxPlayers))
+					);
+		
+	}
+	if (Image_MapThumbnail)
+	{
+		UTexture2D* Thumbnail =
+			MapRow->Thumbnail.LoadSynchronous();
+
+		Image_MapThumbnail->SetBrushFromTexture(Thumbnail);
+	}
+}
+
+void UFALobbyMainWidget::RefreshMapSelectionButtons()
+{
+	const AFALobbyPlayerController* Controller = Cast<AFALobbyPlayerController>(GetOwningPlayer());
+
+	const AFALobbyGameState* LobbyState = GetWorld()->GetGameState<AFALobbyGameState>();
+
+	const bool bIsHost = Controller && Controller->IsLobbyHost();
+	
+	const bool bCanChange =
+		bIsHost
+		&& LobbyState
+		&& !LobbyState->IsInteractionLocked()
+		&& LobbyState->GetLobbyPhase()
+			!= EFALobbyPhase::Countdown;
+	
+	//bCanChange 여부에 따라 변경 버튼을 On/Off
+	if (Button_PreviousMap)
+	{
+		Button_PreviousMap->SetVisibility(
+			bIsHost
+				? ESlateVisibility::Visible
+				: ESlateVisibility::Collapsed);
+
+		Button_PreviousMap->SetIsEnabled(bCanChange);
+	}
+
+	if (Button_NextMap)
+	{
+		Button_NextMap->SetVisibility(
+			bIsHost
+				? ESlateVisibility::Visible
+				: ESlateVisibility::Collapsed);
+
+		Button_NextMap->SetIsEnabled(bCanChange);
+	}
+	if (Text_HostDescription)
+	{
+		Text_HostDescription->SetVisibility(
+			bIsHost
+				? ESlateVisibility::Visible
+				: ESlateVisibility::Collapsed);
+	}
+}
+
+void UFALobbyMainWidget::OnPreviousMapClicked()
+{
+	SelectRelativeMap(-1);
+}
+
+void UFALobbyMainWidget::OnNextMapClicked()
+{
+	SelectRelativeMap(1);
+}
+
+void UFALobbyMainWidget::SelectRelativeMap(int32 Direction)
+{
+	AFALobbyPlayerController* LobbyPlayerController = Cast<AFALobbyPlayerController>(GetOwningPlayer());
+	
+	const AFALobbyGameState* LobbyState = GetWorld()->GetGameState<AFALobbyGameState>();
+	
+	if (!LobbyPlayerController
+		|| !LobbyPlayerController->IsLobbyHost()
+		|| !LobbyState)
+	{
+		return;
+	}
+	
+	const TArray<FName> MapIds = UFAMapSettings::GetSelectableMapIds();
+	
+	if (MapIds.IsEmpty())
+		return;
+	
+	//IndexOfByKey를 통해 TArray에서 해당키의 인덱스를 가져옴.
+	int32 CurrentIndex = MapIds.IndexOfByKey(LobbyState->GetSelectedMapId());
+	
+	if (CurrentIndex == INDEX_NONE)
+		CurrentIndex = 0;
+	
+	//음수 또는 초과시 위치 전환을 위한 방식
+	const int32 NextIndex = (CurrentIndex + Direction + MapIds.Num()) % MapIds.Num();
+	
+	LobbyPlayerController->RequestSelectMap(MapIds[NextIndex]);
 }

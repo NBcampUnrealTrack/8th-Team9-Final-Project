@@ -13,6 +13,8 @@
 #include "Player/FACharacter.h"
 #include "Player/FALobbyPlayerController.h"
 #include "Player/FALobbyPlayerState.h"
+#include "Game/FAGameInstance.h"
+#include "Game/FAMapSettings.h"
 
 AFALobbyGameMode::AFALobbyGameMode()
 {
@@ -98,6 +100,7 @@ void AFALobbyGameMode::PreLogin(const FString& Options, const FString& Address, 
 void AFALobbyGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+	RefreshAdvertisedPlayerCount();
 
 	if (OnlineSessionSubsystem && NewPlayer && NewPlayer->PlayerState)
 	{
@@ -134,6 +137,8 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		: FUniqueNetIdRepl();
 
 	Super::Logout(Exiting);
+	// Controller 제거는 Logout 반환 후다. 롤백의 조기 return 전에 제외하여 집계한다.
+	RefreshAdvertisedPlayerCount(Exiting);
 	
 	if (OnlineSessionSubsystem && ExitingNetId.IsValid())
 	{
@@ -153,6 +158,25 @@ void AFALobbyGameMode::Logout(AController* Exiting)
 		CancelGameCountdown();
 
 	EvaluateLobby();
+}
+
+void AFALobbyGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+	Super::HandleSeamlessTravelPlayer(C);
+	RefreshAdvertisedPlayerCount();
+}
+
+void AFALobbyGameMode::RefreshAdvertisedPlayerCount(const AController* ExcludedController)
+{
+	if (!OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem = GetGameInstance()
+			? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
+	}
+	if (OnlineSessionSubsystem)
+	{
+		OnlineSessionSubsystem->RefreshSessionCurrentPlayerNumber(ExcludedController);
+	}
 }
 
 FString AFALobbyGameMode::InitNewPlayer(
@@ -200,9 +224,42 @@ void AFALobbyGameMode::SetPlayerReady(APlayerController* PlayerController, bool 
 	EvaluateLobby();
 }
 
+void AFALobbyGameMode::RequestSelectMap(APlayerController* RequestingPlayerController, FName RequestMapId)
+{
+	if (!HasAuthority() 
+		|| !IsHostController(RequestingPlayerController)
+		|| bGameStartCommitted
+		|| bRollbackInProgress
+		|| IsCountdownActive())
+	{
+		return;
+	}
+	
+	if (!UFAMapSettings::IsSelectableMap(RequestMapId))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[LobbyGameMode] UnSelectable Map : %s"),
+			*RequestMapId.ToString())
+	}
+	
+	AFALobbyGameState* LobbyGameState = GetLobbyGameState();
+	if (!LobbyGameState)
+		return;
+	
+	LobbyGameState->SetSelectedMapId(RequestMapId);
+	
+	if (UFAGameInstance* GameInstance = GetGameInstance<UFAGameInstance>())
+	{
+		GameInstance->SetLastSelectedMapId(RequestMapId);
+	}
+}
+
 void AFALobbyGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	RefreshAdvertisedPlayerCount();
 	
 	OnlineSessionSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<UFAOnlineSessionSubsystem>() : nullptr;
 	
@@ -233,7 +290,23 @@ void AFALobbyGameMode::BeginPlay()
 	
 	if (AFALobbyGameState* LobbyGameState = GetLobbyGameState())
 	{
-		LobbyGameState->SetSelectedMapId(DefaultMapId);
+		FName PrefferedMapId = NAME_None;
+		
+		if (const UFAGameInstance* GameInstance = GetGameInstance<UFAGameInstance>())
+		{
+			PrefferedMapId = GameInstance->GetLastSelectedMapId();
+		}
+		
+		const FName InitialMapId = UFAMapSettings::ResolveInitialMapId(PrefferedMapId);
+		
+		if (InitialMapId.IsNone())
+		{
+			UE_LOG(LogFAOSS, Error, TEXT("[LobbyGameMode] InitialMapId is nullptr"));
+		}
+		else
+		{
+			LobbyGameState->SetSelectedMapId(InitialMapId);
+		}
 	}
 	RefreshLobbyState();
 }
@@ -358,7 +431,7 @@ bool AFALobbyGameMode::CanStartGame(int32& OutPlayerCount, int32& OutReadyCount)
 	{
 		AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(PlayerState);
 		
-		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator())
+		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator() || PlayerState->GetPlayerController()->IsActorBeingDestroyed())
 			continue;
 		
 		OutPlayerCount++;
@@ -494,24 +567,44 @@ void AFALobbyGameMode::HandleSessionReopened(bool bSuccess)
 void AFALobbyGameMode::TravelToSelectedMap()
 {
 	const AFALobbyGameState* LobbyState = GetLobbyGameState();
+	
+	
 	if (!LobbyState)
 	{
 		RollbackGameStart();
 		return;
 	}
-
-	const TSoftObjectPtr<UWorld> Map =
-		OnlineSessionSubsystem->ResolveMap(LobbyState->GetSelectedMapId());
-
-	FString MapPath =
-		Map.ToSoftObjectPath().GetLongPackageName();
+	const FFAMapDataRow* MapRow = UFAMapSettings::FindMap(LobbyState->GetSelectedMapId());
 	
-	MapPath = MapPath+TEXT("?listen");
-	
-	// 이동 경로는 아래의 형태로 진행해야함.
-	//FString TempMapPath = TEXT("/Game/FallingApart/Level/L_TestLevel_PJH_Greybox?listen");
-	if (MapPath.IsEmpty() || !GetWorld()->ServerTravel(MapPath))
+	if (!MapRow
+		|| !MapRow->bSelectable
+		|| MapRow->Level.IsNull()
+	)
 	{
+		UE_LOG(LogTemp,
+			Error,
+			TEXT("[LobbyGameMode] Cant Find Selected Map"))
+		
+		RollbackGameStart();
+		return;
+	}
+	
+	const FString MapPackageName = MapRow->Level.ToSoftObjectPath().GetLongPackageName();
+	
+	if (MapPackageName.IsEmpty())
+	{
+		RollbackGameStart();
+		return;
+	}
+	
+	const FString TravelURL = MapPackageName + TEXT("?listen");
+
+	if (!GetWorld()->ServerTravel(TravelURL))
+	{
+		UE_LOG(LogTemp,
+			Error,
+			TEXT("[LobbyGameMode] Failed to Travel : %s"),
+			*TravelURL)
 		RollbackGameStart();
 	}
 }

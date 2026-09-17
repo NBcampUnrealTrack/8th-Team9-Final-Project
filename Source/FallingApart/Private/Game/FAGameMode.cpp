@@ -597,8 +597,6 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 		{
 			Draft->StartChainDraft(Victim, RemovedRuleCount);
 		}
-
-		// TODO: 암전 · 시야 필터 전환 연출(PlayInfectionSequence)은 캐릭터 담당자 작업 후 연결.
 	}
 
 	UpdateTeamCounts();
@@ -804,7 +802,7 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 	// 라운드 중(카운트다운 포함) 난입은 좀비로 참전.
 	// RoundStarting 단계는 AssignStartingTeams() 가 이미 실행된 뒤라, 여기서 놓치면 Team=None으로 남는다.
-	// TODO: 이탈 / 난입 처리 규칙은 기획 미확정 (GDD 부록 C)
+	// 데스매치 중 난입은 여기서 다루지 않는다 — MustSpectate_Implementation() 이 아예 관전으로 돌려보낸다.
 	const EFARoundPhase Phase = FAGameState->GetRoundPhase();
 	if (Phase == EFARoundPhase::InProgress || Phase == EFARoundPhase::RoundStarting)
 	{
@@ -818,6 +816,18 @@ void AFAGameMode::PostLogin(APlayerController* NewPlayer)
 		}
 		UpdateTeamCounts(false);
 	}
+}
+
+bool AFAGameMode::MustSpectate_Implementation(APlayerController* NewPlayerController) const
+{
+	if (Super::MustSpectate_Implementation(NewPlayerController))
+	{
+		return true;
+	}
+
+	// 데스매치는 최종 순위를 가리는 서든데스라 도중 참전이 성립하지 않는다 — 접속하면 관전만 시킨다.
+	const AFAGameState* FAGameState = GetFAGameState();
+	return FAGameState && FAGameState->GetRoundPhase() == EFARoundPhase::DeathMatch;
 }
 
 void AFAGameMode::HandleSeamlessTravelPlayer(AController*& C)
@@ -837,9 +847,26 @@ void AFAGameMode::HandleSeamlessTravelPlayer(AController*& C)
 
 void AFAGameMode::Logout(AController* Exiting)
 {
+	if (UGameInstance* Instance = GetGameInstance())
+	{
+		if (UFAOnlineSessionSubsystem* Sessions = Instance->GetSubsystem<UFAOnlineSessionSubsystem>())
+		{
+			Sessions->RefreshSessionCurrentPlayerNumber(Exiting);
+		}
+	}
 	AFAPlayerState* FAPlayerState = Exiting ? Cast<AFAPlayerState>(Exiting->PlayerState) : nullptr;
 	if (FAPlayerState)
 	{
+		// 데스매치 중 이탈 = 즉시 패배 처리.
+		const AFAGameState* FAGameState = GetFAGameState();
+		if (FAGameState && FAGameState->GetRoundPhase() == EFARoundPhase::DeathMatch)
+		{
+			if (UFADeathMatchSubsystem* DeathMatch = GetWorld()->GetSubsystem<UFADeathMatchSubsystem>())
+			{
+				DeathMatch->NotifyContenderDisconnected(FAPlayerState);
+			}
+		}
+
 		// 나간 플레이어는 어느 진영에도 넣지 않음. 남은 인간이 0명이 되면 라운드가 끝남.
 		FAPlayerState->FinalizeSurvivalTime(GetServerTime());
 		FAPlayerState->SetTeam(EFATeam::None);
@@ -1058,6 +1085,8 @@ void AFAGameMode::BeginReturnToLobby()
 	{
 		if (UFAOnlineSessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<UFAOnlineSessionSubsystem>())
 		{
+			// 로비를 다시 광고하기 전에 매치 중 이탈까지 반영한 실제 인원을 저장한다.
+			SessionSubsystem->RefreshSessionCurrentPlayerNumber();
 			//handle은 BeginPlayer에서 단 한번 등록을 유지함.
 			SessionSubsystem->ReopenSessionForLobby();
 			return;

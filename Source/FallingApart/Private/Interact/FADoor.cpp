@@ -4,6 +4,9 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Player/FACharacter.h"
+#include "CollisionQueryParams.h"
+#include "Engine/OverlapResult.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
 AFADoor::AFADoor()
@@ -56,6 +59,9 @@ void AFADoor::BeginPlay()
 	TargetPivotRotation = ClosedPivotRotation;
 	bRotationInitialized = true;
 
+	// 아래에서 bStartOpen 을 적용하기 전에 재야 한다 — 열린 자세에서 재면 기준이 90도 틀어진다.
+	CacheClosedLeafDirection();
+
 	if (HasAuthority())
 	{
 		bIsOpen = bStartOpen;
@@ -70,6 +76,7 @@ void AFADoor::BeginPlay()
 	}
 
 	bLastSoundedOpenState = bIsOpen;
+	SavedPawnCollisionResponse = DoorMesh->GetCollisionResponseToChannel(ECC_Pawn);
 }
 
 void AFADoor::Tick(float DeltaTime)
@@ -82,14 +89,132 @@ void AFADoor::Tick(float DeltaTime)
 	}
 
 	const FRotator Current = HingePivot->GetRelativeRotation();
-	if (Current.Equals(TargetPivotRotation, 0.05f))
+	const bool bMoving = !Current.Equals(TargetPivotRotation, 0.05f);
+
+	if (bMoving)
+	{
+		// 각속도 고정 보간.
+		const FRotator Next = FMath::RInterpConstantTo(Current, TargetPivotRotation, DeltaTime, OpenSpeedDegreesPerSecond);
+		HingePivot->SetRelativeRotation(Next);
+	}
+
+	// 멈춘 뒤에도 충돌을 되살릴 때까지는 계속 봐야 하므로 위에서 일찍 빠져나가지 않는다.
+	UpdatePawnCollisionForMotion(DeltaTime, bMoving);
+}
+
+void AFADoor::UpdatePawnCollisionForMotion(float DeltaTime, bool bMoving)
+{
+	if (!bDisablePawnCollisionWhileMoving)
+	{
+		// 도중에 옵션을 꺼도 문이 통과 상태로 남지 않게 한다.
+		SetPawnCollisionSuppressed(false);
+		return;
+	}
+
+	if (bMoving)
+	{
+		SetPawnCollisionSuppressed(true);
+		PawnCollisionSuppressedSeconds = 0.0f;
+		return;
+	}
+
+	if (!bPawnCollisionSuppressed)
 	{
 		return;
 	}
 
-	// 각속도 고정 보간. RInterpTo(지수 감속)를 쓰면 마지막 몇 도가 한없이 느려진다.
-	const FRotator Next = FMath::RInterpConstantTo(Current, TargetPivotRotation, DeltaTime, OpenSpeedDegreesPerSecond);
-	HingePivot->SetRelativeRotation(Next);
+	PawnCollisionSuppressedSeconds += DeltaTime;
+	if (PawnCollisionSuppressedSeconds < PawnCollisionRestoreGraceSeconds && IsPawnOverlappingDoorMesh())
+	{
+		return;
+	}
+
+	SetPawnCollisionSuppressed(false);
+}
+
+void AFADoor::SetPawnCollisionSuppressed(bool bSuppress)
+{
+	if (bPawnCollisionSuppressed == bSuppress || !DoorMesh)
+	{
+		return;
+	}
+
+	bPawnCollisionSuppressed = bSuppress;
+	PawnCollisionSuppressedSeconds = 0.0f;
+
+	// Pawn 채널만 손댄다.
+	DoorMesh->SetCollisionResponseToChannel(ECC_Pawn, bSuppress ? ECR_Ignore : SavedPawnCollisionResponse.GetValue());
+}
+
+bool AFADoor::IsPawnOverlappingDoorMesh() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !DoorMesh)
+	{
+		return false;
+	}
+
+	const FBoxSphereBounds MeshBounds = DoorMesh->Bounds;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(FADoorPawnClearance), /*bTraceComplex=*/false, this);
+	FCollisionObjectQueryParams ObjectParams(ECC_Pawn);
+
+	TArray<FOverlapResult> Overlaps;
+	return World->OverlapMultiByObjectType(
+		Overlaps,
+		MeshBounds.Origin,
+		FQuat::Identity,
+		ObjectParams,
+		FCollisionShape::MakeBox(MeshBounds.BoxExtent),
+		Params);
+}
+
+void AFADoor::CacheClosedLeafDirection()
+{
+	bLeafDirectionValid = false;
+
+	if (!DoorMesh || !HingePivot)
+	{
+		return;
+	}
+
+	// 문짝 바운드 중심이 경첩에서 어느 쪽으로 뻗어 있는가. 월드에서 재므로 액터 회전도,
+	// 거울 배치(음수 스케일)도 이미 반영돼 있다.
+	FVector Leaf = DoorMesh->Bounds.Origin - HingePivot->GetComponentLocation();
+	Leaf.Z = 0.0f;
+
+	// 문짝 중심이 경첩 바로 위면(메시 미지정 · 미닫이 등) 방향을 못 정한다.
+	if (Leaf.SizeSquared() < FMath::Square(1.0f))
+	{
+		return;
+	}
+
+	ClosedLeafDirWorld = Leaf.GetSafeNormal();
+	bLeafDirectionValid = true;
+}
+
+int32 AFADoor::ComputeOpenDirectionSign(const AFACharacter* ByCharacter) const
+{
+	if (!ByCharacter)
+	{
+		return OpenDirectionSign;
+	}
+
+	if (!bLeafDirectionValid)
+	{
+		// 기하로 못 판단하는 배치 — 예전처럼 액터 앞뒤로 가른다.
+		const FVector ToInstigator = ByCharacter->GetActorLocation() - GetActorLocation();
+		return FVector::DotProduct(GetActorForwardVector(), ToInstigator) >= 0.0f ? 1 : -1;
+	}
+
+	// UE 의 양의 Yaw 는 +X 를 +Y 로 보낸다. 즉 문짝은 경첩→문짝 방향을 +90도 돌린 쪽으로 밀려간다.
+	const FVector SwingSide(-ClosedLeafDirWorld.Y, ClosedLeafDirWorld.X, 0.0f);
+
+	FVector FromHinge = ByCharacter->GetActorLocation() - HingePivot->GetComponentLocation();
+	FromHinge.Z = 0.0f;
+
+	// 미는 사람이 문짝이 밀려갈 쪽에 서 있으면 반대로 돌린다 = 항상 사람 반대편으로 열린다.
+	return FVector::DotProduct(SwingSide, FromHinge) > 0.0f ? -1 : 1;
 }
 
 float AFADoor::GetMirrorSign() const
@@ -180,10 +305,7 @@ void AFADoor::SetDoorOpen(bool bOpen, AFACharacter* ByCharacter)
 
 	if (bOpen && bOpenAwayFromInteractor && ByCharacter)
 	{
-		// 미는 사람이 문 앞쪽(액터 +X)에 있으면 뒤로, 뒤쪽에 있으면 앞으로 연다.
-		const FVector ToInstigator = ByCharacter->GetActorLocation() - GetActorLocation();
-		const float Side = FVector::DotProduct(GetActorForwardVector(), ToInstigator);
-		OpenDirectionSign = (Side >= 0.0f) ? 1 : -1;
+		OpenDirectionSign = ComputeOpenDirectionSign(ByCharacter);
 	}
 
 	bIsOpen = bOpen;
@@ -206,6 +328,12 @@ void AFADoor::SetLocked(bool bLock)
 void AFADoor::OnRep_IsOpen()
 {
 	ApplyOpenState(/*bPlaySound=*/true);
+}
+
+void AFADoor::OnRep_OpenDirectionSign()
+{
+	// 소리는 OnRep_IsOpen 이 낸다. 여기서는 목표 회전만 다시 잡는다.
+	ApplyOpenState(/*bPlaySound=*/false);
 }
 
 void AFADoor::OnRep_IsLocked()

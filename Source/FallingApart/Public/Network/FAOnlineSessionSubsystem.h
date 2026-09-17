@@ -13,6 +13,7 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogFAOSS, Log, All);
 
 class AFAOnlineBeaconClient;
+class AController;
 enum class EFABeaconPasswordVerifyResult : uint8;
 
 struct FFAJoinAuthorization
@@ -61,7 +62,8 @@ enum class EFAUpdateSessionPurpose : uint8
 {
 	None,
 	PrepareMatch,
-	RestoreLobby
+	RestoreLobby,
+	UpdatePlayerCount
 };
 
 // 매치 게임 이동시 플레이어 수, 맵 관리 용
@@ -96,6 +98,10 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnDestroySessionComplete, bool b
 DECLARE_MULTICAST_DELEGATE_OneParam(FMultiplayerOnStartSessionComplete, bool bWasSuccessful);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionPreparedForMatch, bool bSuccessed);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSessionReopenedForLobby,	bool bSuccessed);
+
+DECLARE_MULTICAST_DELEGATE(FOnPendingInviteJoinAvailable)
+
+
 /**
  * OSS의 기본적인 생명주기를 관리하는 서브시스템
  * 세션생성, 세션 검색과 참가, 세션 시작, 세션 종료
@@ -117,6 +123,11 @@ public:
 	 */
 	void CreateSession(int32 NumPublicConnections, const FString& ServerName, const FString& Password = "");
 	
+	/** 호스트가 원하는 최신 인원을 저장한다. 다른 세션 작업 중이면 게시를 미룬다. */
+	void UpdateSessionCurrentPlayerNumber(int32 CurrentPlayerCount);
+	/** Logout 안에서는 아직 월드에 남아 있는 ExcludedController를 제외한다. */
+	void RefreshSessionCurrentPlayerNumber(const AController* ExcludedController = nullptr);
+
 	/** 세션 검색 
 	 * @param MaxSearchResults 최대 검색 개수*/
 	void FindSession(int32 MaxSearchResults);
@@ -137,9 +148,7 @@ public:
 	
 	/// TODO : 플랫폼의 친구에게 참가
 	void FindFriendSession();
-	
-	/// TODO : 플랫폼 친구에게 세션 초대 발송
-	void SendSessionInviteToFriends();
+
 	
 	void ReopenSessionForLobby();
 	
@@ -150,7 +159,6 @@ public:
 	ESessionOperationState GetCurrentOperationState() const;
 	
 	FNamedOnlineSession* GetCurrentSession() const;
-	TSoftObjectPtr<UWorld> ResolveMap(FName GetSelectedMapId);
 
 	// 각각 콜백 등록용
 	
@@ -174,10 +182,29 @@ protected:
 	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnStartSessionComplete(FName SessionName, bool bWasSuccessful);
 	void OnUpdateSessionComplete(FName SessionName, bool bWasSuccessful);
+	
 
 	
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FFAPlayerCountSessionTest;
+#endif
 	void CompleteReopenSessionForLobby(bool bWasSuccessful);
+	void BeginSessionSettingsUpdate(EFAUpdateSessionPurpose Purpose);
+	void SchedulePlayerCountUpdate(float DelaySeconds = 0.1f);
+	void FlushPlayerCountUpdate();
+	void ResetPlayerCountUpdates();
+	void CompletePlayerCountUpdate(bool bWasSuccessful);
+
+	// 원하는 값과 마지막 성공 값을 분리해야 게시 실패를 성공으로 오인하지 않는다.
+	int32 LastPublishedPlayerCount = INDEX_NONE;
+	int32 InFlightPlayerCount = INDEX_NONE;
+	int32 PlayerCountUpdateFailures = 0;
+	// Steam OSS는 FNamedOnlineSession::bHosting을 채우지 않아 로컬 생성 성공을 추적한다.
+	bool bOwnsSession = false;
+	FTimerHandle PlayerCountUpdateTimerHandle;
+	bool bPrepareMatchAfterPlayerCount = false;
+	bool bDestroyAfterPlayerCount = false;
 	
 	IOnlineSessionPtr SessionInterface;
 	
@@ -206,6 +233,7 @@ private:
 	FDelegateHandle 					EndSessionCompleteDelegateHandle;
 	FOnUpdateSessionCompleteDelegate	UpdateSessionCompleteDelegate;
 	FDelegateHandle 					UpdateSessionCompleteDelegateHandle;
+	
 	
 	ESessionOperationState OperationState = ESessionOperationState::Idle;
 	
@@ -295,4 +323,33 @@ private:
 	TObjectPtr<AFAOnlineBeaconClient> ActiveOnlineBeacon;
 	
 #pragma endregion
+#pragma region Invite
+public:
+	/** 플랫폼의 초대 기능으로 초대 전송 */
+	void SendSessionInviteToFriends();
+	
+	/** 초대 데이터 존재확인 */
+	bool HasPendingInviteJoin() const;
+	
+	/** 초대 세션 데이터 가져오기 + 정리 */
+	bool ConsumePendingInviteJoin(FOnlineSessionSearchResult& OutResult);
+	
+	/** 초대 세션 데이터 정리 */
+	void ClearPendingInviteJoin();
+	
+	/** 초대 이벤트 콜백 */
+	FOnPendingInviteJoinAvailable OnPendingInviteJoinAvailable;
+protected:
+	void OnSessionUserInviteAccepted(
+		bool bWasSuccessful,
+		int32 ControllerId, 
+		FUniqueNetIdPtr UserId, 
+		const FOnlineSessionSearchResult& InviteResult);
+private:
+	/** 플랫폼 초대 이벤트 핸들 */
+	FDelegateHandle OnSessionUserInviteAcceptedDelegateHandle;
+	
+	/** 저장된 초대 세션 데이터 */
+	FOnlineSessionSearchResult PendingInviteJoinResult;
+#pragma endregion Invite
 };

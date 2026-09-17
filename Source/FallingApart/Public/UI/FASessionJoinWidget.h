@@ -8,6 +8,7 @@
 #include "FASessionJoinWidget.generated.h"
 
 class UEditableText;
+class UEditableTextBox;
 class UFASessionEntryWidget;
 class UScrollBox;
 class UButton;
@@ -35,7 +36,13 @@ public:
 	void ShowStatusMessage(const FText& Message);
 	void SetJoinInProgress(bool bIsJoining);
 	
+	/** 초대를 통해 로비 접근시 해당 방을 리스트에 올림.*/
+	void ShowInvitedSession(const FOnlineSessionSearchResult& InviteResult);
+	
 	FString GetNickname() const;
+
+	/** 세션에 저장된 방 제목이 검색어와 부분 일치하는지 검사한다. */
+	static bool DoesSessionTitleMatchSearch(const FOnlineSessionSearchResult& SessionResult, const FString& SearchText);
 
 	FOnSessionRefreshRequested OnSessionRefreshRequested;
 	FOnSessionJoinRequested OnSessionJoinRequested;
@@ -47,7 +54,11 @@ protected:
 	UFUNCTION()
 	void HandleButtonHovered();
 
+	UFUNCTION()
+	void HandleSessionSearchTextChanged(const FText& Text);
+
 private:
+	void RebuildFilteredSessionList();
 	void RequestRefresh();
 	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);
 	void ClearList();
@@ -65,6 +76,12 @@ private:
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PasswordInput;
 
+	/** WBP에 없으면 런타임에 세션 목록 바로 위에 자동 생성한다. */
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UEditableText> SessionSearchInput;
+
 	UPROPERTY(meta=(BindWidgetOptional))
 	TObjectPtr<UTextBlock> SearchStatusText;
+
+	TArray<FOnlineSessionSearchResult> CachedSessionResults;
 };

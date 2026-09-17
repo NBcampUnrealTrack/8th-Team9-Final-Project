@@ -32,6 +32,9 @@ public:
 
 	void SubmitCreateRequest();
 
+	/** 세션 생성 입력값을 정규화하고 제약조건 위반 사유를 반환한다. */
+	static bool ValidateCreateRequest(FFASessionCreateRequest& Request, FText& OutErrorMessage);
+
 	FOnCreateSessionRequested OnCreateSessionRequested;
 
 protected:

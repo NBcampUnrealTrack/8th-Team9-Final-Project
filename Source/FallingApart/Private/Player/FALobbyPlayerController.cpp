@@ -84,6 +84,22 @@ void AFALobbyPlayerController::RequestStartCountdown()
 	Server_RequestStartCountdown();
 }
 
+void AFALobbyPlayerController::RequestSelectMap(FName MapId)
+{
+	if (!IsLocalController() || !IsLobbyHost())
+		return;
+	
+	Server_RequestSelectMap(MapId);
+}
+
+void AFALobbyPlayerController::Server_RequestSelectMap_Implementation(FName MapId)
+{
+	if (AFALobbyGameMode* LobbyGameMode = GetWorld()->GetAuthGameMode<AFALobbyGameMode>())
+	{
+		LobbyGameMode->RequestSelectMap(this, MapId);
+	}
+}
+
 void AFALobbyPlayerController::Server_RequestStartCountdown_Implementation()
 {
 	if (AFALobbyGameMode* LobbyGameMode = GetWorld()->GetAuthGameMode<AFALobbyGameMode>())

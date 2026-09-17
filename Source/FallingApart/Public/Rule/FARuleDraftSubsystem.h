@@ -16,6 +16,31 @@ struct FFADraftCandidate
 	FName RuleId;
 };
 
+/** 대기열에 들어가는 드래프트 한 건의 종류. */
+UENUM()
+enum class EFADraftRequestType : uint8
+{
+	// 30초 주기 정규 드래프트. 회차(DraftIndex)에 따라 티어 구성이 달라진다.
+	Regular,
+
+	// 감염 직후 잃은 인간 룰을 좀비 룰로 메우는 연속 드래프트. 티어 곡선을 타지 않는다.
+	Chain
+};
+
+/** 아직 선택창을 띄우지 못한 드래프트 한 건. 후보는 실제로 열리는 순간에 뽑는다. */
+USTRUCT()
+struct FFADraftRequest
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	EFADraftRequestType Type = EFADraftRequestType::Regular;
+
+	// 정규 드래프트에서만 쓴다(티어 구성).
+	UPROPERTY()
+	int32 DraftIndex = 1;
+};
+
 // 더미 룰 풀의 항목 1개 — 진영·티어 정보 포함. URuleCardData 나오면 이 구조체는 통째로 사라진다.
 USTRUCT()
 struct FFADummyRuleEntry
@@ -86,9 +111,6 @@ private:
 	// DT 가 아직 없을 때 쓰는 임시 풀. 표가 14종을 채우면 지워도 된다.
 	TArray<FFADummyRuleEntry> GetDummyRulePool() const;
 
-	// 이번 드래프트 회차(1~6)의 후보 3장 각각의 티어 구성. GDD 4.2 티어 곡선(밸런싱 워크북 1_드래프트곡선 시트).
-	TArray<int32> GetTierComposition(int32 DraftIndex) const;
-	
 	// 타임아웃 시 서버가 대신 무작위로 확정한다.
 	void HandleDraftTimeout(TWeakObjectPtr<AFAPlayerState> ForPlayer);
 
@@ -96,15 +118,31 @@ private:
 	void ApplyDraftResult(AFAPlayerState* ForPlayer, const FFADraftCandidate& Chosen);
 	
 	/**
-	 * 연속 드래프트 1회차. 좀비 후보를 뽑아 선택 UI 를 띄운다 — 정규 드래프트와 같은 방식
+	 * 드래프트 한 건을 이 플레이어의 대기열 뒤에 붙이고, 지금 열 수 있으면 바로 연다.
+	 *
+	 * 정규·연속 드래프트가 모두 이 문으로 들어온다 — 선택창을 직접 띄우는 경로를 하나로 모아야
+	 * 한쪽이 다른 쪽을 덮어쓰는 일이 없다.
 	 */
-	void ProcessNextChainDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer, int32 RemainingCount);
+	void EnqueueDraft(AFAPlayerState* ForPlayer, const FFADraftRequest& Request);
 
 	/**
-	 * 한 장이 확정된 뒤(선택·타임아웃 무관) 남은 연속 드래프트가 있으면 다음 회차를 예약한다.
-	 * ApplyDraftResult 가 정규·연속 양쪽의 공통 종착지라 그곳에서 부른다.
+	 * 대기열의 맨 앞 한 건을 연다. 선택창이 떠 있거나 카드 확인 간격이 남아 있으면 아무 것도 하지 않는다
+	 *
+	 * 후보는 여기서 뽑는다 — 대기열에 넣을 때가 아니라. 감염으로 진영이 바뀌었어도
+	 * 열리는 시점의 진영·보유 룰 기준으로 뽑히게 하기 위함이다.
 	 */
-	void ContinueChainDraftIfPending(AFAPlayerState* ForPlayer);
+	void StartNextQueuedDraft(TWeakObjectPtr<AFAPlayerState> ForPlayer);
+
+	/** 방금 고른 카드를 볼 수 있게 한 박자 둔 뒤 대기열의 다음 건을 연다. */
+	void ScheduleNextQueuedDraft(AFAPlayerState* ForPlayer, float Delay);
+
+	/**
+	 * 위 간격 타이머의 콜백. QueueTimers 에서 자기 항목을 지운 뒤 다음 건을 연다.
+	 *
+	 * StartNextQueuedDraft 를 타이머에 직접 걸면 안 된다 — "간격 대기 중인가" 를 QueueTimers
+	 * 항목 유무로 판정하기 때문에, 지우는 사람이 없으면 자기 콜백이 자기 가드에 막힌다.
+	 */
+	void HandleQueueGapElapsed(TWeakObjectPtr<AFAPlayerState> ForPlayer);
 
 	/** 연속 드래프트 후보 풀 — 좀비 진영에서 보유 중이 아닌 카드 중 무작위 최대 3장. */
 	TArray<FFADraftCandidate> GenerateChainCandidates(const TArray<FName>& HeldRuleIds) const;
@@ -119,8 +157,12 @@ private:
 	TMap<TWeakObjectPtr<AFAPlayerState>, FTimerHandle> PendingTimers;
 
 	/**
-	 * 연속 드래프트가 진행 중인 플레이어의 남은 장수.
-	 * 한 장이 확정될 때마다 줄고, 0 이 되면 항목 자체를 지운다.
+	 * 아직 열지 못한 드래프트 대기열 (플레이어별 선입선출).
+	 *
+	 * 연속 드래프트 도중 30초 정기 드래프트가 들어와도 여기 쌓였다가 순서대로 열린다.
 	 */
-	TMap<TWeakObjectPtr<AFAPlayerState>, int32> PendingChainCounts;
+	TMap<TWeakObjectPtr<AFAPlayerState>, TArray<FFADraftRequest>> DraftQueues;
+
+	/** 대기열의 다음 건을 여는 타이머(카드 확인용 간격). 플레이어당 하나. */
+	TMap<TWeakObjectPtr<AFAPlayerState>, FTimerHandle> QueueTimers;
 };

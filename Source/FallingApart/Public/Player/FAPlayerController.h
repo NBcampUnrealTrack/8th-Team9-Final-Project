@@ -65,6 +65,12 @@ public:
 	void FAVoiceGate(float SilenceThreshold = -1.0f, float NoiseGateThreshold = -1.0f);
 
 	/**
+	 * 감염을 즉시 한 번 일으킨다. 감염 전환 연출(암전 → 붉은 화면 → 기상)과 연속 드래프트
+	 */
+	UFUNCTION(Exec)
+	void FAInfect(const FString& PlayerNameFragment);
+
+	/**
 	 * 푸시투토크를 켜고 끈다. 오픈 마이크가 시끄러울 때 즉시 쓰는 탈출구.
 	 */
 	UFUNCTION(Exec)
@@ -152,6 +158,14 @@ public:
 	/** 게임 프로세스 종료. */
 	UFUNCTION(BlueprintCallable, Category = "FallingApart|PauseMenu")
 	void QuitGame();
+	
+	
+	/** 스팀 친구초대 핸들 */
+	UFUNCTION()
+	void HandleSessionInvite();
+
+	UFUNCTION()
+	void HandleSessionInviteDecision(bool bAccepted);
 
 protected:
 	virtual void BeginPlay() override;

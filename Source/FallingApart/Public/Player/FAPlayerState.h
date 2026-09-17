@@ -63,6 +63,23 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Score")
 	int32 GetDisplayTotalScore() const { return MatchScore.GetTotal() + RoundScore.GetTotal(); }
 
+	/**
+	 * HUD 표기용 팀 점수 — 위와 같은 기준(매치 누적 + 진행 중 라운드)에서 팀 계만.
+	 * 인간 계와 좀비 계는 동시에 늘지 않으므로 한 칸에 합쳐 보여준다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Score")
+	int32 GetDisplayTeamScore() const
+	{
+		return MatchScore.HumanTeam + MatchScore.ZombieTeam + RoundScore.HumanTeam + RoundScore.ZombieTeam;
+	}
+
+	/** HUD 표기용 개인 점수 — 같은 기준에서 개인 계만. */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Score")
+	int32 GetDisplayPersonalScore() const
+	{
+		return MatchScore.HumanPersonal + MatchScore.ZombiePersonal + RoundScore.HumanPersonal + RoundScore.ZombiePersonal;
+	}
+
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Score")
 	float GetMatchSurvivalTime() const { return MatchScore.SurvivalTime; }
 
