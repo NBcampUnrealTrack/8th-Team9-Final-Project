@@ -88,10 +88,6 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this,&ThisClass::HandleWallPhaseRuleChanged);
 		// BeginPlay 전에 Z46이 적용된 경우도 처리한다.
 		HandleWallPhaseRuleChanged(WallPhaseRuleTag,ASC->GetTagCount(WallPhaseRuleTag));
-		const FGameplayTag HiddenStateTag = FAGameplayTags::Get().State_Hidden;
-		ASC->RegisterGameplayTagEvent(HiddenStateTag,EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this,&ThisClass::HandleHiddenStateChanged);
-		HandleHiddenStateChanged(HiddenStateTag,ASC->GetTagCount(HiddenStateTag));
 
 		const FGameplayTag SecondLifeRuleTag = FAGameplayTags::Get().Rule_Trade_SecondLife;
 		ASC->RegisterGameplayTagEvent(SecondLifeRuleTag,EGameplayTagEventType::NewOrRemoved)
@@ -158,6 +154,7 @@ void UFACharacterStatusComponent::BeginPlay()
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	SetHideActive(false);
 	ClearFreeze();
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
@@ -181,8 +178,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_WallPhase,
 		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(Tags.State_Hidden,
-			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_SecondLife,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Gamble_Speed,
@@ -991,46 +986,23 @@ void UFACharacterStatusComponent::SetHideActive(bool bActive)
 		return;
 	}
 
-	const FGameplayTag HiddenTag = FAGameplayTags::Get().State_Hidden;
-	if (ASC->HasMatchingGameplayTag(HiddenTag) == bActive)
+	if (bHideGhostTagApplied == bActive)
 	{
 		return;
 	}
 
+	// 합산 태그 유무가 아닌 H45가 부여한 몫을 기준으로 중복 추가/제거를 방지한다.
+	bHideGhostTagApplied = bActive;
+	const FGameplayTag GhostTag = FAGameplayTags::Get().Rule_Trade_Ghost;
 	if (bActive)
 	{
-		ASC->AddLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+		ASC->AddLooseGameplayTag(GhostTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
 	else
 	{
-		ASC->RemoveLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+		ASC->RemoveLooseGameplayTag(GhostTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
-
-	// 태그 도착 순서에 의존하지 않고 현재 은둔 상태를 전달한다.
-	MulticastSetHideVisual(bActive);
-}
-
-void UFACharacterStatusComponent::MulticastSetHideVisual_Implementation(bool bActive)
-{
-	if (GetNetMode() == NM_DedicatedServer)
-	{
-		return;
-	}
-
-	if (!OwnerCharacter)
-	{
-		OwnerCharacter = Cast<ACharacter>(GetOwner());
-	}
-
-	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	const bool bGhostRuleActive = ASC
-		&& ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost);
-
-	// 은둔이 해제돼도 별도 Ghost 룰의 반투명 효과는 유지한다.
-	SetGhostVisualActive(bActive || bGhostRuleActive);
-
-	UE_LOG(LogTemp, Log, TEXT("[H45 RPC] Character=%s | NetMode=%d | Hidden=%d"),
-		*GetNameSafe(OwnerCharacter), static_cast<int32>(GetNetMode()), bActive);
+	// 외형과 머리 위 UI는 복제되는 Ghost 태그를 공통으로 사용한다.
 }
 
 void UFACharacterStatusComponent::UpdateCampRule(float DeltaTime)
@@ -1109,21 +1081,13 @@ void UFACharacterStatusComponent::SetCampActive(bool bActive)
 		ASC->RemoveLooseGameplayTag(CampTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
 }
-void UFACharacterStatusComponent::HandleHiddenStateChanged(const FGameplayTag Tag, int32 NewCount)
-{
-	(void)Tag;
-	(void)NewCount;
-	RefreshGhostVisual();
-}
-
 void UFACharacterStatusComponent::RefreshGhostVisual()
 {
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
 		SetGhostVisualActive(
-			ASC->HasMatchingGameplayTag(Tags.Rule_Trade_Ghost)
-			|| ASC->HasMatchingGameplayTag(Tags.State_Hidden));
+			ASC->HasMatchingGameplayTag(Tags.Rule_Trade_Ghost));
 	}
 }
 

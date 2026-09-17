@@ -299,7 +299,6 @@ public:
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
-	FGameplayTag State_Hidden;
 
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;

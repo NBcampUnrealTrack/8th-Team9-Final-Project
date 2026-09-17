@@ -95,14 +95,9 @@ private:
 	void UpdateHideRule(float DeltaTime);
 	void SetHideActive(bool bActive);
 
-	// [H45 RPC 추가] 서버에서 관련 클라이언트로 은둔 외형을 전달한다.
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSetHideVisual(bool bActive);
-
 	void UpdateCampRule(float DeltaTime);
 	void SetCampActive(bool bActive);
 
-	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
 	void RefreshGhostVisual();
 
 	/** H50 태그 추가·제거에 따라 무작위 이동속도 주기를 시작하거나 정리한다. */
@@ -197,6 +192,8 @@ private:
 	float HideStationarySpeedTolerance = 3.0f;
 
 	float HideStationaryElapsed = 0.0f;
+	// 서버에서 H45가 추가한 Ghost 태그 한 개만 추적한다. Z44의 태그는 제거하지 않는다.
+	bool bHideGhostTagApplied = false;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
 	float CampDelay = 4.0f;

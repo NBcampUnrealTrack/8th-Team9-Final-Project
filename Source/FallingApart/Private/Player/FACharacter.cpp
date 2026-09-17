@@ -430,8 +430,25 @@ void AFACharacter::SetupCaptureMarker()
 	CaptureMarker->SetVisibility(false);
 }
 
+bool AFACharacter::ShouldHideOverheadUI() const
+{
+	if (!AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	const FAGameplayTags& GameplayTags = FAGameplayTags::Get();
+	// H45 발동과 Z44가 공유하는 실제 반투명 태그를 확인한다.
+	return AbilitySystemComponent->HasMatchingGameplayTag(GameplayTags.Rule_Trade_Ghost);
+}
+
 bool AFACharacter::ShouldShowCaptureMarker() const
 {
+	if (ShouldHideOverheadUI())
+	{
+		return false;
+	}
+
 	// 잡힌 쪽만 머리 위에 띄운다. 잡고 있는 좀비 머리 위에도 뜨면 누가 인질인지 헷갈린다.
 	if (!CaptureState.IsActive() || !CaptureState.bIsVictim)
 	{
@@ -548,6 +565,11 @@ void AFACharacter::RefreshNicknameMarker()
 }
 bool AFACharacter::ShouldShowRuleMarker() const
 {
+	if (ShouldHideOverheadUI())
+	{
+		return false;
+	}
+
 	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
 	if (IsLocallyControlled())
 	{
@@ -696,6 +718,11 @@ void AFACharacter::RefreshCustomDepth()
 
 bool AFACharacter::ShouldShowOverheadWidget() const
 {
+	if (ShouldHideOverheadUI())
+	{
+		return false;
+	}
+
 	// 이름표, 이름 상단의 위젯이 보여야하는지 조건 체크.
 	// 가벼운 조건부터 체크하여, 무거운 라인트레이스를 마지막에 체크함.
 

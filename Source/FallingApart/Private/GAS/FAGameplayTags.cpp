@@ -123,7 +123,7 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
-	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
+	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("H45 은둔 발동 / Z44 유령 — 공통 반투명 상태"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
@@ -154,7 +154,6 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_SecondLife = AddTag(TEXT("Rule.Trade.SecondLife"), TEXT("H49 불사 — 첫 포획 1회 무효, 이동속도 -30%"));
 
 	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
-	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
 
 	//~ 룰 - State
 	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));
