@@ -6,6 +6,7 @@
 #include "Audio/FAAudioSubsystem.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
+#include "Components/Image.h"
 #include "Components/SpinBox.h"
 #include "GameFramework/PlayerState.h"
 #include "UI/FAUIMessageSubsystem.h"
@@ -34,6 +35,10 @@ bool UFASessionCreateWidget::Initialize()
 		MaxConnectionSpinBox->OnValueChanged.AddUniqueDynamic(this, &ThisClass::HandleMaxConnectionChanged);
 	}
 
+	if (PasswordVisibilityButton)
+	{
+		PasswordVisibilityButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandlePasswordVisibilityClicked);
+	}
 	return true;
 }
 
@@ -112,6 +117,39 @@ FString UFASessionCreateWidget::GetNickname() const
 void UFASessionCreateWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	ActivatePage();
+}
+
+void UFASessionCreateWidget::ActivatePage()
+{
+	SetPasswordVisible(false);
+}
+
+void UFASessionCreateWidget::HandlePasswordVisibilityClicked()
+{
+	if (PrivateSessionPass)
+	{
+		SetPasswordVisible(PrivateSessionPass->GetIsPassword());
+		UFAAudioSubsystem::PlayFASound(this, TEXT("UI_Click"));
+	}
+}
+
+void UFASessionCreateWidget::SetPasswordVisible(bool bVisible)
+{
+	if (PrivateSessionPass)
+	{
+		PrivateSessionPass->SetIsPassword(!bVisible);
+	}
+	if (PasswordVisibilityIcon)
+	{
+		PasswordVisibilityIcon->SetBrushFromTexture(bVisible ? PasswordVisibleIcon : PasswordHiddenIcon);
+	}
+	if (PasswordVisibilityButton)
+	{
+		PasswordVisibilityButton->SetToolTipText(bVisible
+			? NSLOCTEXT("FAPasswordVisibilityToggle", "HidePassword", "비밀번호 숨기기")
+			: NSLOCTEXT("FAPasswordVisibilityToggle", "ShowPassword", "비밀번호 보기"));
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

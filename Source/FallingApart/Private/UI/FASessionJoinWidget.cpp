@@ -7,6 +7,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Button.h"
 #include "Components/EditableText.h"
+#include "Components/Image.h"
 #include "Components/EditableTextBox.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
@@ -50,6 +51,10 @@ bool UFASessionJoinWidget::Initialize()
 		SessionSearchInput->OnTextChanged.AddUniqueDynamic(this, &ThisClass::HandleSessionSearchTextChanged);
 	}
 
+	if (PasswordVisibilityButton)
+	{
+		PasswordVisibilityButton->OnClicked.AddUniqueDynamic(this, &ThisClass::HandlePasswordVisibilityClicked);
+	}
 	return true;
 }
 
@@ -71,7 +76,41 @@ void UFASessionJoinWidget::AddSessionSearchResult(const FOnlineSessionSearchResu
 
 void UFASessionJoinWidget::ActivatePage()
 {
+	SetPasswordVisible(false);
 	RequestRefresh();
+}
+
+void UFASessionJoinWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	SetPasswordVisible(false);
+}
+
+void UFASessionJoinWidget::HandlePasswordVisibilityClicked()
+{
+	if (PasswordInput)
+	{
+		SetPasswordVisible(PasswordInput->GetIsPassword());
+		UFAAudioSubsystem::PlayFASound(this, FASessionJoinAudio::Click);
+	}
+}
+
+void UFASessionJoinWidget::SetPasswordVisible(bool bVisible)
+{
+	if (PasswordInput)
+	{
+		PasswordInput->SetIsPassword(!bVisible);
+	}
+	if (PasswordVisibilityIcon)
+	{
+		PasswordVisibilityIcon->SetBrushFromTexture(bVisible ? PasswordVisibleIcon : PasswordHiddenIcon);
+	}
+	if (PasswordVisibilityButton)
+	{
+		PasswordVisibilityButton->SetToolTipText(bVisible
+			? NSLOCTEXT("FAPasswordVisibilityToggle", "HidePassword", "비밀번호 숨기기")
+			: NSLOCTEXT("FAPasswordVisibilityToggle", "ShowPassword", "비밀번호 보기"));
+	}
 }
 
 void UFASessionJoinWidget::SetSearchInProgress(bool bIsSearching)
@@ -161,6 +200,7 @@ void UFASessionJoinWidget::SetJoinInProgress(bool bIsJoining)
 
 void UFASessionJoinWidget::ShowInvitedSession(const FOnlineSessionSearchResult& InviteResult)
 {
+	SetPasswordVisible(false);
 	CachedSessionResults.Reset();
 	CachedSessionResults.Add(InviteResult);
 	if (SessionSearchInput)
