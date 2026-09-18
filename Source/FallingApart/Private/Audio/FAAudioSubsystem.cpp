@@ -503,7 +503,7 @@ bool UFAAudioSubsystem::ResolveSound(FName SoundId, const FFASoundRow*& OutRow, 
 	if (UFAHearingSubsystem::IsFootstepSound(SoundId))
 	{
 		const UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this);
-		if (Hearing && Hearing->IsDeaf())
+		if (Hearing && Hearing->ShouldMuteSound(SoundId))
 		{
 			return false;
 		}
