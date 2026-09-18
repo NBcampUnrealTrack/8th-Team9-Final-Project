@@ -39,49 +39,7 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
-	void UpdatePhantomAudio(float DeltaTime);
-
-	/** DT_Sound_Character의 발소리 RowName. 기존 음량·피치·감쇠 설정을 사용한다. */
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom")
-	TArray<FName> PhantomFootstepSoundIds = { FName(TEXT("Foot_Human_Run")) };
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomMinInterval = 3.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomMaxInterval = 7.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
-	float PhantomMinDistance = 10.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0", Units="cm"))
-	float PhantomMaxDistance = 50.0f;
-
-	// 로컬 소유권이 늦게 도착해도 Tick에서 시작하고, 룰 제거/소유권 상실 시 초기화한다.
-	float PhantomTimeRemaining = -1.0f;
-	// 한 번 발동하면 세 개의 가상 위치에서 4~7초 동안 반복 재생한다.
-	TArray<float> PhantomBurstRemainings;
-	TArray<float> PhantomBurstStartDelays;
-	TArray<float> PhantomBurstStepTimers;
-	TArray<FVector> PhantomBurstLocations;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMinDuration = 4.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMaxDuration = 7.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMinStepInterval = 0.1f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.1", Units="s"))
-	float PhantomBurstMaxStepInterval = 0.5f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
-	float PhantomMinVolumeMultiplier = 3.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Phantom", meta=(ClampMin="0.0"))
-	float PhantomMaxVolumeMultiplier = 4.5f;
+	void HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount);
 
 	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);
 	void ScanFreezeTargets();
@@ -137,14 +95,9 @@ private:
 	void UpdateHideRule(float DeltaTime);
 	void SetHideActive(bool bActive);
 
-	// [H45 RPC 추가] 서버에서 관련 클라이언트로 은둔 외형을 전달한다.
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastSetHideVisual(bool bActive);
-
 	void UpdateCampRule(float DeltaTime);
 	void SetCampActive(bool bActive);
 
-	void HandleHiddenStateChanged(const FGameplayTag Tag,int32 NewCount);
 	void RefreshGhostVisual();
 
 	/** H50 태그 추가·제거에 따라 무작위 이동속도 주기를 시작하거나 정리한다. */
@@ -200,6 +153,7 @@ private:
 
 	// [Z22 귀먹음] 기존 룰처럼 Status에서 태그 추가·제거 이벤트를 처리한다.
 	void HandleDeafRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	void HandleNoStepRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	//각 클라이언트에서 H41 보유자의 노출 조건을 주기적으로 확인한다.
 	void StartHeartbeatDetection();
@@ -247,6 +201,8 @@ private:
 	float HideStationarySpeedTolerance = 3.0f;
 
 	float HideStationaryElapsed = 0.0f;
+	// 서버에서 H45가 추가한 Ghost 태그 한 개만 추적한다. Z44의 태그는 제거하지 않는다.
+	bool bHideGhostTagApplied = false;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Camp",meta=(ClampMin="0.0"))
 	float CampDelay = 4.0f;

@@ -190,15 +190,29 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	}
 
 	const UFAAttributeSet* Attributes = GetOwnerAttributes();
+	float RuleSpeed;
 	if (!Attributes)
 	{
-		return Super::GetMaxSpeed();
+		RuleSpeed = Super::GetMaxSpeed();
+	}
+	else
+	{
+		const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
+		const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
+		RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
 	}
 
-	const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
-	const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
-	const float RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
-	const float WaterSpeedMultiplier = FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f);
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	if (HasOwnerTag(Tags.Rule_Trade_SecondLife)
+		&& HasOwnerTag(Tags.State_SecondLife_Consumed))
+	{
+		// H49은 첫 포획이 무효화된 뒤부터 남은 룰 지속 시간 동안 이동속도를 30% 낮춘다.
+		RuleSpeed *= 0.7f;
+	}
+
+	const float WaterSpeedMultiplier = Attributes
+		? FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f)
+		: 1.0f;
 	
 	switch (MovementMode)
 	{

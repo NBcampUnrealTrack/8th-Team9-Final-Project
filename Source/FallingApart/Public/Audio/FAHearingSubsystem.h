@@ -16,6 +16,8 @@ class FALLINGAPART_API UFAHearingSubsystem : public UTickableWorldSubsystem
 public:
 	static UFAHearingSubsystem* Get(const UObject* WorldContextObject);
 	bool IsDeaf() const;
+	bool HasNoStepRule() const;
+	bool ShouldMuteSound(FName SoundId) const;
 	// [Z22 귀먹음] 별도 에셋 없이 발소리 분류와 재생 컴포넌트 추적을 재사용한다.
 	static bool IsFootstepSound(FName SoundId);
 	UAudioComponent* TrackFootstep(FName SoundId, UAudioComponent* Component);
@@ -33,13 +35,21 @@ protected:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 
 private:
-	void StopActiveFootsteps();
+	bool HasListenerTag(const struct FGameplayTag& Tag) const;
+	static bool IsZombieFootstepSound(FName SoundId);
+	void StopActiveFootsteps(bool bZombieOnly = false);
 	// 태그 변경은 Status 이벤트로 처리하고, Tick은 Pawn 교체와 완료된 소리 정리를 맡는다.
 	TWeakObjectPtr<APawn> ListenerPawn;
 
 	// 단발 사운드의 자동 파괴를 방해하지 않도록 약한 참조로 기록한다.
-	TArray<TWeakObjectPtr<UAudioComponent>> ActiveFootsteps;
+	struct FActiveFootstep
+	{
+		FName SoundId;
+		TWeakObjectPtr<UAudioComponent> Component;
+	};
+	TArray<FActiveFootstep> ActiveFootsteps;
 
 	bool bHasHearingState = false;
 	bool bWasDeaf = false;
+	bool bHadNoStepRule = false;
 };

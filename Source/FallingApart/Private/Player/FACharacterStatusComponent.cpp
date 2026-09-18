@@ -7,6 +7,7 @@
 #include "AbilitySystemInterface.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Audio/FAAudioSubsystem.h"
+#include "Audio/FAPhantomAudioComponent.h"
 #include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음] 실제 오디오 처리는 청취 클래스에 맡긴다.
 #include "GameFramework/Character.h"
 #include "GameplayEffect.h"
@@ -87,10 +88,6 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this,&ThisClass::HandleWallPhaseRuleChanged);
 		// BeginPlay 전에 Z46이 적용된 경우도 처리한다.
 		HandleWallPhaseRuleChanged(WallPhaseRuleTag,ASC->GetTagCount(WallPhaseRuleTag));
-		const FGameplayTag HiddenStateTag = FAGameplayTags::Get().State_Hidden;
-		ASC->RegisterGameplayTagEvent(HiddenStateTag,EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this,&ThisClass::HandleHiddenStateChanged);
-		HandleHiddenStateChanged(HiddenStateTag,ASC->GetTagCount(HiddenStateTag));
 
 		const FGameplayTag SecondLifeRuleTag = FAGameplayTags::Get().Rule_Trade_SecondLife;
 		ASC->RegisterGameplayTagEvent(SecondLifeRuleTag,EGameplayTagEventType::NewOrRemoved)
@@ -148,10 +145,17 @@ void UFACharacterStatusComponent::BeginPlay()
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	SetHideActive(false);
 	ClearFreeze();
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Phantom,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.State_Human,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_NoStep,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		// [Z22 귀먹음] 다른 룰과 동일하게 종료 시 태그 이벤트 연결을 해제한다.
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Deaf,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -165,8 +169,6 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_WallPhase,
 		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(Tags.State_Hidden,
-			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_SecondLife,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Gamble_Speed,
@@ -219,6 +221,18 @@ void UFACharacterStatusComponent::HandleDeafRuleChanged(const FGameplayTag Tag, 
 	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
 	{
 		// 콜백 인자 대신 현재 ASC 상태를 확인해 초기 적용과 중첩 해제를 함께 처리한다.
+		Hearing->UpdateHearingState();
+	}
+}
+
+void UFACharacterStatusComponent::HandleNoStepRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+	if (UFAHearingSubsystem* Hearing = UFAHearingSubsystem::Get(this))
+	{
 		Hearing->UpdateHearingState();
 	}
 }
@@ -317,7 +331,6 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
-	UpdatePhantomAudio(DeltaTime);
 	if (!OwnerCharacter)
 	{
 		return;
@@ -349,124 +362,14 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	}
 }
 
-void UFACharacterStatusComponent::UpdatePhantomAudio(float DeltaTime)
+void UFACharacterStatusComponent::HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount)
 {
 	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled()
-		|| GetNetMode() == NM_DedicatedServer || !ASC
-		|| !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Audio_Phantom)
-		|| PhantomFootstepSoundIds.IsEmpty())
+	const bool bActive = ASC && ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Audio_Phantom);
+	if (UFAPhantomAudioComponent* Phantom = GetOwner()->FindComponentByClass<UFAPhantomAudioComponent>())
 	{
-		PhantomTimeRemaining = -1.0f;
-		PhantomBurstRemainings.Reset();
-		PhantomBurstStartDelays.Reset();
-		PhantomBurstStepTimers.Reset();
-		PhantomBurstLocations.Reset();
-		return;
+		Phantom->SetRuleActive(bActive);
 	}
-
-	const float MinInterval = FMath::Max(0.1f, PhantomMinInterval);
-	const float MaxInterval = FMath::Max(MinInterval, PhantomMaxInterval);
-	const float BurstMinDuration = FMath::Max(0.1f, PhantomBurstMinDuration);
-	const float BurstMaxDuration = FMath::Max(BurstMinDuration, PhantomBurstMaxDuration);
-	const float BurstMinStepInterval = FMath::Max(0.1f, PhantomBurstMinStepInterval);
-	const float BurstMaxStepInterval = FMath::Max(BurstMinStepInterval, PhantomBurstMaxStepInterval);
-
-	// 환청 묶음이 진행 중이면 세 위치에서 각자 랜덤 간격으로 발소리를 이어서 낸다.
-	if (PhantomBurstRemainings.Num() > 0)
-	{
-		bool bAnyEmitterActive = false;
-		for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
-		{
-			if (PhantomBurstStartDelays[Index] > 0.0f)
-			{
-				PhantomBurstStartDelays[Index] -= DeltaTime;
-				bAnyEmitterActive = true;
-				if (PhantomBurstStartDelays[Index] > 0.0f)
-				{
-					continue;
-				}
-				PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-				PhantomBurstStepTimers[Index] = 0.0f;
-			}
-			const bool bWasActive = PhantomBurstRemainings[Index] > 0.0f;
-			if (!bWasActive)
-			{
-				continue;
-			}
-			PhantomBurstRemainings[Index] -= DeltaTime;
-			if (PhantomBurstRemainings[Index] <= 0.0f)
-			{
-				if (bWasActive)
-				{
-					// 다른 Emitter가 재생 중인 동안 즉시 새 발소리 묶음을 시작해 공백을 없앤다.
-					const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
-					const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
-					const float NewAngle = FMath::FRandRange(0.0f, 2.0f * PI);
-					const float NewDistance = FMath::FRandRange(MinDistance, MaxDistance);
-					PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
-						+ FVector(FMath::Cos(NewAngle), FMath::Sin(NewAngle), 0.0f) * NewDistance;
-					PhantomBurstRemainings[Index] = FMath::FRandRange(BurstMinDuration, BurstMaxDuration);
-					PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
-					bAnyEmitterActive = true;
-				}
-				continue;
-			}
-			bAnyEmitterActive = true;
-			PhantomBurstStepTimers[Index] -= DeltaTime;
-			if (PhantomBurstStepTimers[Index] <= 0.0f)
-			{
-				if (UFAAudioSubsystem* Audio = UFAAudioSubsystem::Get(this))
-				{
-					const FName SoundId = PhantomFootstepSoundIds[FMath::RandHelper(PhantomFootstepSoundIds.Num())];
-					const float MinVolume = FMath::Max(0.0f, PhantomMinVolumeMultiplier);
-					const float MaxVolume = FMath::Max(MinVolume, PhantomMaxVolumeMultiplier);
-					const float Volume = FMath::FRandRange(MinVolume, MaxVolume);
-					Audio->PlaySoundAtLocation(SoundId, PhantomBurstLocations[Index], Volume);
-				}
-			PhantomBurstStepTimers[Index] = FMath::FRandRange(BurstMinStepInterval, BurstMaxStepInterval);
-			}
-		}
-		if (!bAnyEmitterActive)
-		{
-			PhantomBurstRemainings.Reset();
-			PhantomBurstStepTimers.Reset();
-			PhantomBurstStartDelays.Reset();
-			PhantomBurstLocations.Reset();
-			PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
-		}
-		return;
-	}
-
-	if (PhantomTimeRemaining < 0.0f)
-	{
-		PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
-		return;
-	}
-
-	PhantomTimeRemaining -= DeltaTime;
-	if (PhantomTimeRemaining > 0.0f)
-	{
-		return;
-	}
-	const float MinDistance = FMath::Max(0.0f, PhantomMinDistance);
-	const float MaxDistance = FMath::Max(MinDistance, PhantomMaxDistance);
-	PhantomBurstLocations.SetNum(3);
-	PhantomBurstRemainings.SetNum(3);
-	PhantomBurstStartDelays.SetNum(3);
-	PhantomBurstStepTimers.SetNum(3);
-	for (int32 Index = 0; Index < PhantomBurstLocations.Num(); ++Index)
-	{
-		const float EmitterAngle = FMath::FRandRange(0.0f, 2.0f * PI);
-		const float EmitterDistance = FMath::FRandRange(MinDistance, MaxDistance);
-		PhantomBurstLocations[Index] = OwnerCharacter->GetActorLocation()
-			+ FVector(FMath::Cos(EmitterAngle), FMath::Sin(EmitterAngle), 0.0f) * EmitterDistance;
-		PhantomBurstRemainings[Index] = 0.0f;
-		// 세 명의 생성 시작 시점 자체를 분리한다.
-		PhantomBurstStartDelays[Index] = FMath::FRandRange(0.1f, 0.5f);
-		PhantomBurstStepTimers[Index] = 0.0f;
-	}
-	PhantomTimeRemaining = FMath::FRandRange(MinInterval, MaxInterval);
 }
 
 void UFACharacterStatusComponent::HandleKnockbackRuleChanged(FGameplayTag Tag, int32 NewCount)
@@ -1077,46 +980,23 @@ void UFACharacterStatusComponent::SetHideActive(bool bActive)
 		return;
 	}
 
-	const FGameplayTag HiddenTag = FAGameplayTags::Get().State_Hidden;
-	if (ASC->HasMatchingGameplayTag(HiddenTag) == bActive)
+	if (bHideGhostTagApplied == bActive)
 	{
 		return;
 	}
 
+	// 합산 태그 유무가 아닌 H45가 부여한 몫을 기준으로 중복 추가/제거를 방지한다.
+	bHideGhostTagApplied = bActive;
+	const FGameplayTag GhostTag = FAGameplayTags::Get().Rule_Trade_Ghost;
 	if (bActive)
 	{
-		ASC->AddLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+		ASC->AddLooseGameplayTag(GhostTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
 	else
 	{
-		ASC->RemoveLooseGameplayTag(HiddenTag,1,EGameplayTagReplicationState::TagAndCountToAll);
+		ASC->RemoveLooseGameplayTag(GhostTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
-
-	// 태그 도착 순서에 의존하지 않고 현재 은둔 상태를 전달한다.
-	MulticastSetHideVisual(bActive);
-}
-
-void UFACharacterStatusComponent::MulticastSetHideVisual_Implementation(bool bActive)
-{
-	if (GetNetMode() == NM_DedicatedServer)
-	{
-		return;
-	}
-
-	if (!OwnerCharacter)
-	{
-		OwnerCharacter = Cast<ACharacter>(GetOwner());
-	}
-
-	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
-	const bool bGhostRuleActive = ASC
-		&& ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost);
-
-	// 은둔이 해제돼도 별도 Ghost 룰의 반투명 효과는 유지한다.
-	SetGhostVisualActive(bActive || bGhostRuleActive);
-
-	UE_LOG(LogTemp, Log, TEXT("[H45 RPC] Character=%s | NetMode=%d | Hidden=%d"),
-		*GetNameSafe(OwnerCharacter), static_cast<int32>(GetNetMode()), bActive);
+	// 외형과 머리 위 UI는 복제되는 Ghost 태그를 공통으로 사용한다.
 }
 
 void UFACharacterStatusComponent::UpdateCampRule(float DeltaTime)
@@ -1195,21 +1075,13 @@ void UFACharacterStatusComponent::SetCampActive(bool bActive)
 		ASC->RemoveLooseGameplayTag(CampTag,1,EGameplayTagReplicationState::TagAndCountToAll);
 	}
 }
-void UFACharacterStatusComponent::HandleHiddenStateChanged(const FGameplayTag Tag, int32 NewCount)
-{
-	(void)Tag;
-	(void)NewCount;
-	RefreshGhostVisual();
-}
-
 void UFACharacterStatusComponent::RefreshGhostVisual()
 {
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
 		SetGhostVisualActive(
-			ASC->HasMatchingGameplayTag(Tags.Rule_Trade_Ghost)
-			|| ASC->HasMatchingGameplayTag(Tags.State_Hidden));
+			ASC->HasMatchingGameplayTag(Tags.Rule_Trade_Ghost));
 	}
 }
 

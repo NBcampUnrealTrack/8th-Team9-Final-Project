@@ -22,6 +22,7 @@ class UAudioComponent;
 class UMaterialInterface;
 class AFAPlayerState;
 class UFACharacterStatusComponent;
+class UFAPhantomAudioComponent;
 class UFACaptureMarkerWidget;
 class UFARuleMarkerWidget;
 class UWidgetComponent;
@@ -364,6 +365,9 @@ protected:
 	/** 머리 위 감염 게이지 위젯 컴포넌트를 만든다. BeginPlay 에서 1회. */
 	void SetupCaptureMarker();
 
+	/** H45 은둔 발동 또는 Z44 유령 상태이면 머리 위 UI를 숨긴다. */
+	bool ShouldHideOverheadUI() const;
+
 	/**
 	 * 이 프레임에 머리 위 게이지를 그려야 하는가.
 	 *
@@ -594,6 +598,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="FallingApart|Status",meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UFACharacterStatusComponent> CharacterStatusComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="FallingApart|Audio", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UFAPhantomAudioComponent> PhantomAudioComponent;
 
 	//~ ---------------- 진영 외형 ----------------
 	//~ 둘 다 비워두면 메시에 원래 물려 있는 머티리얼이 그대로 쓰인다
