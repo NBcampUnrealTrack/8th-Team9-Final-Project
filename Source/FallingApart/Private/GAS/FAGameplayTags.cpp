@@ -140,6 +140,9 @@ void FAGameplayTags::AddAllTags()
 	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));
 	Rule_Move_NoisyJump = AddTag(TEXT("Rule.Move.NoisyJump"), TEXT("H13 삐걱대는 무릎 — 점프 시 반경 25m에 소음 발생."));
 
+	//~ 룰 - Social
+	Rule_Social_ForceScream = AddTag(TEXT("Rule.Social.ForceScream"), TEXT("H31 절규 — 8초마다 자동으로 비명 발생"));
+
 	//~ 룰 - Rescue
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
 	Rule_Rescue_SlowHands = AddTag(TEXT("Rule.Rescue.SlowHands"), TEXT("H33 굼뜬 손 — QTE 개시 전 2초 선딜레이"));
