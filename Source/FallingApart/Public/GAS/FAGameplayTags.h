@@ -283,6 +283,10 @@ public:
 	/** H13 삐걱대는 무릎 — 점프 소리가 반경 25m까지 들림 */
 	FGameplayTag Rule_Move_NoisyJump;
 
+	// Social
+	/** H31 절규 — 8초마다 자동으로 비명 발생 */
+	FGameplayTag Rule_Social_ForceScream;
+
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
