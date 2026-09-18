@@ -186,6 +186,10 @@ void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 	}
 
 	WidgetSwitcher_Page->SetActiveWidgetIndex(PageIndex);
+	if (Page == EPrototypeMenuPage::CreateSession && SessionCreateWidget)
+	{
+		SessionCreateWidget->ActivatePage();
+	}
 	if (Page == EPrototypeMenuPage::JoinSession && SessionJoinWidget)
 	{
 		SessionJoinWidget->ActivatePage();

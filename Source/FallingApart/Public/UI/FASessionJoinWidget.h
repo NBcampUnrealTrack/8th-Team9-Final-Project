@@ -13,6 +13,8 @@ class UFASessionEntryWidget;
 class UScrollBox;
 class UButton;
 class UTextBlock;
+class UImage;
+class UTexture2D;
 
 DECLARE_MULTICAST_DELEGATE(FOnSessionRefreshRequested);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnSessionJoinRequested, const FOnlineSessionSearchResult& SessionResult, const FString& Password, const FString& Nickname);
@@ -48,6 +50,8 @@ public:
 	FOnSessionJoinRequested OnSessionJoinRequested;
 
 protected:
+	virtual void NativeConstruct() override;
+
 	UFUNCTION()
 	void RefreshButtonClicked();
 
@@ -58,6 +62,9 @@ protected:
 	void HandleSessionSearchTextChanged(const FText& Text);
 
 private:
+	UFUNCTION()
+	void HandlePasswordVisibilityClicked();
+	void SetPasswordVisible(bool bVisible);
 	void RebuildFilteredSessionList();
 	void RequestRefresh();
 	void AddSessionSearchResult(const FOnlineSessionSearchResult& Result);
@@ -75,6 +82,18 @@ private:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PasswordInput;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> PasswordVisibilityButton;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UImage> PasswordVisibilityIcon;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Password")
+	TObjectPtr<UTexture2D> PasswordVisibleIcon;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Password")
+	TObjectPtr<UTexture2D> PasswordHiddenIcon;
 
 	/** WBP에 없으면 런타임에 세션 목록 바로 위에 자동 생성한다. */
 	UPROPERTY(meta=(BindWidget))
