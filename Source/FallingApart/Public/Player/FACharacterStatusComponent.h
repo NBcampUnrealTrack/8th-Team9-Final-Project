@@ -154,6 +154,15 @@ private:
 	/** H50 타이머와 현재 속도 효과를 모두 제거한다. */
 	void ClearGambleSpeed();
 
+	/** H31 절규 태그 추가/제거 처리 */
+	void HandleForceScreamRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** H31 비명 1회 재생 */
+	void PlayForcedScream();
+
+	/** H31 반복 타이머 정리 */
+	void ClearForcedScream();
+
 	// Rule.State.Recall 추가·제거 이벤트 처리
 	void HandleRecallRuleChanged(const FGameplayTag Tag,int32 NewCount);
 
@@ -257,6 +266,14 @@ private:
 	float GambleSpeedMaxMultiplier = 1.5f;
 
 	FTimerHandle GambleSpeedTimerHandle;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|ForceScream",meta = (ClampMin = "0.1"))
+	float ForceScreamInterval = 8.0f;
+
+	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|ForceScream")
+	FName ForceScreamSoundId = TEXT("Human_ForceScream");
+
+	FTimerHandle ForceScreamTimerHandle;
 
 
 	// H43 / Z40 공용 귀환 반복 간격.
