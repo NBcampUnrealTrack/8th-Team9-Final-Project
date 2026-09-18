@@ -17,7 +17,7 @@ class FOnlineSessionSearchResult;
 enum class EFASessionRequestResult : uint8;
 
 
-enum class EPrototypeMenuPage : uint8
+enum class EMainManuPage : uint8
 {
 	Main = 0,
 	CreateSession = 1,
@@ -36,7 +36,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void MenuSetup();
 	
-	void ShowPage(EPrototypeMenuPage Page);
+	void ShowPage(EMainManuPage Page);
 	void ShowPageByInvite(const FOnlineSessionSearchResult& InviteResult);
 	
 	//* 로비 레벨의 경로 입력 선택 */
@@ -59,6 +59,9 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	
+	//단순 키 입력 처리 이벤트, ESC로 돌아가기 구현에 사용.
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	
 	// 자식 위젯의 요청을 세션 서브시스템에 전달하는 코디네이터 콜백
 	void HandleCreateSessionRequested(const FFASessionCreateRequest& Request);
