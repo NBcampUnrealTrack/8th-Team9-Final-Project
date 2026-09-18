@@ -49,6 +49,70 @@ public:
 };
 
 /**
+ * 슬라이더 옆 숫자 칸 하나를 슬라이더와 잇는 조각.
+ *
+ * 칸이 `UEditableText` / `UEditableTextBox` 면 직접 입력을 받는다. 숫자가 아닌 글자나
+ * 최대값을 넘는 입력은 그 자리에서 거부(직전 글자로 되돌림)하고, Enter·포커스 이탈 때
+ * 최소값 미만을 끌어올려 슬라이더에 넣는다. `UTextBlock` 이면 표시만 한다.
+ *
+ * 다이나믹 델리게이트는 보낸 위젯을 안 알려줘서 칸마다 이 조각을 하나씩 둔다.
+ */
+UCLASS()
+class SETTINGSKIT_API USKValueFieldBinding : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** 칸을 슬라이더에 잇는다. 범위는 슬라이더의 Min/Max 를 그대로 쓴다. */
+	void Init(USlider* InSlider, UWidget* InField, float InDisplayScale, int32 InDecimals);
+
+	/** 칸에 물린 델리게이트를 뗀다. 재구성 전에 반드시 부른다. */
+	void Unbind();
+
+	/** 슬라이더 쪽 실제 값으로 칸 글자를 맞춘다. */
+	void SetDisplayedValue(float Value);
+
+	/**
+	 * 숫자가 아닌 안내 문구("음소거" 등)를 칸에 띄운다. 입력 검사를 거치지 않고,
+	 * 되돌림 기준(마지막 유효 입력)도 바꾸지 않는다. 이때는 칸을 비활성화해 두는 게 맞다.
+	 */
+	void SetStatusText(const FText& Text);
+
+	UWidget* GetField() const { return Field.Get(); }
+
+	UFUNCTION()
+	void HandleTextChanged(const FText& Text);
+
+	UFUNCTION()
+	void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
+
+	/** 실제 값을 표시 문자열로. 퍼센트는 ×100 정수, 나머지는 소수 자릿수 고정. */
+	static FText FormatValue(float Value, float DisplayScale, int32 Decimals);
+
+	/** TextBlock / EditableText / EditableTextBox 어느 쪽이든 글자를 넣는다. */
+	static void SetWidgetText(UWidget* Widget, const FText& Text);
+
+private:
+	bool IsAcceptableInput(const FString& Input) const;
+	void SetFieldTextSilently(const FText& Text);
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<USlider> Slider;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UWidget> Field;
+
+	float DisplayScale = 1.f;
+	int32 Decimals = 0;
+
+	/** 마지막으로 통과한 입력. 거부할 때 이걸로 되돌린다. */
+	FText LastValidText;
+
+	/** 코드가 글자를 넣는 중 — 그때 오는 OnTextChanged 는 검사하지 않는다. */
+	bool bSettingText = false;
+};
+
+/**
  * 설정창.
  *
  * WBP 를 만들면 같은 이름의 위젯을 놓는 것만으로 전부 물린다(`BindWidgetOptional`). WBP 가
@@ -131,12 +195,6 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UButton> Btn_TabControls;
 
-	UPROPERTY(EditDefaultsOnly, Category = "SettingsKit|Style")
-	FLinearColor TabActiveColor = FLinearColor(1.0f, 0.78f, 0.25f, 1.0f);
-
-	UPROPERTY(EditDefaultsOnly, Category = "SettingsKit|Style")
-	FLinearColor TabInactiveColor = FLinearColor::White;
-
 	//~ ---------------- 오디오 탭 ----------------
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
@@ -155,16 +213,16 @@ protected:
 	TObjectPtr<UCheckBox> Chk_Mute;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_MasterValue;
+	TObjectPtr<UWidget> Txt_MasterValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_MusicValue;
+	TObjectPtr<UWidget> Txt_MusicValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_SFXValue;
+	TObjectPtr<UWidget> Txt_SFXValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_UIValue;
+	TObjectPtr<UWidget> Txt_UIValue;
 
 	//~ ---------------- 보이스 탭 ----------------
 
@@ -185,13 +243,13 @@ protected:
 	TObjectPtr<UComboBoxString> Cmb_VoiceMicMode;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_VoiceOutputValue;
+	TObjectPtr<UWidget> Txt_VoiceOutputValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_VoiceInputValue;
+	TObjectPtr<UWidget> Txt_VoiceInputValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_VoiceGateValue;
+	TObjectPtr<UWidget> Txt_VoiceGateValue;
 
 	//~ ---------------- 화면 탭 ----------------
 
@@ -229,13 +287,13 @@ protected:
 	TObjectPtr<USlider> Sld_SubtitleScale;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_GammaValue;
+	TObjectPtr<UWidget> Txt_GammaValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_FOVValue;
+	TObjectPtr<UWidget> Txt_FOVValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_SubtitleScaleValue;
+	TObjectPtr<UWidget> Txt_SubtitleScaleValue;
 
 	//~ 세부 화질 (0~3). 움직이면 프리셋이 "커스텀"으로 바뀐다.
 
@@ -263,7 +321,7 @@ protected:
 	TObjectPtr<USlider> Sld_MouseSensitivity;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<UTextBlock> Txt_MouseSensitivityValue;
+	TObjectPtr<UWidget> Txt_MouseSensitivityValue;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UCheckBox> Chk_InvertY;
@@ -373,11 +431,16 @@ private:
 	void PopulateStaticCombos();
 	void PopulateResolutionCombo();
 	void PopulateFromSettings();
-	void UpdateTabButtonColors();
 
 	//~ 값 라벨
-	void SetPercentLabel(UTextBlock* Label, float Value01) const;
-	void SetNumberLabel(UTextBlock* Label, float Value, int32 Decimals) const;
+	void SetPercentLabel(UWidget* Label, float Value01) const;
+	void SetNumberLabel(UWidget* Label, float Value, int32 Decimals) const;
+
+	/** 값 칸(Txt_*Value)을 슬라이더와 잇는다. 입력 가능한 위젯이면 직접 입력이 켜진다. */
+	void BindValueFields();
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USKValueFieldBinding>> ValueFieldBindings;
 
 	//~ 오디오 콜백
 	UFUNCTION() void HandleMasterChanged(float V);
@@ -464,7 +527,7 @@ private:
 
 	void BuildFallbackLayout();
 	UVerticalBox* MakeFallbackTab(UWidgetSwitcher* Switcher, const FText& Title);
-	USlider* AddFallbackSlider(UVerticalBox* Column, const FText& Label, float Min, float Max, TObjectPtr<UTextBlock>& OutValueLabel);
+	USlider* AddFallbackSlider(UVerticalBox* Column, const FText& Label, float Min, float Max, TObjectPtr<UWidget>& OutValueLabel);
 	UCheckBox* AddFallbackCheckBox(UVerticalBox* Column, const FText& Label);
 	UComboBoxString* AddFallbackCombo(UVerticalBox* Column, const FText& Label);
 

@@ -9,6 +9,8 @@
 class USpinBox;
 class UEditableText;
 class UButton;
+class UImage;
+class UTexture2D;
 
 struct FFASessionCreateRequest
 {
@@ -31,6 +33,7 @@ public:
 	virtual bool Initialize() override;
 
 	void SubmitCreateRequest();
+	void ActivatePage();
 
 	/** 세션 생성 입력값을 정규화하고 제약조건 위반 사유를 반환한다. */
 	static bool ValidateCreateRequest(FFASessionCreateRequest& Request, FText& OutErrorMessage);
@@ -45,6 +48,9 @@ protected:
 	void HandleMaxConnectionChanged(float NewValue);
 
 private:
+	UFUNCTION()
+	void HandlePasswordVisibilityClicked();
+	void SetPasswordVisible(bool bVisible);
 
 	FString GetSessionName() const;
 	
@@ -65,6 +71,18 @@ private:
 	
 	UPROPERTY(meta=(BindWidget))
 	TObjectPtr<UEditableText> PrivateSessionPass;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UButton> PasswordVisibilityButton;
+
+	UPROPERTY(meta=(BindWidget))
+	TObjectPtr<UImage> PasswordVisibilityIcon;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Password")
+	TObjectPtr<UTexture2D> PasswordVisibleIcon;
+
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Password")
+	TObjectPtr<UTexture2D> PasswordHiddenIcon;
 	
 	FText LastValidText;
 };

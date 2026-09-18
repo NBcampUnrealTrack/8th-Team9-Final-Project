@@ -133,6 +133,21 @@ void UFAMainMenuWidget::NativeDestruct()
 	RestoreGameInputMode();
 	Super::NativeDestruct();
 }
+
+FReply UFAMainMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	// 눌린 키가 ESC 키인지 확인
+	if (InKeyEvent.GetKey() == EKeys::Escape)
+	{
+		if (WidgetSwitcher_Page->GetActiveWidgetIndex() != 0)
+		{
+			ReturnToMainMenuButtonClicked();
+		}
+		return FReply::Handled();
+	}
+	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
 void UFAMainMenuWidget::MenuSetup()
 {
 	AddToViewport();
@@ -170,7 +185,7 @@ void UFAMainMenuWidget::BindButtonAudio(UButton* Button)
 	}
 }
 
-void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
+void UFAMainMenuWidget::ShowPage(EMainManuPage Page)
 {
 	if (!WidgetSwitcher_Page)
 	{
@@ -180,13 +195,17 @@ void UFAMainMenuWidget::ShowPage(EPrototypeMenuPage Page)
 	// 하위 페이지로 들어가는 것만 창 열리는 소리로 낸다. 메인으로 돌아가는 쪽은 뒤로 가기 버튼이
 	// 이미 UI_Back 을 내므로 여기서 또 내면 두 소리가 겹친다.
 	const int32 PageIndex = static_cast<int32>(Page);
-	if (Page != EPrototypeMenuPage::Main && WidgetSwitcher_Page->GetActiveWidgetIndex() != PageIndex)
+	if (Page != EMainManuPage::Main && WidgetSwitcher_Page->GetActiveWidgetIndex() != PageIndex)
 	{
 		UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::PopupOpen);
 	}
 
 	WidgetSwitcher_Page->SetActiveWidgetIndex(PageIndex);
-	if (Page == EPrototypeMenuPage::JoinSession && SessionJoinWidget)
+	if (Page == EMainManuPage::CreateSession && SessionCreateWidget)
+	{
+		SessionCreateWidget->ActivatePage();
+	}
+	if (Page == EMainManuPage::JoinSession && SessionJoinWidget)
 	{
 		SessionJoinWidget->ActivatePage();
 	}
@@ -200,7 +219,7 @@ void UFAMainMenuWidget::ShowPageByInvite(const FOnlineSessionSearchResult& Invit
 	}
 	
 	WidgetSwitcher_Page->SetActiveWidgetIndex(
-		static_cast<int32>(EPrototypeMenuPage::JoinSession));
+		static_cast<int32>(EMainManuPage::JoinSession));
 
 	//ActivatePage는 검색 갱신있어 사용하면 초기화됨.
 	SessionJoinWidget->ShowInvitedSession(InviteResult);
@@ -476,12 +495,12 @@ void UFAMainMenuWidget::RestoreJoinUIAfterTravelFailure(const FString& ErrorStri
 void UFAMainMenuWidget::OnHostButtonClicked()
 {
 	// 클릭 소리는 ShowPage() 의 열림 소리와 겹치므로 여기서 따로 내지 않는다.
-	ShowPage(EPrototypeMenuPage::CreateSession);
+	ShowPage(EMainManuPage::CreateSession);
 }
 
 void UFAMainMenuWidget::OnJoinButtonClicked()
 {
-	ShowPage(EPrototypeMenuPage::JoinSession);
+	ShowPage(EMainManuPage::JoinSession);
 }
 
 void UFAMainMenuWidget::OnSettingButtonClicked()
@@ -546,7 +565,7 @@ void UFAMainMenuWidget::ReturnToMainMenuButtonClicked()
 {
 	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Back);
 
-	ShowPage(EPrototypeMenuPage::Main);
+	ShowPage(EMainManuPage::Main);
 }
 
 void UFAMainMenuWidget::CloseMenu()

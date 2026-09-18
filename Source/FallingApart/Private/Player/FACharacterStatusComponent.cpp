@@ -136,19 +136,10 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this, &ThisClass::HandleDeafRuleChanged);
 		HandleDeafRuleChanged(DeafRuleTag, ASC->GetTagCount(DeafRuleTag));
 
-		const FGameplayTag NoStepRuleTag = FAGameplayTags::Get().Rule_Audio_NoStep;
-		ASC->RegisterGameplayTagEvent(NoStepRuleTag, EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this, &ThisClass::HandleNoStepRuleChanged);
-		HandleNoStepRuleChanged(NoStepRuleTag, ASC->GetTagCount(NoStepRuleTag));
-
-		const FGameplayTag PhantomRuleTag = FAGameplayTags::Get().Rule_Audio_Phantom;
-		ASC->RegisterGameplayTagEvent(PhantomRuleTag, EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this, &ThisClass::HandlePhantomRuleChanged);
-		HandlePhantomRuleChanged(PhantomRuleTag, ASC->GetTagCount(PhantomRuleTag));
-
-		// 룰 태그가 유지된 상태의 감염/진영 전환도 같은 콜백으로 처리한다.
-		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Human, EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this, &ThisClass::HandlePhantomRuleChanged);
+		const FGameplayTag ForceScreamRuleTag = FAGameplayTags::Get().Rule_Social_ForceScream;
+		ASC->RegisterGameplayTagEvent(ForceScreamRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleForceScreamRuleChanged);
+		HandleForceScreamRuleChanged(ForceScreamRuleTag, ASC->GetTagCount(ForceScreamRuleTag));
 	}
 }
 
@@ -194,6 +185,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_Freeze,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Social_ForceScream,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
@@ -211,6 +204,7 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	}
 
 	ClearForcedNoise();
+	ClearForcedScream();
 	ClearDecay();
 	Super::EndPlay(EndPlayReason);
 }
@@ -1145,6 +1139,64 @@ void UFACharacterStatusComponent::ClearGambleSpeed()
 		&& OwnerCharacter->HasAuthority())
 	{
 		ASC->SetNumericAttributeBase(UFAAttributeSet::GetGambleSpeedMultiplierAttribute(),1.0f);
+	}
+}
+
+void UFACharacterStatusComponent::HandleForceScreamRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	// 반복 타이머는 서버에서만 관리한다.
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	// 기존 타이머가 있다면 먼저 제거.
+	ClearForcedScream();
+
+	if (NewCount <= 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// 룰 획득 8초 후 첫 비명, 이후 8초마다 반복.
+	World->GetTimerManager().SetTimer(ForceScreamTimerHandle, this, &ThisClass::PlayForcedScream, ForceScreamInterval, true);
+}
+
+void UFACharacterStatusComponent::PlayForcedScream()
+{
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		ClearForcedScream();
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!ASC || !ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Social_ForceScream))
+	{
+		ClearForcedScream();
+		return;
+	}
+
+	AFACharacter* FACharacter = Cast<AFACharacter>(OwnerCharacter);
+	if (!FACharacter)
+	{
+		return;
+	}
+
+	FACharacter->Multicast_PlayFASoundAtLocation(ForceScreamSoundId);
+}
+
+void UFACharacterStatusComponent::ClearForcedScream()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ForceScreamTimerHandle);
 	}
 }
 

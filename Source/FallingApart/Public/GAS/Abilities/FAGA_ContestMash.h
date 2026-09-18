@@ -22,6 +22,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Effects")
 	TSubclassOf<class UGameplayEffect> MashEffectClass;
 
+	/**
+	 * 역할별 연타 1회당 게이지 변화량(게이지 0~100, 시작 50).
+	 * 좀비 한 명이 구조자+인질 두 명과 맞먹도록 맞추고, 두 명이 나눠 누르는 이점을 0.5 로 상쇄한다.
+	 * 셋이 같은 속도로 누르면 한 주기당 −0.5 로 좀비가 근소 우세.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QTE|Weight")
+	float ZombieMashDelta = -3.5f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QTE|Weight")
+	float RescuerMashDelta = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QTE|Weight")
+	float VictimMashDelta = 1.0f;
+
 private:
 	/** 나와 연관된 QTE 방장(좀비)을 찾는다. */
 	AFACharacter* FindTargetZombie(AFACharacter* Avatar);

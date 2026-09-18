@@ -396,7 +396,7 @@ protected:
 	bool ShouldShowRuleMarker() const;
 
 	/** 복제된 보유 룰을 머리 위 위젯으로 흘려보낸다. 매 프레임. */
-	void UpdateRuleMarker(float DeltaTime);
+	void UpdateOverheadWidget(float DeltaTime);
 
 	/** 시야 가림 트레이스 1회. 결과는 bRuleMarkerOccluded 에 캐시된다. */
 	void UpdateRuleMarkerOcclusion();
@@ -411,8 +411,9 @@ protected:
 	 * 아웃라인만 남긴다 — 좀비한테만 적용하면 실루엣 자체가 정체를 드러내므로 전원 대상으로 바꿨다.
 	 */
 	void RefreshCustomDepth();
-
-	bool ShouldShowOverheadWidget() const;
+	
+	/** 머리 상단의 위젯(닉네임, 룰마커)를 표시하기전, 대상 캐릭터가 보이는지를 체크한다. */
+	bool ShouldShowOverheadWidget();
 
 	void UpdateGroupRules();
 
@@ -699,7 +700,7 @@ public:
 
 	/** 이 거리 밖에서는 그리지 않는다. 0 이면 컬링하지 않는다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
-	float RuleMarkerCullDistance = 4000.0f;
+	float OverheadWidgetCullDistance = 4000.0f;
 
 	/** 이 거리부터 아이콘 대신 계열 색 점 3개로 축약한다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule")
@@ -723,7 +724,7 @@ public:
 
 	/** 가림 판정 주기(초). 매 프레임 트레이스하면 8인 기준으로 낭비가 크다. */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Rule", meta = (ClampMin = "0.05"))
-	float RuleMarkerOcclusionInterval = 0.2f;
+	float OverheadWidgetOcclusionInterval = 0.2f;
 
 	/**
 	 *	닉네임 컴포넌트
@@ -789,7 +790,7 @@ private:
 	TArray<FName> CachedRuleIds;
 
 	/** 마지막 가림 판정 이후 흐른 시간(초). */
-	float RuleMarkerOcclusionTimer = 0.0f;
+	float OverheadWidgetOcclusionTimer = 0.0f;
 
 	bool bRuleMarkerOccluded = false;
 
