@@ -203,7 +203,7 @@ void UFAGA_Grab::ResolveGrabAttempt()
 		{
 			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(FailStunEffectClass);
 
-			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 5.f);
+			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 3.f);
 			SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 		}
 
