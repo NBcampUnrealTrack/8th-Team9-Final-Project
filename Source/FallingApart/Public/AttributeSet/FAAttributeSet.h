@@ -74,6 +74,14 @@ public:
 	FGameplayAttributeData GambleSpeedMultiplier;
 	ATTRIBUTE_ACCESSORS(UFAAttributeSet,GambleSpeedMultiplier)
 
+	/** H03/Z03 이동 피로 배율. 다른 속도 룰과 독립적으로 곱한다. */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing=OnRep_FatigueSpeedMultiplier, Category="Attribute|Movement")
+	FGameplayAttributeData FatigueSpeedMultiplier;
+	ATTRIBUTE_ACCESSORS(UFAAttributeSet, FatigueSpeedMultiplier)
+
+	UFUNCTION()
+	void OnRep_FatigueSpeedMultiplier(const FGameplayAttributeData& OldValue);
+
 	// 점프 기본값 420.0
 	// GameplayEffect에서 배율 또는 고정값으로 변경
 	UPROPERTY(BlueprintReadOnly,ReplicatedUsing = OnRep_RuleJumpZVelocity,Category = "Attribute|Movement")

@@ -727,8 +727,7 @@ bool AFACharacter::ShouldShowOverheadWidget()
 			&& LocalCharacter->GetAbilitySystemComponent() )
 		{
 			//H45 은둔의 반투명 상태 / Z44 유령의 반투명 상태. 
-			if (this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().State_Hidden)
-				|| this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost))
+			if (this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost))
 			{
 				if (this->LastKnownTeam != LocalCharacter->LastKnownTeam)
 				{

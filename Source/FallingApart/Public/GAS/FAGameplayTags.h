@@ -191,9 +191,6 @@ public:
 #pragma region Zombie Rule
 
 	// Move
-	/* Z03  썩은 발목 . 이동속도 -30%.  */
-	FGameplayTag Rule_Move_SpeedDown_L;
-
 	/* Z06  역행 . 후진만 가능  */ //전진 강박 존제시 적용 불가능하게 나올것
 	FGameplayTag Rule_Move_BackwardOnly;
 
@@ -271,7 +268,7 @@ public:
 #pragma region Human Rule
 
 	// Move
-	/* H03 탈진 . 전력질주 봉인*/
+	/* H03/Z03 이동 피로. 기존 에셋 호환을 위해 NoSprint 태그 이름은 유지한다. */
 	FGameplayTag Rule_Move_NoSprint;
 
 	/* H07 포복 . 웅크린 상태로만 이동*/

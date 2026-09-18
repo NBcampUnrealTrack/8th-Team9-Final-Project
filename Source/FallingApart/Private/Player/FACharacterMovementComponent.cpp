@@ -203,6 +203,8 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	}
 
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const float FatigueMultiplier = Attributes && HasOwnerTag(Tags.Rule_Move_NoSprint)
+		? FMath::Clamp(Attributes->GetFatigueSpeedMultiplier(), 0.75f, 1.0f) : 1.0f;
 	if (HasOwnerTag(Tags.Rule_Trade_SecondLife)
 		&& HasOwnerTag(Tags.State_SecondLife_Consumed))
 	{
@@ -219,12 +221,12 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 		// 웅크리기 속도는 룰 속도를 넘지 않는 선에서 유지
-		return IsCrouching() ? FMath::Min(MaxWalkSpeedCrouched, RuleSpeed) : RuleSpeed;
+		return (IsCrouching() ? FMath::Min(MaxWalkSpeedCrouched, RuleSpeed) : RuleSpeed) * FatigueMultiplier;
 
 	case MOVE_Falling:
-		return RuleSpeed;
+		return RuleSpeed * FatigueMultiplier;
 	case MOVE_Swimming:
-		return RuleSpeed * WaterSpeedMultiplier;
+		return RuleSpeed * WaterSpeedMultiplier * FatigueMultiplier;
 
 	default:
 		// 수영·비행은 이 게임에 없다. 생기면 여기서 분기할 것.

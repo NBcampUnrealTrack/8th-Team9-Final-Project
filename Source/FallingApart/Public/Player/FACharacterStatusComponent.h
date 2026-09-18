@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayEffectTypes.h"
+#include "Player/FAFatigueState.h"
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
@@ -13,6 +14,7 @@ class UPrimitiveComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UAnimMontage;
+class UNiagaraSystem;
 class UMaterialInstanceDynamic; // 동적 머티리얼 전방 선언
 struct FGameplayTag;
 
@@ -96,6 +98,11 @@ private:
 	void SetHideActive(bool bActive);
 
 	void UpdateCampRule(float DeltaTime);
+	void UpdateFatigueRule(float DeltaTime);
+	void HandleFatigueRuleChanged(const FGameplayTag Tag, int32 NewCount);
+	void ClearFatigue();
+	bool bFatigueActive = false;
+	FFAFatigueState FatigueState;
 	void SetCampActive(bool bActive);
 
 	void RefreshGhostVisual();
@@ -104,6 +111,9 @@ private:
 	void HandleGambleSpeedRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	/** 현재 H50 배율을 제거하고 새 0.5~1.5배 효과를 적용한다. */
 	void RollGambleSpeed();
+	/** H50 / Z49 추첨 결과를 각 클라이언트에서 일회성 이펙트로 표시한다. */
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayGambleSpeedEffect(float SpeedMultiplier);
 	/** H50 타이머와 현재 속도 효과를 모두 제거한다. */
 	void ClearGambleSpeed();
 
@@ -220,6 +230,18 @@ private:
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.0"))
 	float GambleSpeedMaxMultiplier = 1.5f;
+
+	/** 기본 속도보다 빠른 추첨 결과. 자동 종료되는 Niagara 시스템을 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Gamble|Effects")
+	TObjectPtr<UNiagaraSystem> GambleSpeedUpEffect;
+
+	/** 기본 속도보다 느린 추첨 결과. 자동 종료되는 Niagara 시스템을 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Gamble|Effects")
+	TObjectPtr<UNiagaraSystem> GambleSpeedDownEffect;
+
+	/** 캡슐 바 한닥(발밑)을 기준으로 로컬 위치 보정. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Gamble|Effects")
+	FVector GambleSpeedEffectOffset = FVector::ZeroVector;
 
 	FTimerHandle GambleSpeedTimerHandle;
 

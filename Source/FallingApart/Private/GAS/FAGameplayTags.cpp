@@ -93,7 +93,6 @@ void FAGameplayTags::AddAllTags()
 #pragma region Zombie Rule
 
 	//~ 룰 - Move
-	Rule_Move_SpeedDown_L  = AddTag(TEXT("Rule.Move.SpeedDown.L"),  TEXT("Z03 이동속도 -30%."));
 	Rule_Move_BackwardOnly  = AddTag(TEXT("Rule.Move.BackwardOnly"),  TEXT("Z06 후진만 가능"));
 	Rule_Move_LowJump  = AddTag(TEXT("Rule.Move.LowJump"),  TEXT("Z12 점프 높이 -60%"));
 
@@ -135,7 +134,7 @@ void FAGameplayTags::AddAllTags()
 #pragma region Human Rule
 
 	//~ 룰 - Move
-	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03 전력질주 봉인"));
+	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03/Z03 이동 피로: 6초 이동 후 최대 25% 감속, 정지 시 회복"));
 	Rule_Move_CrouchOnly = AddTag(TEXT("Rule.Move.CrouchOnly"), TEXT("H07 웅크린 상태로만 이동"));
 	Rule_Move_Burden = AddTag(TEXT("Rule.Move.Burden"), TEXT("H11 이동속도-25%,점프높이 -40%"));
 	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));

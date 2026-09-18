@@ -24,6 +24,8 @@
 #include "Player/FACharacter.h"
 #include "Player/FADetectionUnitComponent.h"
 #include "Player/FATrailComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -82,6 +84,12 @@ void UFACharacterStatusComponent::BeginPlay()
 			.AddUObject(this,&ThisClass::HandleGhostRuleChanged);
 		// BeginPlay 전에 Z44가 적용된 경우도 즉시 반영한다.
 		HandleGhostRuleChanged(GhostRuleTag,ASC->GetTagCount(GhostRuleTag));
+
+		const FGameplayTag FatigueRuleTag = FAGameplayTags::Get().Rule_Move_NoSprint;
+		ASC->RegisterGameplayTagEvent(FatigueRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleFatigueRuleChanged);
+		// BeginPlay 전에 적용된 H03/Z03도 즉시 반영한다.
+		HandleFatigueRuleChanged(FatigueRuleTag, ASC->GetTagCount(FatigueRuleTag));
 
 		const FGameplayTag WallPhaseRuleTag =FAGameplayTags::Get().Rule_Trade_WallPhase;
 		ASC->RegisterGameplayTagEvent(WallPhaseRuleTag,EGameplayTagEventType::NewOrRemoved)
@@ -167,6 +175,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_Ghost,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_NoSprint,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_WallPhase,
 		 EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_SecondLife,
@@ -192,6 +202,7 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
 	ClearGambleSpeed();
+	ClearFatigue();
 	ClearRecall();
 	StopHeartbeatDetection();
 	SetGhostVisualActive(false);
@@ -349,6 +360,7 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		UpdateHideRule(DeltaTime);
 		UpdateCampRule(DeltaTime);
+		UpdateFatigueRule(DeltaTime);
 	}
 
 	const bool bShouldPhase =ASC->HasMatchingGameplayTag(
@@ -359,6 +371,49 @@ void UFACharacterStatusComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (Capsule->GetCollisionResponseToChannel(FACollision::PhaseWall) != DesiredResponse)
 	{
 		SetWallPhaseActive(bShouldPhase);
+	}
+}
+
+void UFACharacterStatusComponent::HandleFatigueRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	ClearFatigue();
+	bFatigueActive = NewCount > 0;
+}
+
+void UFACharacterStatusComponent::ClearFatigue()
+{
+	bFatigueActive = false;
+	FatigueState = FFAFatigueState();
+	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem(); ASC && OwnerCharacter
+		&& OwnerCharacter->HasAuthority())
+	{
+		ASC->SetNumericAttributeBase(UFAAttributeSet::GetFatigueSpeedMultiplierAttribute(), 1.0f);
+	}
+}
+
+void UFACharacterStatusComponent::UpdateFatigueRule(float DeltaTime)
+{
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!bFatigueActive || !ASC || !OwnerCharacter || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	// 태그 이벤트가 활성화한 동안만 이동/회복 시간을 갱신한다.
+	const bool bMoving = OwnerCharacter->GetVelocity().SizeSquared2D() > FMath::Square(3.0f);
+	FatigueState.Update(DeltaTime, bMoving);
+
+	const float Multiplier = FatigueState.GetSpeedMultiplier();
+	const float PreviousMultiplier = ASC->GetNumericAttribute(UFAAttributeSet::GetFatigueSpeedMultiplierAttribute());
+	if (!FMath::IsNearlyEqual(PreviousMultiplier, Multiplier))
+	{
+		ASC->SetNumericAttributeBase(UFAAttributeSet::GetFatigueSpeedMultiplierAttribute(), Multiplier);
 	}
 }
 
@@ -772,8 +827,7 @@ void UFACharacterStatusComponent::UpdateDecay()
 	float Multiplier = 1.0f;
 
 	const AFACharacter* Character = Cast<AFACharacter>(OwnerCharacter);
-	const UFADetectionUnitComponent* Detection =
-		Character ? Character->GetDetectionUnitComponent() : nullptr;
+	const UFADetectionUnitComponent* Detection = Character ? Character->GetDetectionUnitComponent() : nullptr;
 
 	if (Detection && ASC->HasMatchingGameplayTag(Tags.State_Zombie))
 	{
@@ -1120,12 +1174,38 @@ void UFACharacterStatusComponent::RollGambleSpeed()
 	const float MaxMultiplier = FMath::Max(GambleSpeedMinMultiplier,GambleSpeedMaxMultiplier);
 	const float SpeedMultiplier = FMath::FRandRange(MinMultiplier,MaxMultiplier);
 	ASC->SetNumericAttributeBase(UFAAttributeSet::GetGambleSpeedMultiplierAttribute(),SpeedMultiplier);
-
+	MulticastPlayGambleSpeedEffect(SpeedMultiplier);
 	const float BaseMoveSpeed = ASC->GetNumericAttribute(UFAAttributeSet::GetMoveSpeedAttribute());
 
 	UE_LOG(LogTemp,Warning,TEXT("[H50] 속도 갱신 | Character=%s | "
 		  "BaseSpeed=%.1f | Multiplier=%.3f | FinalSpeed=%.1f"
 	  ),*GetNameSafe(OwnerCharacter),BaseMoveSpeed,SpeedMultiplier,BaseMoveSpeed * SpeedMultiplier);
+}
+
+void UFACharacterStatusComponent::MulticastPlayGambleSpeedEffect_Implementation(float SpeedMultiplier)
+{
+	if (GetNetMode() == NM_DedicatedServer || FMath::IsNearlyEqual(SpeedMultiplier, 1.0f))
+	{
+		return;
+	}
+
+	ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UNiagaraSystem* Effect = SpeedMultiplier > 1.0f ? GambleSpeedUpEffect.Get() : GambleSpeedDownEffect.Get();
+	if (!Character || !Effect)
+	{
+		return;
+	}
+
+	UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+	if (!Capsule)
+	{
+		return;
+	}
+
+	const FVector Location = GambleSpeedEffectOffset
+		- FVector(0.0f, 0.0f, Capsule->GetUnscaledCapsuleHalfHeight());
+	UNiagaraFunctionLibrary::SpawnSystemAttached(Effect, Capsule, NAME_None, Location,
+		FRotator::ZeroRotator, EAttachLocation::KeepRelativeOffset, true);
 }
 
 void UFACharacterStatusComponent::ClearGambleSpeed()
