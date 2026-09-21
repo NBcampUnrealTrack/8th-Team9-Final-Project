@@ -219,6 +219,9 @@ private:
 	/** H30 Social.LeakVoice 태그가 추가/제거됐을 때 수신자별 음성 필터를 갱신한다. */
 	void HandleLeakVoiceRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
+	/** Z36 Social.Broadcast 태그가 추가/제거됐을 때 감쇠와 수신자 필터를 갱신한다. */
+	void HandleBroadcastRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
 	UPROPERTY(Transient)
 	TObjectPtr<UFAVoiceTalker> Talker;
 

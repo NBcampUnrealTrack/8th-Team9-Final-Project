@@ -69,6 +69,11 @@ void UFACharacterStatusComponent::BeginPlay()
 		// BeginPlay 전에 룰이 이미 적용된 경우도 처리한다.
 		HandleInputFlipRuleChanged(FlipRuleTag, ASC->GetTagCount(FlipRuleTag));
 
+		const FGameplayTag BackwardOnlyRuleTag = FAGameplayTags::Get().Rule_Move_BackwardOnly;
+		ASC->RegisterGameplayTagEvent(BackwardOnlyRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleBackwardOnlyRuleChanged);
+		HandleBackwardOnlyRuleChanged(BackwardOnlyRuleTag, ASC->GetTagCount(BackwardOnlyRuleTag));
+
 		// [ 포복 ]
 		const FGameplayTag CrouchOnlyRuleTag = FAGameplayTags::Get().Rule_Move_CrouchOnly;
 		ASC->RegisterGameplayTagEvent(CrouchOnlyRuleTag, EGameplayTagEventType::NewOrRemoved)
@@ -171,6 +176,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Input_FlipLR,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_BackwardOnly,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Trade_Ghost,
@@ -201,6 +208,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
+	GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+	SetBackwardOnlyActive(false);
 	ClearGambleSpeed();
 	ClearFatigue();
 	ClearRecall();
@@ -558,6 +567,35 @@ void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag 
 		true);
 }
 
+void UFACharacterStatusComponent::HandleBackwardOnlyRuleChanged(
+	const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+	SetBackwardOnlyActive(false);
+
+	if (NewCount <= 0)
+	{
+		return;
+	}
+
+	// 룰을 얻는 즉시 첫 5초는 후진 전용으로 시작하고,
+	// 이후 정상 이동과 후진 전용을 5초마다 반복한다.
+	SetBackwardOnlyActive(true);
+	GetWorld()->GetTimerManager().SetTimer(
+		BackwardOnlyTimerHandle,
+		this,
+		&ThisClass::ToggleBackwardOnly,
+		BackwardOnlyInterval,
+		true);
+}
+
 void UFACharacterStatusComponent::HandleCrouchOnlyRuleChanged(const FGameplayTag Tag,int32 NewCount)
  {
  	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
@@ -713,6 +751,48 @@ void UFACharacterStatusComponent::SetInputFlipActive(bool bActive)
 	else
 	{
 		ASC->RemoveLooseGameplayTag(StateTag,1,EGameplayTagReplicationState::CountToOwner);
+	}
+}
+
+void UFACharacterStatusComponent::ToggleBackwardOnly()
+{
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!ASC || !ASC->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Move_BackwardOnly))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+		SetBackwardOnlyActive(false);
+		return;
+	}
+
+	SetBackwardOnlyActive(!bBackwardOnlyActive);
+}
+
+void UFACharacterStatusComponent::SetBackwardOnlyActive(bool bActive)
+{
+	if (bBackwardOnlyActive == bActive)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!ASC)
+	{
+		return;
+	}
+
+	bBackwardOnlyActive = bActive;
+	const FGameplayTag StateTag = FAGameplayTags::Get().State_BackwardOnly;
+
+	if (bBackwardOnlyActive)
+	{
+		ASC->AddLooseGameplayTag(
+			StateTag, 1, EGameplayTagReplicationState::CountToOwner);
+	}
+	else
+	{
+		ASC->RemoveLooseGameplayTag(
+			StateTag, 1, EGameplayTagReplicationState::CountToOwner);
 	}
 }
 

@@ -61,6 +61,7 @@ void FAGameplayTags::AddAllTags()
 	State_Grabbed       = AddTag(TEXT("State.Grabbed"),       TEXT("인간이 포획당한 상태."));
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
+	State_BackwardOnly = AddTag(TEXT("State.BackwardOnly"), TEXT("Z06 역행의 현재 구간 — 전후 입력을 후진으로 제한."));
 	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
 	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
 	State_Exposed		= AddTag(TEXT("State.Exposed"),		  TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
@@ -83,7 +84,7 @@ void FAGameplayTags::AddAllTags()
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
 
 	//~ 룰 - Gamble
-	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
+	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -35%~+20% 랜덤."));
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
 	Rule_State_Recall = AddTag(TEXT("Rule.State.Recall"), TEXT("H43 도박꾼 / Z40 귀환. 40초마다 공유 스폰 지점 중 무작위 위치로 순간이동"));
 
@@ -120,6 +121,7 @@ void FAGameplayTags::AddAllTags()
 	//~ 룰 - Social
 	Rule_Social_Mute = AddTag(TEXT("Rule.Social.Mute"), TEXT("H29 / Z35 침묵 — 보이스 송신 차단."));
 	Rule_Social_LeakVoice = AddTag(TEXT("Rule.Social.LeakVoice"), TEXT("H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다."));
+	Rule_Social_Broadcast = AddTag(TEXT("Rule.Social.Broadcast"), TEXT("Z36 확성 — 좀비의 음성이 감쇠 없이 인간 전원에게 들린다."));
 
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));

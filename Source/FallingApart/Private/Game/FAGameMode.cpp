@@ -684,7 +684,7 @@ void AFAGameMode::AssignStartingTeams()
 		FAPlayerState->ResetForNewRound();
 		// 여기는 '시작 좀비를 뽑기 전의 기본 진영' 이다 — Zombie 로 두면 아래에서 누굴 뽑든
 		// 전원 좀비인 라운드가 되어 인간이 한 명도 없다.
-		FAPlayerState->SetTeam(EFATeam::Human);
+		FAPlayerState->SetTeam(EFATeam::Zombie);
 		Candidates.Add(FAPlayerState);
 	}
 
@@ -994,8 +994,18 @@ void AFAGameMode::UpdateVoiceMuteMatrix()
 			const bool bLeakVoiceBlocked =
 				bLeakVoice && ListenerState && ListenerState->IsHuman();
 
+			// Z36: 좀비 화자의 음성은 인간 전원에게 전달한다.
+			// VoiceComponent가 감쇠를 제거하므로, 여기서는 좀비 청취자만 차단한다.
+			const bool bBroadcastVoice =
+				SpeakerState && SpeakerState->IsZombie() &&
+				SpeakerASC && SpeakerASC->HasMatchingGameplayTag(
+					FAGameplayTags::Get().Rule_Social_Broadcast);
+			const bool bBroadcastVoiceBlocked =
+				bBroadcastVoice && ListenerState && ListenerState->IsZombie();
+
 			// 관전 여부가 서로 다르면 차단. 같으면(둘 다 관전 / 둘 다 인게임).
-			if (bListenerSpectating != IsVoiceSpectator(Speaker) || bLeakVoiceBlocked)
+			if (bListenerSpectating != IsVoiceSpectator(Speaker)
+				|| bLeakVoiceBlocked || bBroadcastVoiceBlocked)
 			{
 				Listener->GameplayMutePlayer(SpeakerId);
 			}

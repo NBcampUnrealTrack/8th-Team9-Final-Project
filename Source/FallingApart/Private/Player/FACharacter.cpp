@@ -2097,7 +2097,31 @@ void AFACharacter::UpdateVisionEffects()
 	else if (bBlackout && GetWorld()) // Vision.Blackout — 주기적인 명멸
 	{
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
-		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
+		const float FadeIn = FMath::Clamp(
+			BlackoutFadeInSeconds, 0.01f, FMath::Max(BlackoutFlashDuration * 0.5f, 0.01f));
+		const float FadeOut = FMath::Clamp(
+			BlackoutFadeOutSeconds, 0.01f, FMath::Max(BlackoutFlashDuration * 0.5f, 0.01f));
+
+		if (TimeInCycle < BlackoutFlashDuration)
+		{
+			// 검은색으로 들어오고 나오는 구간에 SmoothStep을 사용한다.
+			// 선형 보간보다 시작·끝의 변화가 완만해 눈에 튀는 느낌이 줄어든다.
+			if (TimeInCycle < FadeIn)
+			{
+				const float Alpha = FMath::Clamp(TimeInCycle / FadeIn, 0.0f, 1.0f);
+				BlackoutAmount = Alpha * Alpha * (3.0f - 2.0f * Alpha);
+			}
+			else if (TimeInCycle > BlackoutFlashDuration - FadeOut)
+			{
+				const float Alpha = FMath::Clamp(
+					(BlackoutFlashDuration - TimeInCycle) / FadeOut, 0.0f, 1.0f);
+				BlackoutAmount = Alpha * Alpha * (3.0f - 2.0f * Alpha);
+			}
+			else
+			{
+				BlackoutAmount = 1.0f;
+			}
+		}
 	}
 
 	// 심박 왜곡 (Vision.Shake, Z25) — 가장 가까운 인간까지 거리가 가까울수록 화면을 흔든다.

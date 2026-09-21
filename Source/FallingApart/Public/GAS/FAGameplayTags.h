@@ -120,6 +120,9 @@ public:
 	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
 	FGameplayTag State_Input_Flipped;
 
+	/** Z06 역행의 현재 5초 구간 — 이 태그가 있는 동안 후진만 가능하다. */
+	FGameplayTag State_BackwardOnly;
+
 	/** 캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태 */
 	FGameplayTag State_Exposed;
 
@@ -149,6 +152,9 @@ public:
 
 	/** H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다. */
 	FGameplayTag Rule_Social_LeakVoice;
+
+	/** Z36 확성 — 좀비의 음성이 감쇠 없이 인간 전원에게 들린다. */
+	FGameplayTag Rule_Social_Broadcast;
 
 	//~ ========================= Trade Tag =========================
 
@@ -299,7 +305,7 @@ public:
 	FGameplayTag Rule_Bite_InstantInfect;
 
 	// Trade
-	/* H44 질주 . 이동속도 +40%, 위치 노출 */
+	/* H44 질주 . 이동속도 +15%, 위치 노출 */
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
