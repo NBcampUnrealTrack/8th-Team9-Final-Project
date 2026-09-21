@@ -270,8 +270,8 @@ void AFACabinet::Interact_Implementation(AFACharacter* Interactor)
 	if (IsZombie(Interactor))
 	{
 		// 2) 좀비 -> 열어서 노출
-		MulticastPlayDoorInteractionMontage(Interactor, /*bOpening=*/true);
 		SetDoorOpen(true, Interactor);
+		MulticastPlayDoorInteractionMontage(Interactor, SelectDoorInteractionMontage(Interactor, /*bOpening=*/true));
 		ServerEjectHider();
 		UpdateAutoCloseTimer();
 	}
