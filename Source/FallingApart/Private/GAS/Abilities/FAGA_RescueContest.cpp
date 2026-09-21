@@ -1,5 +1,6 @@
 #include "GAS/Abilities/FAGA_RescueContest.h"
 #include "GAS/Abilities/FAGA_Grab.h"
+#include "GAS/Abilities/FAGA_Rescue.h"
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Game/FAGameMode.h"
@@ -56,7 +57,7 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	}
 
 	// 같은 인질을 잡았다가 구출당하기를 반복하면 좀비 연타를 한 번당 RepeatRescueMashStep 만큼 무겁게 한다.
-	// 상대가 바뀌면 누적을 버리고 −3 대 3 에서 다시 시작한다.
+	// 상대가 바뀌면 누적을 버리고 −3.5 대 3 에서 다시 시작한다.
 	if (GrabbedVictim.IsValid() && GrabbedVictim.Get() == RepeatRescueVictim.Get())
 	{
 		ZombieMashBonus = -RepeatRescueMashStep * RepeatRescueCount;
@@ -329,6 +330,12 @@ void UFAGA_RescueContest::EndAbility(const FGameplayAbilitySpecHandle Handle, co
 		}
 	}
 	ContestingHandles.Empty();
+
+	// 같은 구조자가 끝나자마자 또 구출에 들어가지 못하게 한다 (이기든 지든).
+	if (Rescuer.IsValid())
+	{
+		UFAGA_Rescue::StartRescueCooldown(Rescuer->GetAbilitySystemComponent());
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
