@@ -20,6 +20,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GAS/FAGameplayTags.h"
+#include "Game/FAGameMode.h"
 
 DEFINE_LOG_CATEGORY(LogFAVoice);
 
@@ -81,6 +82,12 @@ void UFAVoiceComponent::BeginPlay()
 		{
 			StopTalking();
 		}
+
+		const FGameplayTag LeakVoiceRuleTag = FAGameplayTags::Get().Rule_Social_LeakVoice;
+		ASC->RegisterGameplayTagEvent(
+			LeakVoiceRuleTag,
+			EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleLeakVoiceRuleChanged);
 	}
 
 	SetupVoiceSource();
@@ -105,6 +112,7 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent())
 	{
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_Mute, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_LeakVoice, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	if (UWorld* World = GetWorld())
@@ -755,5 +763,26 @@ void UFAVoiceComponent::HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewC
 	if (!bPushToTalk)
 	{
 		StartTalking();
+	}
+}
+
+void UFAVoiceComponent::HandleLeakVoiceRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	(void)NewCount;
+
+	// H30은 송신을 끄는 룰이 아니다. 근접 감쇠는 유지하고,
+	// 서버가 수신자 진영별 GameplayMute 목록만 다시 계산한다.
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* GameMode = Cast<AFAGameMode>(World->GetAuthGameMode()))
+		{
+			GameMode->RefreshVoiceMuteMatrix();
+		}
 	}
 }

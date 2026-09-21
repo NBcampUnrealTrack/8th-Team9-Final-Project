@@ -119,6 +119,7 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Social
 	Rule_Social_Mute = AddTag(TEXT("Rule.Social.Mute"), TEXT("H29 / Z35 침묵 — 보이스 송신 차단."));
+	Rule_Social_LeakVoice = AddTag(TEXT("Rule.Social.LeakVoice"), TEXT("H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다."));
 
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));

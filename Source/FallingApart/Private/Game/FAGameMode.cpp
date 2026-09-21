@@ -885,6 +885,11 @@ void AFAGameMode::UpdateGameplayMuteList(APlayerController* aPlayer)
 	UpdateVoiceMuteMatrix();
 }
 
+void AFAGameMode::RefreshVoiceMuteMatrix()
+{
+	UpdateVoiceMuteMatrix();
+}
+
 void AFAGameMode::SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders)
 {
 	DeathMatchContenders.Reset(Contenders.Num());
@@ -973,9 +978,24 @@ void AFAGameMode::UpdateVoiceMuteMatrix()
 			}
 
 			const FUniqueNetIdRepl& SpeakerId = Speaker->PlayerState->GetUniqueId();
+			const AFAPlayerState* SpeakerState = Cast<AFAPlayerState>(Speaker->PlayerState);
+			const AFAPlayerState* ListenerState = Cast<AFAPlayerState>(Listener->PlayerState);
+			const AFACharacter* SpeakerCharacter = Cast<AFACharacter>(Speaker->GetPawn());
+			const UFAAbilitySystemComponent* SpeakerASC =
+				SpeakerCharacter ? SpeakerCharacter->GetFAAbilitySystemComponent() : nullptr;
+
+			// H30: 인간 화자의 음성은 좀비에게만 전달한다.
+			// 거리 감쇠는 VoiceComponent가 그대로 적용하므로 여기서는
+			// 인간 청취자만 GameplayMute로 차단한다.
+			const bool bLeakVoice =
+				SpeakerState && SpeakerState->IsHuman() &&
+				SpeakerASC && SpeakerASC->HasMatchingGameplayTag(
+					FAGameplayTags::Get().Rule_Social_LeakVoice);
+			const bool bLeakVoiceBlocked =
+				bLeakVoice && ListenerState && ListenerState->IsHuman();
 
 			// 관전 여부가 서로 다르면 차단. 같으면(둘 다 관전 / 둘 다 인게임).
-			if (bListenerSpectating != IsVoiceSpectator(Speaker))
+			if (bListenerSpectating != IsVoiceSpectator(Speaker) || bLeakVoiceBlocked)
 			{
 				Listener->GameplayMutePlayer(SpeakerId);
 			}

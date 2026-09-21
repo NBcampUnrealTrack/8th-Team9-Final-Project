@@ -216,6 +216,9 @@ private:
 	/** Social.Mute 태그가 추가/제거됐을 때 마이크 상태를 즉시 갱신. */
 	void HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
+	/** H30 Social.LeakVoice 태그가 추가/제거됐을 때 수신자별 음성 필터를 갱신한다. */
+	void HandleLeakVoiceRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
 	UPROPERTY(Transient)
 	TObjectPtr<UFAVoiceTalker> Talker;
 

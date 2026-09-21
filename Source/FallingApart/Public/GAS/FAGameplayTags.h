@@ -147,6 +147,9 @@ public:
 	/** H29 / Z35 침묵 — 보이스 송신 차단 */
 	FGameplayTag Rule_Social_Mute;
 
+	/** H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다. */
+	FGameplayTag Rule_Social_LeakVoice;
+
 	//~ ========================= Trade Tag =========================
 
 	/* H48 예지 / Z48 사냥꾼의 눈 - 상대 진영 전원 위치 표시, 내 위치 노출 */
