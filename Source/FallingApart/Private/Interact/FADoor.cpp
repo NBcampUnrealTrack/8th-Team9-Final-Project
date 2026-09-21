@@ -270,22 +270,52 @@ void AFADoor::Interact_Implementation(AFACharacter* Interactor)
 	}
 
 	const bool bOpening = !bIsOpen;
-	MulticastPlayDoorInteractionMontage(Interactor, bOpening);
 	ToggleDoor(Interactor);
+	MulticastPlayDoorInteractionMontage(Interactor, SelectDoorInteractionMontage(Interactor, bOpening));
 
 	// BP 훅(OnInteracted)까지 살려둔다.
 	Super::Interact_Implementation(Interactor);
 }
 
-void AFADoor::MulticastPlayDoorInteractionMontage_Implementation(AFACharacter* Interactor, bool bOpening)
+UAnimMontage* AFADoor::SelectDoorInteractionMontage(const AFACharacter* Interactor, bool bOpening) const
 {
-	if (!IsValid(Interactor))
+	UAnimMontage* FallbackMontage = bOpening ? DoorOpenMontage.Get() : DoorCloseMontage.Get();
+	if ((!DoorPushMontage && !DoorPullMontage) || !IsValid(Interactor)
+		|| !IsValid(HingePivot) || !IsValid(DoorMesh) || !bRotationInitialized)
 	{
-		return;
+		return FallbackMontage;
 	}
 
-	UAnimMontage* MontageToPlay = bOpening ? DoorOpenMontage : DoorCloseMontage;
-	if (MontageToPlay)
+	const FRotator CurrentRotation = HingePivot->GetRelativeRotation();
+	if (CurrentRotation.Equals(TargetPivotRotation, 0.05f))
+	{
+		return FallbackMontage;
+	}
+
+	const FVector LeafWorld = DoorMesh->Bounds.Origin;
+	const FVector LeafInHinge = HingePivot->GetComponentTransform().InverseTransformPosition(LeafWorld);
+	// Tick과 같은 보간으로 다음 1도의 움직임을 본다. 회전 중 재입력도 새 목표 방향을 따른다.
+	const FRotator NextRotation = FMath::RInterpConstantTo(CurrentRotation, TargetPivotRotation, 1.0f, 1.0f);
+	FTransform NextRelative = HingePivot->GetRelativeTransform();
+	NextRelative.SetRotation(NextRotation.Quaternion());
+	const USceneComponent* HingeParent = HingePivot->GetAttachParent();
+	const FTransform ParentToWorld = HingeParent ? HingeParent->GetComponentTransform() : FTransform::Identity;
+	// 실제 부모 변환을 통과시키므로 거울 스케일과 고정 방향 문도 별도 부호 보정이 필요 없다.
+	const FVector LeafMotion = (NextRelative * ParentToWorld).TransformPosition(LeafInHinge) - LeafWorld;
+	const FVector ToInteractor = Interactor->GetActorLocation() - LeafWorld;
+	const double TowardInteractor = FVector::DotProduct(LeafMotion.GetSafeNormal2D(), ToInteractor.GetSafeNormal2D());
+	if (!FMath::IsFinite(TowardInteractor) || FMath::IsNearlyZero(TowardInteractor, 0.01))
+	{
+		return FallbackMontage;
+	}
+
+	UAnimMontage* DirectionMontage = TowardInteractor > 0.0 ? DoorPullMontage.Get() : DoorPushMontage.Get();
+	return DirectionMontage ? DirectionMontage : FallbackMontage;
+}
+
+void AFADoor::MulticastPlayDoorInteractionMontage_Implementation(AFACharacter* Interactor, UAnimMontage* MontageToPlay)
+{
+	if (IsValid(Interactor) && MontageToPlay)
 	{
 		Interactor->PlayAnimMontage(MontageToPlay);
 	}
