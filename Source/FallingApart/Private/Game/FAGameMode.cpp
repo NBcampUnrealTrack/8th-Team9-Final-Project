@@ -684,7 +684,7 @@ void AFAGameMode::AssignStartingTeams()
 		FAPlayerState->ResetForNewRound();
 		// 여기는 '시작 좀비를 뽑기 전의 기본 진영' 이다 — Zombie 로 두면 아래에서 누굴 뽑든
 		// 전원 좀비인 라운드가 되어 인간이 한 명도 없다.
-		FAPlayerState->SetTeam(EFATeam::Zombie);
+		FAPlayerState->SetTeam(EFATeam::Human);
 		Candidates.Add(FAPlayerState);
 	}
 

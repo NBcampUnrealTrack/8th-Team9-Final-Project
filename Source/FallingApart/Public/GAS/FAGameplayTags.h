@@ -64,6 +64,9 @@ public:
 
 	// ~ ========================== Vision Tag ===================
 
+	/* H16 어둠 - 화면 2/3를 검정 위젯으로 가림 */
+	FGameplayTag Rule_Vision_Dark;
+
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
 

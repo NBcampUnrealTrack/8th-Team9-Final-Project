@@ -35,6 +35,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
 
 	//~ 룰 - Vision
+	Rule_Vision_Dark = AddTag(TEXT("Rule.Vision.Dark"), TEXT("H16 어둠 — 화면 2/3 가림."));
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
 	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desaturate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
 	Rule_Vision_Fog       = AddTag(TEXT("Rule.Vision.Fog"),       TEXT("Z18/H19 안개 — VisionRange 800uu + PostProcess 안개."));

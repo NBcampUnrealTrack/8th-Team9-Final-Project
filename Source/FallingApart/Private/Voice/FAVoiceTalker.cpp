@@ -4,6 +4,7 @@
 #include "Audio/FAHearingSubsystem.h" // [Z22 귀먹음 추가] 재사용 가능한 청취 배수 조회.
 
 #include "Components/AudioComponent.h"
+#include "Sound/SoundAttenuation.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
 #include "Voice/FAVoiceTypes.h"
@@ -43,6 +44,7 @@ void UFAVoiceTalker::OnTalkingBegin(UAudioComponent* AudioComponent)
 	// 엔진이 여기서 넘겨주는 것이 이 화자의 실제 재생 컴포넌트다 (VoiceEngineImpl.cpp).
 	// 재생 볼륨을 만질 수 있는 지점은 사실상 여기 하나뿐이다.
 	PlaybackAudioComponent = AudioComponent;
+	RefreshPlaybackAttenuation();
 	ApplyPlaybackVolume();
 
 	TalkingTalkers.AddUnique(this);
@@ -151,6 +153,22 @@ void UFAVoiceTalker::SetPlaybackVolumeMultiplier(float NewMultiplier)
 {
 	PlaybackVolumeMultiplier = FMath::Max(0.f, NewMultiplier);
 	ApplyPlaybackVolume();
+}
+
+void UFAVoiceTalker::RefreshPlaybackAttenuation()
+{
+	if (UAudioComponent* AudioComponent = PlaybackAudioComponent.Get())
+	{
+		if (Settings.ComponentToAttachTo)
+		{
+			AudioComponent->AttachToComponent(Settings.ComponentToAttachTo,
+				FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		}
+		if (Settings.AttenuationSettings)
+		{
+			AudioComponent->AdjustAttenuation(Settings.AttenuationSettings->Attenuation);
+		}
+	}
 }
 
 float UFAVoiceTalker::GetEffectivePlaybackVolume() const

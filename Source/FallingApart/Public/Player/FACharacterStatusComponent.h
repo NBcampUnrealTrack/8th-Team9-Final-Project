@@ -9,6 +9,9 @@
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
+class APawn;
+class AController;
+class UUserWidget;
 class AFACharacter;
 class UPrimitiveComponent;
 class UAbilitySystemComponent;
@@ -41,6 +44,23 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	void HandleDarkRuleChanged(FGameplayTag Tag, int32 NewCount);
+	void UpdateDarkWidget(bool bActive);
+
+	UFUNCTION()
+	void HandleDarkControllerChanged(APawn* Pawn, AController* OldController, AController* NewController);
+
+	/** H16 어둠 화면. 캐릭터 BP의 StatusComponent에서 WBP_Rule_Dark를 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Dark")
+	TSubclassOf<UUserWidget> VisionDarkWidgetClass;
+
+	/** 기본 HUD와 드래프트 아래에 표시한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Dark")
+	int32 VisionDarkWidgetZOrder = -1;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> VisionDarkWidget;
+
 	void HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount);
 
 	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);

@@ -231,6 +231,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> RuntimeAttenuation;
 
+	/** 이 화자의 확성/전역 음성에만 쓰는 무감쇠 설정. */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundAttenuation> GlobalVoiceAttenuation;
+
 	/** 목소리가 나오는 위치(헤드 본). 애니메이션을 따라 움직인다. */
 	UPROPERTY(Transient)
 	TObjectPtr<USceneComponent> VoiceSourceComponent;
