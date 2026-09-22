@@ -8,7 +8,6 @@
 #include "Components/Button.h"
 #include "Components/EditableText.h"
 #include "Components/Image.h"
-#include "Components/EditableTextBox.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
@@ -122,7 +121,7 @@ void UFASessionJoinWidget::SetSearchInProgress(bool bIsSearching)
 
 	if (bIsSearching)
 	{
-		ShowStatusMessage(NSLOCTEXT("FallingApart", "SearchingSessions", "Searching for sessions..."));
+		ShowStatusMessage(NSLOCTEXT("FallingApart", "SearchingSessions", "세션 검색 중..."));
 	}
 }
 
