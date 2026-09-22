@@ -46,6 +46,9 @@ public:
 	 */
 	void SetPlaybackVolumeMultiplier(float NewMultiplier);
 
+	/** 화자별 감쇠 설정을 현재 재생에도 반영한다. */
+	void RefreshPlaybackAttenuation();
+
 	float GetPlaybackVolumeMultiplier() const { return PlaybackVolumeMultiplier; }
 
 	/**

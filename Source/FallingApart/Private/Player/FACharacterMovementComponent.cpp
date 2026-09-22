@@ -317,7 +317,7 @@ FVector UFACharacterMovementComponent::ConstrainInputAcceleration(const FVector&
 		Result = ComputeFlippedLRAcceleration(Result);
 	}
 
-	if (HasOwnerTag(Tags.Rule_Move_BackwardOnly) && (IsMovingOnGround() || IsFalling()))
+	if (HasOwnerTag(Tags.State_BackwardOnly) && (IsMovingOnGround() || IsFalling()))
 	{
 		Result = ComputeBackwardOnlyAcceleration(Result);
 	}

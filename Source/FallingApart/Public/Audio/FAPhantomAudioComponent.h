@@ -16,7 +16,7 @@ class FALLINGAPART_API UFAPhantomAudioComponent : public UActorComponent
 
 public:
 	UFAPhantomAudioComponent();
-	// 진영 변경 이벤트도 같은 진입점으로 전달하여 이전 환청을 정리한다.
+	// 환청 룰 추가·제거에 따라 재생 상태를 초기화한다.
 	void SetRuleActive(bool bActive);
 
 protected:

@@ -522,6 +522,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout")
 	float BlackoutFlashDuration = 1.0f;
 
+	/** 암전이 시작될 때 검은색으로 넘어가는 시간(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout", meta = (ClampMin = "0.01"))
+	float BlackoutFadeInSeconds = 0.25f;
+
+	/** 암전이 끝날 때 화면이 밝아지는 시간(초). */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera|Vision Blackout", meta = (ClampMin = "0.01"))
+	float BlackoutFadeOutSeconds = 0.35f;
+
 	//~ ---------------- 시야각 축소 연출 (Vision.NarrowFOV) ----------------
 	//~ 실제 카메라 FOV는 더 이상 건드리지 않는다 — 화면 테두리를 검게 좁히는 별도 PP 머티리얼로 대체.
 	//~ Vision.Fog(VisionFogMID)와는 완전히 분리된 블렌더블 슬롯 · 파라미터를 쓴다.

@@ -20,6 +20,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "GAS/FAGameplayTags.h"
+#include "Game/FAGameMode.h"
 
 DEFINE_LOG_CATEGORY(LogFAVoice);
 
@@ -72,8 +73,7 @@ void UFAVoiceComponent::BeginPlay()
 		const FGameplayTag MuteRuleTag = FAGameplayTags::Get().Rule_Social_Mute;
 
 		ASC->RegisterGameplayTagEvent(
-			MuteRuleTag,
-			EGameplayTagEventType::NewOrRemoved)
+			MuteRuleTag,EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleMuteRuleChanged);
 
 		// BeginPlay 이전에 이미 룰이 들어와 있던 경우도 처리.
@@ -81,6 +81,17 @@ void UFAVoiceComponent::BeginPlay()
 		{
 			StopTalking();
 		}
+
+		const FGameplayTag LeakVoiceRuleTag = FAGameplayTags::Get().Rule_Social_LeakVoice;
+		ASC->RegisterGameplayTagEvent(
+			LeakVoiceRuleTag,EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleLeakVoiceRuleChanged);
+
+		const FGameplayTag BroadcastRuleTag = FAGameplayTags::Get().Rule_Social_Broadcast;
+		ASC->RegisterGameplayTagEvent(BroadcastRuleTag,EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleBroadcastRuleChanged);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Zombie, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleBroadcastRuleChanged);
 	}
 
 	SetupVoiceSource();
@@ -105,6 +116,9 @@ void UFAVoiceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent())
 	{
 		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_Mute, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_LeakVoice, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().Rule_Social_Broadcast, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(FAGameplayTags::Get().State_Zombie, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 	}
 
 	if (UWorld* World = GetWorld())
@@ -225,9 +239,27 @@ void UFAVoiceComponent::ApplyTalkerSettings()
 	// FVoiceSettings 는 ComponentToAttachTo 가 없으면 정위 자체를 하지 않음.
 	// 런타임에 Proximity -> Global 로 바꾼 경우 이미 등록된 Talker 를 2D 로 되돌리기 위한 처리.
 	const bool bProximity = (VoiceChannel == EFAVoiceChannel::Proximity);
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent();
+	// 청취자의 룰은 사용하지 않는다. 확성은 좀비 화자 자신의 송출에만 적용한다.
+	const bool bBroadcast = ASC
+		&& ASC->HasMatchingGameplayTag(FAGameplayTags::Get().State_Zombie)
+		&& ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Social_Broadcast);
+	const bool bSpatialVoice = bProximity && !bBroadcast;
+	if (!GlobalVoiceAttenuation)
+	{
+		GlobalVoiceAttenuation = NewObject<USoundAttenuation>(this);
+		GlobalVoiceAttenuation->Attenuation.bAttenuate = false;
+		GlobalVoiceAttenuation->Attenuation.bSpatialize = false;
+	}
 
-	Talker->Settings.ComponentToAttachTo = bProximity ? VoiceSourceComponent : nullptr;
-	Talker->Settings.AttenuationSettings = bProximity ? BuildAttenuation() : nullptr;
+	// Z36은 위치 기반 3D 음성이 아니라 전역 2D 음성으로 재생한다.
+	// 따라서 인간 전원에게 전달되며 거리 감쇠도 적용되지 않는다.
+	// 엔진은 nullptr 감쇠를 전달하면 이전 Synth 설정을 지우지 않는다.
+	// 화자 위치는 유지하고, 명시적인 무감쇠 설정으로 2D/3D를 전환한다.
+	Talker->Settings.ComponentToAttachTo = VoiceSourceComponent;
+	Talker->Settings.AttenuationSettings =
+		bSpatialVoice ? BuildAttenuation() : GlobalVoiceAttenuation.Get();
+	Talker->RefreshPlaybackAttenuation();
 
 	// FVoiceSettings 에는 음량 항목이 없다. 재생 배수는 Talker 가 직접 들고 있다가
 	// 엔진이 재생 컴포넌트를 건네주는 순간(OnTalkingBegin) 적용한다.
@@ -643,6 +675,26 @@ bool UFAVoiceComponent::ShouldShowSpeakingIndicator() const
 		return true;
 	}
 
+	// Z36 확성은 인간 청취자에게만 전달되고 거리 감쇠도 없다.
+	// 음성 아이콘도 같은 수신 조건을 따라야 먼 거리의 인간 화면에서 보인다.
+	const UAbilitySystemComponent* SpeakerASC = GetOwnerAbilitySystemComponent();
+	if (SpeakerASC && SpeakerASC->HasMatchingGameplayTag(FAGameplayTags::Get().State_Zombie)
+		&& SpeakerASC->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Social_Broadcast))
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* LocalController =
+			World ? World->GetFirstPlayerController() : nullptr;
+		const APawn* LocalPawn = LocalController ? LocalController->GetPawn() : nullptr;
+		const IAbilitySystemInterface* LocalAbilityOwner =
+			Cast<IAbilitySystemInterface>(LocalPawn);
+		const UAbilitySystemComponent* LocalASC =
+			LocalAbilityOwner ? LocalAbilityOwner->GetAbilitySystemComponent() : nullptr;
+
+		return LocalASC && LocalASC->HasMatchingGameplayTag(
+			FAGameplayTags::Get().State_Human);
+	}
+
 	const float CutoffDistance = GetHearingRadius();
 	if (CutoffDistance <= 0.f)
 	{
@@ -755,5 +807,49 @@ void UFAVoiceComponent::HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewC
 	if (!bPushToTalk)
 	{
 		StartTalking();
+	}
+}
+
+void UFAVoiceComponent::HandleLeakVoiceRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	(void)NewCount;
+
+	// H30은 송신을 끄는 룰이 아니다. 근접 감쇠는 유지하고,
+	// 서버가 수신자 진영별 GameplayMute 목록만 다시 계산한다.
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* GameMode = Cast<AFAGameMode>(World->GetAuthGameMode()))
+		{
+			GameMode->RefreshVoiceMuteMatrix();
+		}
+	}
+}
+
+void UFAVoiceComponent::HandleBroadcastRuleChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+	(void)NewCount;
+
+	// Z36은 마이크 송신을 막지 않는다. 재생 설정만 즉시 바꾸고,
+	// 서버에서 인간/좀비 수신자별 GameplayMute 목록을 다시 계산한다.
+	RefreshVoiceAttenuation();
+
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AFAGameMode* GameMode = Cast<AFAGameMode>(World->GetAuthGameMode()))
+		{
+			GameMode->RefreshVoiceMuteMatrix();
+		}
 	}
 }
