@@ -187,6 +187,16 @@ public:
 	/** QTE 종료 — 승패 어느 쪽이든 반드시 불러야 프롬프트가 내려간다. */
 	void EndContestState();
 
+	/**
+	 * 마지막 QTE 연타 입력으로부터 이 시간(초) 안에 들어온 점프 입력은 버린다.
+	 *
+	 * QTE 는 스페이스바 연타라 끝나는 순간 손가락이 아직 내려오는 중이다.
+	 * 그 잔여 입력을 그대로 점프로 넘기면 구출이 끝나자마자 세 사람이 동시에 튀어 오른다.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Contest",
+		meta = (ClampMin = "0", ForceUnits = "s"))
+	float PostContestJumpIgnoreSeconds = 0.3f;
+
 protected:
 	/** GameState 기준 서버 월드 시각. GameState 가 아직 없으면 로컬 시각으로 폴백. */
 	float GetServerWorldTime() const;
@@ -237,6 +247,15 @@ public:
 	/** 감염 전환 연출이 도는 중인가. 화면이 아직 어두운 동안은 이동 입력을 받지 않는다. */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Infection")
 	bool IsPlayingInfectionSequence() const { return bInfectionSequenceActive; }
+
+	/**
+	 * 감염 전환 중이라 조작을 막아야 하는가.
+	 *
+	 * 쓰러진 자세에서 완전히 일어설 때까지 — 기상 몽타주가 끝나는 시점과 암전이 풀리는 시점 중
+	 * 늦은 쪽까지 — 이동 · 점프 · 앉기를 받지 않는다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Infection")
+	bool IsInfectionInputLocked() const;
 
 protected:
 
@@ -761,6 +780,14 @@ private:
 	FFAContestState ContestState;
 
 	/**
+	 * 마지막으로 연타로 받아들인 점프 키 입력의 로컬 시각(초). 음수면 아직 없음.
+	 *
+	 * 순수한 로컬 입력 기록이라 복제하지 않는다 — QTE 종료가 복제돼 오는 동안 들어온
+	 * 연타까지 여기에 찍히므로, 복제 지연만큼의 잔여 입력도 같은 창에 걸린다.
+	 */
+	float LastContestMashInputTime = -1.0f;
+
+	/**
 	 * 저항 강도 0~1. 서버 전용이라 복제하지 않는다 —
 	 * 화면에는 감염 게이지가 느려지는 것으로만 드러난다.
 	 */
@@ -873,6 +900,12 @@ private:
 
 	/** 연출이 시작된 월드 시각. 연출이 안 도는 동안에는 의미 없는 값이다. */
 	float InfectionSequenceStartTime = 0.0f;
+
+	/**
+	 * 감염 기상이 끝나 조작이 돌아오는 로컬 월드 시각(초).
+	 * 기상 몽타주 길이로 정해지며, 몽타주가 없으면 암전이 풀리는 시점이 그대로 들어간다.
+	 */
+	float InfectionInputUnlockTime = 0.0f;
 
 	/** 이번 프레임의 연출 화면 값. Tick 이 계산하고 UpdateVisionEffects 가 읽어 간다. */
 	float InfectionDarkenAmount = 0.0f;
