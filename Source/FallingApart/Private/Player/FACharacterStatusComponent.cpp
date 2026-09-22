@@ -26,6 +26,8 @@
 #include "Player/FATrailComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "Blueprint/UserWidget.h"
+#include "GameFramework/PlayerController.h"
 
 // Sets default values for this component's properties
 UFACharacterStatusComponent::UFACharacterStatusComponent()
@@ -48,10 +50,22 @@ void UFACharacterStatusComponent::BeginPlay()
 		UE_LOG(LogTemp,Warning,TEXT("FACharacterStatusComponent는 ""ACharacter에 부착해야 합니다."));
 		return;
 	}
+	OwnerCharacter->ReceiveControllerChangedDelegate.AddDynamic(this, &ThisClass::HandleDarkControllerChanged);
 	OwnerCharacter->LandedDelegate.AddDynamic(this,&ThisClass::HandleLanded);
 
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
+		const FGameplayTag DarkRuleTag = FAGameplayTags::Get().Rule_Vision_Dark;
+		ASC->RegisterGameplayTagEvent(DarkRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleDarkRuleChanged);
+		HandleDarkRuleChanged(DarkRuleTag, ASC->GetTagCount(DarkRuleTag));
+
+		const FGameplayTag PhantomRuleTag = FAGameplayTags::Get().Rule_Audio_Phantom;
+		ASC->RegisterGameplayTagEvent(PhantomRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandlePhantomRuleChanged);
+		// BeginPlay 전에 적용된 환청도 초기 상태에 반영한다.
+		HandlePhantomRuleChanged(PhantomRuleTag, ASC->GetTagCount(PhantomRuleTag));
+
 		const FGameplayTag FreezeRuleTag = FAGameplayTags::Get().Rule_Move_Freeze;
 		ASC->RegisterGameplayTagEvent(FreezeRuleTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ThisClass::HandleFreezeRuleChanged);
@@ -68,6 +82,11 @@ void UFACharacterStatusComponent::BeginPlay()
 
 		// BeginPlay 전에 룰이 이미 적용된 경우도 처리한다.
 		HandleInputFlipRuleChanged(FlipRuleTag, ASC->GetTagCount(FlipRuleTag));
+
+		const FGameplayTag BackwardOnlyRuleTag = FAGameplayTags::Get().Rule_Move_BackwardOnly;
+		ASC->RegisterGameplayTagEvent(BackwardOnlyRuleTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &ThisClass::HandleBackwardOnlyRuleChanged);
+		HandleBackwardOnlyRuleChanged(BackwardOnlyRuleTag, ASC->GetTagCount(BackwardOnlyRuleTag));
 
 		// [ 포복 ]
 		const FGameplayTag CrouchOnlyRuleTag = FAGameplayTags::Get().Rule_Move_CrouchOnly;
@@ -153,14 +172,19 @@ void UFACharacterStatusComponent::BeginPlay()
 
 void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UFAPhantomAudioComponent* Phantom = GetOwner()->FindComponentByClass<UFAPhantomAudioComponent>())
+	{
+		Phantom->SetRuleActive(false);
+	}
+	UpdateDarkWidget(false);
 	SetHideActive(false);
 	ClearFreeze();
 	if (UAbilitySystemComponent* ASC = GetOwnerAbilitySystem())
 	{
 		const FAGameplayTags& Tags = FAGameplayTags::Get();
-		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Phantom,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Vision_Dark,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
-		ASC->RegisterGameplayTagEvent(Tags.State_Human,
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_Phantom,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Audio_NoStep,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -170,6 +194,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 		ASC->RegisterGameplayTagEvent(Tags.Rule_State_Knockback,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Input_FlipLR,
+			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_BackwardOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		ASC->RegisterGameplayTagEvent(Tags.Rule_Move_CrouchOnly,
 			EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
@@ -201,6 +227,8 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 
 	GetWorld()->GetTimerManager().ClearTimer(InputFlipTimerHandle);
 	SetInputFlipActive(false);
+	GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+	SetBackwardOnlyActive(false);
 	ClearGambleSpeed();
 	ClearFatigue();
 	ClearRecall();
@@ -210,6 +238,7 @@ void UFACharacterStatusComponent::EndPlay(const EEndPlayReason::Type EndPlayReas
 
 	if (OwnerCharacter)
 	{
+		OwnerCharacter->ReceiveControllerChangedDelegate.RemoveDynamic(this, &ThisClass::HandleDarkControllerChanged);
 		OwnerCharacter->LandedDelegate.RemoveDynamic(this,&ThisClass::HandleLanded);
 		OwnerCharacter->GetCapsuleComponent()->OnComponentHit.RemoveDynamic(this, &ThisClass::HandleKnockbackHit);
 	}
@@ -558,6 +587,35 @@ void UFACharacterStatusComponent::HandleInputFlipRuleChanged(const FGameplayTag 
 		true);
 }
 
+void UFACharacterStatusComponent::HandleBackwardOnlyRuleChanged(
+	const FGameplayTag Tag, int32 NewCount)
+{
+	(void)Tag;
+
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+	SetBackwardOnlyActive(false);
+
+	if (NewCount <= 0)
+	{
+		return;
+	}
+
+	// 룰을 얻는 즉시 첫 5초는 후진 전용으로 시작하고,
+	// 이후 정상 이동과 후진 전용을 5초마다 반복한다.
+	SetBackwardOnlyActive(true);
+	GetWorld()->GetTimerManager().SetTimer(
+		BackwardOnlyTimerHandle,
+		this,
+		&ThisClass::ToggleBackwardOnly,
+		BackwardOnlyInterval,
+		true);
+}
+
 void UFACharacterStatusComponent::HandleCrouchOnlyRuleChanged(const FGameplayTag Tag,int32 NewCount)
  {
  	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
@@ -713,6 +771,48 @@ void UFACharacterStatusComponent::SetInputFlipActive(bool bActive)
 	else
 	{
 		ASC->RemoveLooseGameplayTag(StateTag,1,EGameplayTagReplicationState::CountToOwner);
+	}
+}
+
+void UFACharacterStatusComponent::ToggleBackwardOnly()
+{
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!ASC || !ASC->HasMatchingGameplayTag(
+		FAGameplayTags::Get().Rule_Move_BackwardOnly))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(BackwardOnlyTimerHandle);
+		SetBackwardOnlyActive(false);
+		return;
+	}
+
+	SetBackwardOnlyActive(!bBackwardOnlyActive);
+}
+
+void UFACharacterStatusComponent::SetBackwardOnlyActive(bool bActive)
+{
+	if (bBackwardOnlyActive == bActive)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	if (!ASC)
+	{
+		return;
+	}
+
+	bBackwardOnlyActive = bActive;
+	const FGameplayTag StateTag = FAGameplayTags::Get().State_BackwardOnly;
+
+	if (bBackwardOnlyActive)
+	{
+		ASC->AddLooseGameplayTag(
+			StateTag, 1, EGameplayTagReplicationState::CountToOwner);
+	}
+	else
+	{
+		ASC->RemoveLooseGameplayTag(
+			StateTag, 1, EGameplayTagReplicationState::CountToOwner);
 	}
 }
 
@@ -1481,4 +1581,45 @@ UAbilitySystemComponent* UFACharacterStatusComponent::GetOwnerAbilitySystem() co
 	const IAbilitySystemInterface* AbilityInterface =Cast<IAbilitySystemInterface>(GetOwner());
 
 	return AbilityInterface? AbilityInterface->GetAbilitySystemComponent(): nullptr;
+}
+
+void UFACharacterStatusComponent::HandleDarkRuleChanged(FGameplayTag Tag, int32 NewCount)
+{
+	UpdateDarkWidget(NewCount > 0);
+}
+
+void UFACharacterStatusComponent::HandleDarkControllerChanged(APawn* Pawn, AController* OldController, AController* NewController)
+{
+	// 태그가 컨트롤러보다 먼저 도착한 경우와 소유권 상실도 처리한다.
+	const UAbilitySystemComponent* ASC = GetOwnerAbilitySystem();
+	UpdateDarkWidget(ASC && ASC->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Vision_Dark));
+}
+
+void UFACharacterStatusComponent::UpdateDarkWidget(bool bActive)
+{
+	APlayerController* LocalController = OwnerCharacter ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+	if (!bActive || !LocalController || !LocalController->IsLocalController())
+	{
+		if (VisionDarkWidget)
+		{
+			VisionDarkWidget->RemoveFromParent();
+			VisionDarkWidget = nullptr;
+		}
+		return;
+	}
+
+	// 소유권이 바뀌면 이전 플레이어의 화면에서 먼저 제거한다.
+	if (VisionDarkWidget && VisionDarkWidget->GetOwningPlayer() != LocalController)
+	{
+		UpdateDarkWidget(false);
+	}
+	if (!VisionDarkWidget && VisionDarkWidgetClass)
+	{
+		VisionDarkWidget = CreateWidget<UUserWidget>(LocalController, VisionDarkWidgetClass);
+		if (VisionDarkWidget)
+		{
+			VisionDarkWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+			VisionDarkWidget->AddToViewport(VisionDarkWidgetZOrder);
+		}
+	}
 }

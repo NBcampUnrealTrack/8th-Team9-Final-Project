@@ -216,6 +216,12 @@ private:
 	/** Social.Mute 태그가 추가/제거됐을 때 마이크 상태를 즉시 갱신. */
 	void HandleMuteRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
+	/** H30 Social.LeakVoice 태그가 추가/제거됐을 때 수신자별 음성 필터를 갱신한다. */
+	void HandleLeakVoiceRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** Z36 Social.Broadcast 태그가 추가/제거됐을 때 감쇠와 수신자 필터를 갱신한다. */
+	void HandleBroadcastRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
 	UPROPERTY(Transient)
 	TObjectPtr<UFAVoiceTalker> Talker;
 
@@ -224,6 +230,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> RuntimeAttenuation;
+
+	/** 이 화자의 확성/전역 음성에만 쓰는 무감쇠 설정. */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundAttenuation> GlobalVoiceAttenuation;
 
 	/** 목소리가 나오는 위치(헤드 본). 애니메이션을 따라 움직인다. */
 	UPROPERTY(Transient)

@@ -9,6 +9,9 @@
 #include "FACharacterStatusComponent.generated.h"
 
 class ACharacter;
+class APawn;
+class AController;
+class UUserWidget;
 class AFACharacter;
 class UPrimitiveComponent;
 class UAbilitySystemComponent;
@@ -41,6 +44,23 @@ protected:
 	virtual void TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	void HandleDarkRuleChanged(FGameplayTag Tag, int32 NewCount);
+	void UpdateDarkWidget(bool bActive);
+
+	UFUNCTION()
+	void HandleDarkControllerChanged(APawn* Pawn, AController* OldController, AController* NewController);
+
+	/** H16 어둠 화면. 캐릭터 BP의 StatusComponent에서 WBP_Rule_Dark를 지정한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Dark")
+	TSubclassOf<UUserWidget> VisionDarkWidgetClass;
+
+	/** 기본 HUD와 드래프트 아래에 표시한다. */
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Dark")
+	int32 VisionDarkWidgetZOrder = -1;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> VisionDarkWidget;
+
 	void HandlePhantomRuleChanged(FGameplayTag Tag, int32 NewCount);
 
 	void HandleFreezeRuleChanged(FGameplayTag Tag, int32 NewCount);
@@ -86,6 +106,9 @@ private:
 
 	/** Rule.Input.FlipLR의 추가/제거에 맞춰 5초 주기를 시작하거나 정리한다. */
 	void HandleInputFlipRuleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** Z06 Rule.Move.BackwardOnly의 추가/제거에 맞춰 5초 후진 구간을 시작하거나 정리한다. */
+	void HandleBackwardOnlyRuleChanged(const FGameplayTag Tag, int32 NewCount);
 
 	//* 포복용
 	void HandleCrouchOnlyRuleChanged(const FGameplayTag Tag, int32 NewCount);
@@ -157,6 +180,11 @@ private:
 
 	void SetInputFlipActive(bool bActive);
 
+	/** Z06의 후진 전용/정상 이동 구간을 5초마다 전환한다. */
+	void ToggleBackwardOnly();
+
+	void SetBackwardOnlyActive(bool bActive);
+
 	//Rule.State.Heartbeat 태그가 추가되거나 제거됐을 때 호출된다.
 	void HandleHeartbeatRuleChanged(const FGameplayTag Tag,int32 NewCount);
 	void HandleTrailRuleChanged(const FGameplayTag Tag, int32 NewCount);
@@ -194,6 +222,12 @@ private:
 	FTimerHandle InputFlipTimerHandle;
 	bool bInputFlipActive = false;
 
+	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Movement", meta=(ClampMin="0.1"))
+	float BackwardOnlyInterval = 5.0f;
+
+	FTimerHandle BackwardOnlyTimerHandle;
+	bool bBackwardOnlyActive = false;
+
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Ghost")
 	float GhostActiveOpacity = 0.35f;
 
@@ -226,10 +260,10 @@ private:
 	float GambleSpeedInterval = 10.0f;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.0"))
-	float GambleSpeedMinMultiplier = 0.5f;
+	float GambleSpeedMinMultiplier = 0.65f;
 
 	UPROPERTY(EditDefaultsOnly,Category="FallingApart|Status|Gamble",meta=(ClampMin="0.0"))
-	float GambleSpeedMaxMultiplier = 1.5f;
+	float GambleSpeedMaxMultiplier = 1.2f;
 
 	/** 기본 속도보다 빠른 추첨 결과. 자동 종료되는 Niagara 시스템을 지정한다. */
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Status|Gamble|Effects")
