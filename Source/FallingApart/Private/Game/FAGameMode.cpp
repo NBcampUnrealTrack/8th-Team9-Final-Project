@@ -735,6 +735,7 @@ void AFAGameMode::AssignStartingTeams()
 
 void AFAGameMode::RestartAllPlayers()
 {
+	TArray<APlayerController*> ToRestart;
 	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
 	{
 		APlayerController* PlayerController = Cast<APlayerController>(Iterator->Get());
@@ -743,13 +744,18 @@ void AFAGameMode::RestartAllPlayers()
 			continue;
 		}
 
-		// 라운드마다 진영에 맞는 스폰 지점에서 새로 시작
+		// 라운드마다 진영에 맞는 스폰 지점에서 새로 시작.
+		// 헌 폰을 전부 먼저 치운다 — 섞어서 하면 아직 안 치운 폰이 스폰 자리를 막는다.
 		if (APawn* OldPawn = PlayerController->GetPawn())
 		{
 			PlayerController->UnPossess();
 			OldPawn->Destroy();
 		}
+		ToRestart.Add(PlayerController);
+	}
 
+	for (APlayerController* PlayerController : ToRestart)
+	{
 		RestartPlayer(PlayerController);
 	}
 }
@@ -1049,9 +1055,35 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		}
 	}
 
+	// 같은 프레임에 여러 명을 스폰하므로, 먼저 스폰된 폰이 서 있는 자리를 또 뽑으면
+	// SpawnActor 가 충돌로 실패해 폰 없이 라운드를 시작한다 (09/23 플레이테스트, 6명 중 2명).
+	const float OccupiedRadiusSq = FMath::Square(OccupiedStartRadius);
+	auto PickFreeRandom = [this, OccupiedRadiusSq](const TArray<AActor*>& Starts) -> AActor*
+	{
+		TArray<AActor*> FreeStarts = Starts.FilterByPredicate([this, OccupiedRadiusSq](const AActor* Start)
+		{
+			for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
+			{
+				if (FVector::DistSquared(PawnIt->GetActorLocation(), Start->GetActorLocation()) < OccupiedRadiusSq)
+				{
+					return false;
+				}
+			}
+			return true;
+		});
+
+		if (FreeStarts.Num() > 0)
+		{
+			return FreeStarts[FMath::RandRange(0, FreeStarts.Num() - 1)];
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[FA] 빈 PlayerStart 가 없다 (후보 %d개 전부 사용 중) — 겹쳐서 스폰에 실패할 수 있다 (맵에 스폰 추가 필요)"), Starts.Num());
+		return Starts[FMath::RandRange(0, Starts.Num() - 1)];
+	};
+
 	if (TeamCandidates.Num() > 0)
 	{
-		return TeamCandidates[FMath::RandRange(0, TeamCandidates.Num() - 1)];
+		return PickFreeRandom(TeamCandidates);
 	}
 
 	if (bTeamDecided)
@@ -1064,7 +1096,7 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 
 	if (AnyCandidates.Num() > 0)
 	{
-		return AnyCandidates[FMath::RandRange(0, AnyCandidates.Num() - 1)];
+		return PickFreeRandom(AnyCandidates);
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);

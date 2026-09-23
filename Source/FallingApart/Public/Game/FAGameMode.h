@@ -255,6 +255,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Spawn")
 	FName ZombiePlayerStartTag = FName(TEXT("Zombie"));
 
+	/** 이 반경 안에 폰이 서 있는 PlayerStart 는 차 있는 자리로 보고 건너뛴다 (캡슐 지름보다 넉넉히) */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Spawn")
+	float OccupiedStartRadius = 120.f;
+
 private:
 	/** 데스매치 참가자. 서버 전용. */
 	UPROPERTY(Transient)

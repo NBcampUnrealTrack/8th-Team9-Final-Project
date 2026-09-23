@@ -24,13 +24,14 @@ protected:
 
 	/**
 	 * 역할별 연타 1회당 게이지 변화량(게이지 0~100, 시작 50).
-	 * −3.5 대 3 에서 시작한다 — 셋이 같은 속도로 누르면 좀비가 조금 앞선다.
+	 * −2.5 대 3 에서 시작한다 — 셋이 같은 속도로 누르면 인간이 조금 앞선다.
+	 * (09/23 플레이테스트에서 −3.5 는 인간 1/9승이라 낮췄다. 같은 표본을 −2.5 로 다시 계산하면 4/9승.)
 	 *
 	 * 같은 인질을 거듭 구출당하면 UFAGA_RescueContest 가 계산한 누적 보정이 좀비 쪽에만 얹혀
-	 * −4, −4.5 … 로 무거워진다. 같은 사람이 아니면 다시 −3.5 이다.
+	 * −3, −3.5 … 로 무거워진다. 같은 사람이 아니면 다시 −2.5 이다.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QTE|Weight")
-	float ZombieMashDelta = -3.5f;
+	float ZombieMashDelta = -2.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "QTE|Weight")
 	float RescuerMashDelta = 2.0f;
