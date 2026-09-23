@@ -416,6 +416,7 @@ private:
 
 	//~ 초기화
 	void BindCallbacks();
+	void HandleTextRevisionChanged();
 
 	/** USKPluginSettings::TabExtensions 의 위젯을 만들어 각 탭의 자리에 붙인다. */
 	void BuildTabExtensions();
@@ -431,6 +432,8 @@ private:
 	void PopulateStaticCombos();
 	void PopulateResolutionCombo();
 	void PopulateFromSettings();
+
+	FDelegateHandle TextRevisionChangedHandle;
 
 	//~ 값 라벨
 	void SetPercentLabel(UWidget* Label, float Value01) const;

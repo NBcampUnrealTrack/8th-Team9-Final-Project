@@ -5,6 +5,8 @@
 #include "Components/CheckBox.h"
 #include "Player/FALobbyPlayerState.h"
 
+#define LOCTEXT_NAMESPACE "FALobbyPlayerEntryWidget"
+
 void UFALobbyPlayerEntryWidget::Setup(AFALobbyPlayerState* InPlayerState)
 {
 	UnBindPlayerState();
@@ -36,7 +38,7 @@ void UFALobbyPlayerEntryWidget::UnBindPlayerState()
 void UFALobbyPlayerEntryWidget::HandleReadyChanged(bool bIsReady)
 {
 	Text_Ready->SetText(
-		bIsReady == true ? FText::FromString(TEXT("READY")) : FText::FromString(TEXT("WAITING")));
+		bIsReady ? LOCTEXT("ReadyState", "준비") : LOCTEXT("WaitingState", "대기"));
 	
 	Check_Ready->SetIsChecked(bIsReady);
 }
@@ -53,3 +55,5 @@ void UFALobbyPlayerEntryWidget::NativeOnListItemObjectSet(UObject* ListItemObjec
 	AFALobbyPlayerState* InLobbyGameState = Cast<AFALobbyPlayerState>(ListItemObject);
 	Setup(InLobbyGameState);
 }
+
+#undef LOCTEXT_NAMESPACE

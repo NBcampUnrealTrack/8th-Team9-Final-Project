@@ -11,6 +11,8 @@
 #include "Network/FAOnlineSessionSubsystem.h"
 #include "Utils/FASessionTextCodec.h"
 
+#define LOCTEXT_NAMESPACE "FASessionEntryWidget"
+
 namespace FASessionEntryAudio
 {
 	static const FName Click(TEXT("UI_Click"));
@@ -71,8 +73,12 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 	
 
 	// 지연시간
-	int32 Ping = Result.PingInMs;
-	SessionPingText->SetText(FText::FromString(FString::Printf(TEXT("핑 : %d"), Ping)));
+	const int32 Ping = Result.PingInMs;
+	FFormatNamedArguments PingArguments;
+	PingArguments.Add(TEXT("Ping"), FText::AsNumber(Ping));
+	SessionPingText->SetText(FText::Format(
+		LOCTEXT("SessionPing", "핑 : {Ping}"),
+		PingArguments));
 	
 	
 	//현재 로비 진행중 여부
@@ -82,14 +88,12 @@ void UFASessionEntryWidget::SetSessionInfo(const FOnlineSessionSearchResult& Res
 	if (CurrentLobbyState == TEXT("Playing"))
 	{
 		//추후 진행중인 게임에 난입 관련 요소 있을경우 따로 처리, 현재로서는 Playing인 경우는 목록에서 제외함.
-		//SessionStateText->SetText(FText::FromString("게임 진행 중"));
-		SessionStateText->SetText(FText::FromString(FString::Printf(TEXT("게임 진행 중"))));
+		SessionStateText->SetText(LOCTEXT("SessionStatePlaying", "게임 진행 중"));
 		Button_Join->SetIsEnabled(false);
 	}
 	else if (CurrentLobbyState ==  TEXT("Lobby"))
 	{
-		//SessionStateText->SetText(FText::FromString("대기 중"));
-		SessionStateText->SetText(FText::FromString(FString::Printf(TEXT("대기 중"))));
+		SessionStateText->SetText(LOCTEXT("SessionStateLobby", "대기 중"));
 	}else
 	{
 		UE_LOG(LogFAOSS, Warning, TEXT("FASessionEntryWidget SESSION_STATE를 가져올 수 없음."));
@@ -112,3 +116,5 @@ void UFASessionEntryWidget::OnJoinButtonClicked()
 		OnSessionEntrySelected.Broadcast(EntryData);
 	}
 }
+
+#undef LOCTEXT_NAMESPACE
