@@ -28,7 +28,7 @@ UFAGA_Rescue::UFAGA_Rescue()
 
 	// 구출을 차단하는 모든 태그 집약
 	// H32 겁쟁이(구조 불가) · 경직 · 줄다리기(QTE) 중 · 자신이 잡힌 상태
-	//ActivationBlockedTags.AddTag(Tags.Rule_Rescue_Disabled); // TODO: Tag 추가
+	ActivationBlockedTags.AddTag(Tags.Rule_Rescue_Disabled);
 	ActivationBlockedTags.AddTag(Tags.State_Stunned);
 	ActivationBlockedTags.AddTag(Tags.State_Contesting);
 	ActivationBlockedTags.AddTag(Tags.State_Grabbed);
