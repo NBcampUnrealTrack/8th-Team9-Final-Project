@@ -67,6 +67,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	bool IsVoiceSpectator(APlayerController* PlayerController) const;
 
+	/** Social.LeakVoice 등 음성 룰 변경 뒤 수신자별 GameplayMute 목록을 다시 계산한다. */
+	void RefreshVoiceMuteMatrix();
+
 	/** 이번 매치에서 시작 좀비 몇 명으로 시작하는지 (GDD 9부: 6~8인 1명 / 9~12인 2명) */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
