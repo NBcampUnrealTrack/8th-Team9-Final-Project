@@ -30,6 +30,7 @@
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
+#include "Internationalization/TextLocalizationManager.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "TimerManager.h"
 
@@ -132,11 +133,24 @@ void USKSettingsMenuWidget::NativeConstruct()
 	BindValueFields();
 	BuildTabExtensions();
 
+	if (!TextRevisionChangedHandle.IsValid())
+	{
+		TextRevisionChangedHandle = FTextLocalizationManager::Get().OnTextRevisionChangedEvent.AddUObject(
+			this,
+			&ThisClass::HandleTextRevisionChanged);
+	}
+
 	OpenSettings();
 }
 
 void USKSettingsMenuWidget::NativeDestruct()
 {
+	if (TextRevisionChangedHandle.IsValid())
+	{
+		FTextLocalizationManager::Get().OnTextRevisionChangedEvent.Remove(TextRevisionChangedHandle);
+		TextRevisionChangedHandle.Reset();
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RevertTimerHandle);
@@ -178,6 +192,14 @@ void USKSettingsMenuWidget::OpenSettings()
 	SetTab(ESKSettingsTab::Audio);
 	PlaySlideIn();
 	SetKeyboardFocus();
+}
+
+void USKSettingsMenuWidget::HandleTextRevisionChanged()
+{
+	// UComboBoxString 옵션은 FText 가 아니라 현재 번역된 FString 을 복사해 둔다.
+	// 문화권이 바뀌면 정적 옵션을 다시 넣고 설정값에서 선택 상태를 복원한다.
+	PopulateStaticCombos();
+	PopulateFromSettings();
 }
 
 // ============================================================
