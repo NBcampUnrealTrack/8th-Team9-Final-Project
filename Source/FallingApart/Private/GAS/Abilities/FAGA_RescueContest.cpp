@@ -57,7 +57,7 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	}
 
 	// 같은 인질을 잡았다가 구출당하기를 반복하면 좀비 연타를 한 번당 RepeatRescueMashStep 만큼 무겁게 한다.
-	// 상대가 바뀌면 누적을 버리고 −3.5 대 3 에서 다시 시작한다.
+	// 상대가 바뀌면 누적을 버리고 −2.5 대 3 에서 다시 시작한다.
 	if (GrabbedVictim.IsValid() && GrabbedVictim.Get() == RepeatRescueVictim.Get())
 	{
 		ZombieMashBonus = -RepeatRescueMashStep * RepeatRescueCount;

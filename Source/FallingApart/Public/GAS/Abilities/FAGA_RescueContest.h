@@ -33,7 +33,7 @@ public:
 	 * 이번 QTE 에서 좀비 연타 1회에 얹을 추가 가중치. 0 이거나 음수다.
 	 *
 	 * 같은 인질을 잡았다가 구출당하기를 반복하면 한 번당 RepeatRescueMashStep 만큼 무거워진다.
-	 * 상대가 바뀌면 0 으로 돌아간다 — 그래서 첫 대결은 언제나 −3.5 대 3 이다.
+	 * 상대가 바뀌면 0 으로 돌아간다 — 그래서 첫 대결은 언제나 −2.5 대 3 이다.
 	 */
 	float GetZombieMashBonus() const { return ZombieMashBonus; }
 
@@ -53,7 +53,7 @@ protected:
 	/**
 	 * 같은 인질을 한 번 더 구출당할 때마다 좀비 연타에 더 얹는 양(절댓값).
 	 *
-	 * −3.5 대 3 으로 시작해서 그 인질이 구출될 때마다 −4, −4.5 … 로 좀비가 유리해진다.
+	 * −2.5 대 3 으로 시작해서 그 인질이 구출될 때마다 −3, −3.5 … 로 좀비가 유리해진다.
 	 * 같은 사람을 붙잡고 늘어지는 무한 구출 고리를 끊기 위한 장치다.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS|Contest", meta = (ClampMin = "0"))
