@@ -241,7 +241,7 @@ void UFAMainMenuWidget::HandleSessionRefreshRequested()
 		if (SessionJoinWidget)
 		{
 			SessionJoinWidget->SetSearchInProgress(false);
-			SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSubsystemUnavailable", "Session service is unavailable."));
+			SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSubsystemUnavailable", "세션 서비스를 사용할 수 없습니다."));
 		}
 		return;
 	}
@@ -345,13 +345,13 @@ void UFAMainMenuWidget::OnFindSessionComplete(const TArray<FOnlineSessionSearchR
 		break;
 	case EFASessionRequestResult::NoResults:
 		SessionJoinWidget->ShowSearchResults(TArray<FOnlineSessionSearchResult>());
-		SessionJoinWidget->ShowStatusMessage(LOCTEXT("NoSessionsFound", "No sessions found."));
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("NoSessionsFound", "발견된 세션이 없습니다."));
 		break;
 	case EFASessionRequestResult::Busy:
-		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionOperationBusy", "Another session operation is already in progress."));
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionOperationBusy", "검색이 이미 진행중입니다."));
 		break;
 	default:
-		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSearchFailed", "Failed to search for sessions."));
+		SessionJoinWidget->ShowStatusMessage(LOCTEXT("SessionSearchFailed", "세션 검색에 실패하였습니다."));
 		UE_LOG(LogFAOSS, Warning, TEXT("Find sessions failed: %s"), *UEnum::GetValueAsString(Result));
 		break;
 	}
@@ -474,8 +474,8 @@ void UFAMainMenuWidget::RestoreJoinUIAfterTravelFailure(const FString& ErrorStri
 		SessionJoinWidget->SetJoinInProgress(false);
 		const bool bJoinAuthorizationRejected = ErrorString.Contains(TEXT("INVALID_JOIN_TOKEN"));
 		SessionJoinWidget->ShowStatusMessage(bJoinAuthorizationRejected
-			? LOCTEXT("JoinAuthorizationExpired", "Join authorization expired or was already used. Please try again.")
-			: LOCTEXT("JoinTravelFailed", "Could not connect to the lobby. Please try again."));
+			? LOCTEXT("JoinAuthorizationExpired", "접속 인증이 만료되었습니다. 다시 시도해주세요.")
+			: LOCTEXT("JoinTravelFailed", "로비에 접속할 수 없습니다. 다시 시도해주세요."));
 	}
 	UFAAudioSubsystem::PlayFASound(this, FAMainMenuAudio::Error);
 
