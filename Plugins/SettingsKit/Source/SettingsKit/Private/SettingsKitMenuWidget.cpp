@@ -38,24 +38,47 @@
 namespace SKMenu
 {
 	// 인덱스 = EWindowMode::Type (0=Fullscreen, 1=WindowedFullscreen, 2=Windowed)
-	static const TCHAR* WindowModeLabels[] = { TEXT("전체화면"), TEXT("테두리 없는 창"), TEXT("창모드") };
+	static const FText WindowModeLabels[] = {
+		LOCTEXT("WindowMode_Fullscreen", "전체화면"),
+		LOCTEXT("WindowMode_WindowedFullscreen", "테두리 없는 창"),
+		LOCTEXT("WindowMode_Windowed", "창모드"),
+	};
 
-	static const TCHAR* QualityLabels[] = { TEXT("낮음"), TEXT("중간"), TEXT("높음"), TEXT("최고") };
-	static const TCHAR* CustomQualityLabel = TEXT("커스텀");
+	static const FText QualityLabels[] = {
+		LOCTEXT("Quality_Low", "낮음"),
+		LOCTEXT("Quality_Medium", "중간"),
+		LOCTEXT("Quality_High", "높음"),
+		LOCTEXT("Quality_Epic", "최고"),
+	};
+	static const FText CustomQualityLabel = LOCTEXT("Quality_Custom", "커스텀");
 
-	static const TCHAR* FrameLimitLabels[] = { TEXT("30"), TEXT("60"), TEXT("120"), TEXT("144"), TEXT("무제한") };
+	static const FText FrameLimitLabels[] = {
+		LOCTEXT("FrameLimit_30", "30"),
+		LOCTEXT("FrameLimit_60", "60"),
+		LOCTEXT("FrameLimit_120", "120"),
+		LOCTEXT("FrameLimit_144", "144"),
+		LOCTEXT("FrameLimit_Unlimited", "무제한"),
+	};
 	static const float  FrameLimitValues[] = { 30.f, 60.f, 120.f, 144.f, 0.f };
 
-	static const TCHAR* ColorblindLabels[] = { TEXT("없음"), TEXT("녹색맹"), TEXT("적색맹"), TEXT("청색맹") };
+	static const FText ColorblindLabels[] = {
+		LOCTEXT("Colorblind_None", "없음"),
+		LOCTEXT("Colorblind_Deuteranopia", "녹색맹"),
+		LOCTEXT("Colorblind_Protanopia", "적색맹"),
+		LOCTEXT("Colorblind_Tritanopia", "청색맹"),
+	};
 
 	// 인덱스 = ESKVoiceMicMode (0=OpenMic, 1=PushToTalk)
-	static const TCHAR* MicModeLabels[] = { TEXT("항상 켜기"), TEXT("누르는 동안만") };
+	static const FText MicModeLabels[] = {
+		LOCTEXT("MicMode_OpenMic", "항상 켜기"),
+		LOCTEXT("MicMode_PushToTalk", "누르는 동안만"),
+	};
 
-	struct FLangOption { const TCHAR* Label; const TCHAR* Culture; };
+	struct FLangOption { FText Label; const TCHAR* Culture; };
 	static const FLangOption Languages[] = {
-		{ TEXT("시스템 기본"), TEXT("") },
-		{ TEXT("한국어"),      TEXT("ko") },
-		{ TEXT("English"),     TEXT("en") },
+		{ LOCTEXT("Language_SystemDefault", "시스템 기본"), TEXT("") },
+		{ FText::FromString(TEXT("한국어")), TEXT("ko") },
+		{ FText::FromString(TEXT("English")), TEXT("en") },
 	};
 
 	static FString FrameLimitToLabel(float Limit)
@@ -64,10 +87,10 @@ namespace SKMenu
 		{
 			if (FMath::IsNearlyEqual(FrameLimitValues[i], Limit))
 			{
-				return FrameLimitLabels[i];
+				return FrameLimitLabels[i].ToString();
 			}
 		}
-		return FrameLimitLabels[UE_ARRAY_COUNT(FrameLimitLabels) - 1];
+		return FrameLimitLabels[UE_ARRAY_COUNT(FrameLimitLabels) - 1].ToString();
 	}
 
 	//~ 임시 레이아웃 색.
@@ -291,26 +314,26 @@ void USKSettingsMenuWidget::PopulateStaticCombos()
 	if (Cmb_WindowMode)
 	{
 		Cmb_WindowMode->ClearOptions();
-		for (const TCHAR* Label : SKMenu::WindowModeLabels)
+		for (const FText& Label : SKMenu::WindowModeLabels)
 		{
-			Cmb_WindowMode->AddOption(Label);
+			Cmb_WindowMode->AddOption(Label.ToString());
 		}
 	}
 	if (Cmb_QualityPreset)
 	{
 		Cmb_QualityPreset->ClearOptions();
-		for (const TCHAR* Label : SKMenu::QualityLabels)
+		for (const FText& Label : SKMenu::QualityLabels)
 		{
-			Cmb_QualityPreset->AddOption(Label);
+			Cmb_QualityPreset->AddOption(Label.ToString());
 		}
-		Cmb_QualityPreset->AddOption(SKMenu::CustomQualityLabel);
+		Cmb_QualityPreset->AddOption(SKMenu::CustomQualityLabel.ToString());
 	}
 	if (Cmb_FrameLimit)
 	{
 		Cmb_FrameLimit->ClearOptions();
-		for (const TCHAR* Label : SKMenu::FrameLimitLabels)
+		for (const FText& Label : SKMenu::FrameLimitLabels)
 		{
-			Cmb_FrameLimit->AddOption(Label);
+			Cmb_FrameLimit->AddOption(Label.ToString());
 		}
 	}
 	if (Cmb_Language)
@@ -318,24 +341,24 @@ void USKSettingsMenuWidget::PopulateStaticCombos()
 		Cmb_Language->ClearOptions();
 		for (const SKMenu::FLangOption& Option : SKMenu::Languages)
 		{
-			Cmb_Language->AddOption(Option.Label);
+			Cmb_Language->AddOption(Option.Label.ToString());
 		}
 	}
 	if (Cmb_VoiceMicMode)
 	{
 		Cmb_VoiceMicMode->ClearOptions();
-		for (const TCHAR* Label : SKMenu::MicModeLabels)
+		for (const FText& Label : SKMenu::MicModeLabels)
 		{
-			Cmb_VoiceMicMode->AddOption(Label);
+			Cmb_VoiceMicMode->AddOption(Label.ToString());
 		}
 	}
 
 	if (Cmb_Colorblind)
 	{
 		Cmb_Colorblind->ClearOptions();
-		for (const TCHAR* Label : SKMenu::ColorblindLabels)
+		for (const FText& Label : SKMenu::ColorblindLabels)
 		{
-			Cmb_Colorblind->AddOption(Label);
+			Cmb_Colorblind->AddOption(Label.ToString());
 		}
 	}
 }
@@ -935,7 +958,7 @@ void USKSettingsMenuWidget::SyncPresetComboToCustom()
 	if (Cmb_QualityPreset)
 	{
 		TGuardValue<bool> Guard(bPopulating, true);
-		Cmb_QualityPreset->SetSelectedOption(SKMenu::CustomQualityLabel);
+		Cmb_QualityPreset->SetSelectedOption(SKMenu::CustomQualityLabel.ToString());
 	}
 }
 
