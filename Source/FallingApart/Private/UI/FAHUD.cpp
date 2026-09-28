@@ -7,6 +7,7 @@
 #include "LoadingScreenSubsystem.h"
 #include "UI/FADraftWidget.h"
 #include "UI/FAHUDWidget.h"
+#include "UI/FAHUDDetailsWidget.h"
 #include "UI/FARuleSlotsWidget.h"
 
 AFAHUD::AFAHUD()
@@ -49,6 +50,14 @@ void AFAHUD::BeginPlay()
 	}
 
 	CreateRuleSlotsWidget();
+	if (DetailsWidgetClass)
+	{
+		DetailsWidget = CreateWidget<UFAHUDDetailsWidget>(PlayerOwner, DetailsWidgetClass);
+		if (DetailsWidget)
+		{
+			DetailsWidget->AddToPlayerScreen(DetailsWidgetZOrder);
+		}
+	}
 }
 
 void AFAHUD::CreateRuleSlotsWidget()
@@ -68,6 +77,11 @@ void AFAHUD::CreateRuleSlotsWidget()
 
 void AFAHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (DetailsWidget)
+	{
+		DetailsWidget->RemoveFromParent();
+		DetailsWidget = nullptr;
+	}
 	if (HUDWidget)
 	{
 		HUDWidget->RemoveFromParent();
