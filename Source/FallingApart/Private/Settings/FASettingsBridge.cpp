@@ -115,6 +115,9 @@ void UFASettingsBridge::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		Settings->OnSettingsChanged.AddDynamic(this, &UFASettingsBridge::HandleSettingsChanged);
 		Settings->OnUISoundRequested.AddDynamic(this, &UFASettingsBridge::HandleUISoundRequested);
+
+		// 플러그인은 오디오 장치를 모른다. 설정창의 '입력 장치' 목록은 여기서 공급한다.
+		Settings->MicDeviceProvider.BindStatic(&UFAVoiceStatics::GetCaptureDevices);
 	}
 	else
 	{
@@ -140,6 +143,7 @@ void UFASettingsBridge::Deinitialize()
 	{
 		Settings->OnSettingsChanged.RemoveAll(this);
 		Settings->OnUISoundRequested.RemoveAll(this);
+		Settings->MicDeviceProvider.Unbind();
 	}
 
 	Super::Deinitialize();
@@ -277,9 +281,14 @@ void UFASettingsBridge::ApplyVoice()
 	const bool bPushToTalk = V.MicMode == ESKVoiceMicMode::PushToTalk;
 	UFAVoiceStatics::SetPushToTalkEnabled(GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr, bPushToTalk);
 
+	// 입력 장치 — 캡처가 이미 있으면 바로 바뀌고, 없으면(메인 메뉴) 처음 말할 때 들어간다.
+	// 슬라이더를 끄는 동안에도 불리지만 같은 장치면 아무것도 안 한다.
+	UFAVoiceStatics::SetCaptureDevice(GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr, V.MicDeviceName);
+
 	UE_LOG(LogFASettings, Verbose,
-		TEXT("[FA] 보이스 적용 — 출력 %.2f / 게인 %.2f / 게이트 %.4f / 마이크 %s"),
-		OutputVolume, MicGain, NoiseGate, bPushToTalk ? TEXT("푸시투토크") : TEXT("오픈 마이크"));
+		TEXT("[FA] 보이스 적용 — 출력 %.2f / 게인 %.2f / 게이트 %.4f / 마이크 %s / 장치 %s"),
+		OutputVolume, MicGain, NoiseGate, bPushToTalk ? TEXT("푸시투토크") : TEXT("오픈 마이크"),
+		V.MicDeviceName.IsEmpty() ? TEXT("시스템 기본") : *V.MicDeviceName);
 }
 
 // ============================================================
