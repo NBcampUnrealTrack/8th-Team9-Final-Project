@@ -11,6 +11,7 @@
 #include "Settings/FASettingsBridge.h"
 #include "SettingsKitSubsystem.h"
 #include "TimerManager.h"
+#include "Voice/FAVoiceStatics.h"
 #include "Voice/FAVoiceTypes.h"
 
 #define LOCTEXT_NAMESPACE "FAVoiceCalibration"
@@ -140,6 +141,40 @@ bool UFAVoiceCalibration::StartCalibration(float DurationSeconds, bool bSaveImme
 	}
 
 	Audio::FAudioCaptureDeviceParams Params;
+
+	// 설정창에서 고른 장치를 재야 한다 — 기본 장치를 재면 게이트가 엉뚱한 마이크에 맞춰진다.
+	// 이 스트림(WASAPI)과 보이스 캡처(DirectSound)는 장치 목록이 달라 이름으로 짝을 찾는다.
+	// 대개 같은 이름이지만 한쪽이 잘려 있을 수 있어 앞부분 일치도 받아 준다.
+	const FString SelectedDevice = UFAVoiceStatics::GetCaptureDevice();
+	if (!SelectedDevice.IsEmpty())
+	{
+		TArray<Audio::FCaptureDeviceInfo> Devices;
+		Capture->GetCaptureDevicesAvailable(Devices);
+
+		int32 MatchIndex = Devices.IndexOfByPredicate([&SelectedDevice](const Audio::FCaptureDeviceInfo& Info)
+		{
+			return Info.DeviceName == SelectedDevice;
+		});
+		if (MatchIndex == INDEX_NONE)
+		{
+			MatchIndex = Devices.IndexOfByPredicate([&SelectedDevice](const Audio::FCaptureDeviceInfo& Info)
+			{
+				return Info.DeviceName.StartsWith(SelectedDevice) || SelectedDevice.StartsWith(Info.DeviceName);
+			});
+		}
+
+		if (MatchIndex != INDEX_NONE)
+		{
+			Params.DeviceIndex = MatchIndex;
+			CaptureDeviceName = Devices[MatchIndex].DeviceName;
+		}
+		else
+		{
+			// 결과 문구에 장치 이름이 찍히므로 사용자도 기본 장치로 쟀다는 걸 알 수 있다.
+			UE_LOG(LogFAVoice, Warning, TEXT("[보이스] 마이크 측정: 고른 장치 '%s' 를 못 찾아 기본 장치 '%s' 로 잰다."),
+				*SelectedDevice, *CaptureDeviceName);
+		}
+	}
 
 	const bool bOpened = Capture->OpenAudioCaptureStream(Params,
 		[this](const void* InAudio, int32 NumFrames, int32 NumChannels, int32 SampleRate, double, bool)
