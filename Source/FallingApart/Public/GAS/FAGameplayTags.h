@@ -64,6 +64,9 @@ public:
 
 	// ~ ========================== Vision Tag ===================
 
+	/* H16 어둠 - 화면 2/3를 검정 위젯으로 가림 */
+	FGameplayTag Rule_Vision_Dark;
+
 	/* Z16 백내장 / H17 시야 협착 -  시야각 -35% */
 	FGameplayTag Rule_Vision_NarrowFOV;
 
@@ -95,6 +98,7 @@ public:
 	FGameplayTag Rule_Audio_Phantom;
 	/** [Z22 귀먹음 추가] GE가 부여하는 청취 차단 태그. */
 	FGameplayTag Rule_Audio_Deaf;
+	FGameplayTag Rule_Audio_NoStep;
 
 	//~ ========================= 상태 태그 =========================
 	// 룰이 아니라 '지금 이 캐릭터가 어떤 상태인가'. 룰 GE 도, 포획/QTE 어빌리티도 공유해 쓴다.
@@ -118,6 +122,9 @@ public:
 
 	/** 5초 주기 입력 반전 룰에서 현재 앞뒤좌우 입력이 반전된 구간. */
 	FGameplayTag State_Input_Flipped;
+
+	/** Z06 역행의 현재 5초 구간 — 이 태그가 있는 동안 후진만 가능하다. */
+	FGameplayTag State_BackwardOnly;
 
 	/** 캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태 */
 	FGameplayTag State_Exposed;
@@ -145,6 +152,12 @@ public:
 
 	/** H29 / Z35 침묵 — 보이스 송신 차단 */
 	FGameplayTag Rule_Social_Mute;
+
+	/** H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다. */
+	FGameplayTag Rule_Social_LeakVoice;
+
+	/** Z36 확성 — 좀비의 음성이 감쇠 없이 인간 전원에게 들린다. */
+	FGameplayTag Rule_Social_Broadcast;
 
 	//~ ========================= Trade Tag =========================
 
@@ -190,9 +203,6 @@ public:
 #pragma region Zombie Rule
 
 	// Move
-	/* Z03  썩은 발목 . 이동속도 -30%.  */
-	FGameplayTag Rule_Move_SpeedDown_L;
-
 	/* Z06  역행 . 후진만 가능  */ //전진 강박 존제시 적용 불가능하게 나올것
 	FGameplayTag Rule_Move_BackwardOnly;
 
@@ -270,7 +280,7 @@ public:
 #pragma region Human Rule
 
 	// Move
-	/* H03 탈진 . 전력질주 봉인*/
+	/* H03/Z03 이동 피로. 기존 에셋 호환을 위해 NoSprint 태그 이름은 유지한다. */
 	FGameplayTag Rule_Move_NoSprint;
 
 	/* H07 포복 . 웅크린 상태로만 이동*/
@@ -283,6 +293,10 @@ public:
 	/** H13 삐걱대는 무릎 — 점프 소리가 반경 25m까지 들림 */
 	FGameplayTag Rule_Move_NoisyJump;
 
+	// Social
+	/** H31 절규 — 8초마다 자동으로 비명 발생 */
+	FGameplayTag Rule_Social_ForceScream;
+
 	// Rescue
 	/* H32 겁쟁이 . 구출(좌클릭) 입력 봉인 — QTE 진입 불가*/
 	FGameplayTag Rule_Rescue_Disabled;
@@ -294,11 +308,10 @@ public:
 	FGameplayTag Rule_Bite_InstantInfect;
 
 	// Trade
-	/* H44 질주 . 이동속도 +40%, 위치 노출 */
+	/* H44 질주 . 이동속도 +15%, 위치 노출 */
 	FGameplayTag Rule_Trade_Sprinter;
 
 	FGameplayTag Rule_Trade_Hide;
-	FGameplayTag State_Hidden;
 
 	FGameplayTag Rule_Trade_SecondLife;
 	FGameplayTag State_SecondLife_Consumed;

@@ -20,6 +20,8 @@ class FALLINGAPART_API AFAPlayerController : public APlayerController
 
 public:
 	AFAPlayerController();
+	const TArray<FKey>& GetPushToTalkKeys() const { return PushToTalkKeys; }
+	const TArray<FKey>& GetPauseMenuKeys() const { return PauseMenuKeys; }
 
 	/**
 	 * 30초 주기를 기다리지 않고 드래프트를 즉시 한 번 돌린다. 콘솔에 `FADraft 3` 처럼 입력.

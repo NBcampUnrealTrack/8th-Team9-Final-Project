@@ -12,6 +12,9 @@ DerivedDataCache/
 Intermediate/
 Saved/
 
+# 로컬 작업 도구 및 스크립트
+/Tools/
+
 # 플러그인 내부의 생성 폴더도 동일하게 제외
 Plugins/**/Binaries/
 Plugins/**/Intermediate/

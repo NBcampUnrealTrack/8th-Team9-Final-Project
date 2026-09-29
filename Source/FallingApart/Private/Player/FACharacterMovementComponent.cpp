@@ -190,27 +190,43 @@ float UFACharacterMovementComponent::GetMaxSpeed() const
 	}
 
 	const UFAAttributeSet* Attributes = GetOwnerAttributes();
+	float RuleSpeed;
 	if (!Attributes)
 	{
-		return Super::GetMaxSpeed();
+		RuleSpeed = Super::GetMaxSpeed();
+	}
+	else
+	{
+		const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
+		const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
+		RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
 	}
 
-	const float GambleSpeedMultiplier = FMath::Clamp(Attributes->GetGambleSpeedMultiplier(),0.5f,1.5f);
-	const float DecayMultiplier = FMath::Clamp(Attributes->GetDecaySpeedMultiplier(), 0.0f, 1.0f);
-	const float RuleSpeed = FMath::Max(50.0f,Attributes->GetMoveSpeed()* GambleSpeedMultiplier* DecayMultiplier);
-	const float WaterSpeedMultiplier = FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f);
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const float FatigueMultiplier = Attributes && HasOwnerTag(Tags.Rule_Move_NoSprint)
+		? FMath::Clamp(Attributes->GetFatigueSpeedMultiplier(), 0.75f, 1.0f) : 1.0f;
+	if (HasOwnerTag(Tags.Rule_Trade_SecondLife)
+		&& HasOwnerTag(Tags.State_SecondLife_Consumed))
+	{
+		// H49은 첫 포획이 무효화된 뒤부터 남은 룰 지속 시간 동안 이동속도를 30% 낮춘다.
+		RuleSpeed *= 0.7f;
+	}
+
+	const float WaterSpeedMultiplier = Attributes
+		? FMath::Clamp(Attributes->GetWaterMoveSpeedMultiplier(), 0.0f, 5.0f)
+		: 1.0f;
 	
 	switch (MovementMode)
 	{
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 		// 웅크리기 속도는 룰 속도를 넘지 않는 선에서 유지
-		return IsCrouching() ? FMath::Min(MaxWalkSpeedCrouched, RuleSpeed) : RuleSpeed;
+		return (IsCrouching() ? FMath::Min(MaxWalkSpeedCrouched, RuleSpeed) : RuleSpeed) * FatigueMultiplier;
 
 	case MOVE_Falling:
-		return RuleSpeed;
+		return RuleSpeed * FatigueMultiplier;
 	case MOVE_Swimming:
-		return RuleSpeed * WaterSpeedMultiplier;
+		return RuleSpeed * WaterSpeedMultiplier * FatigueMultiplier;
 
 	default:
 		// 수영·비행은 이 게임에 없다. 생기면 여기서 분기할 것.
@@ -301,7 +317,7 @@ FVector UFACharacterMovementComponent::ConstrainInputAcceleration(const FVector&
 		Result = ComputeFlippedLRAcceleration(Result);
 	}
 
-	if (HasOwnerTag(Tags.Rule_Move_BackwardOnly) && (IsMovingOnGround() || IsFalling()))
+	if (HasOwnerTag(Tags.State_BackwardOnly) && (IsMovingOnGround() || IsFalling()))
 	{
 		Result = ComputeBackwardOnlyAcceleration(Result);
 	}

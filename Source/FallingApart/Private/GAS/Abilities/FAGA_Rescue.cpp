@@ -28,10 +28,63 @@ UFAGA_Rescue::UFAGA_Rescue()
 
 	// 구출을 차단하는 모든 태그 집약
 	// H32 겁쟁이(구조 불가) · 경직 · 줄다리기(QTE) 중 · 자신이 잡힌 상태
-	//ActivationBlockedTags.AddTag(Tags.Rule_Rescue_Disabled); // TODO: Tag 추가
+	ActivationBlockedTags.AddTag(Tags.Rule_Rescue_Disabled);
 	ActivationBlockedTags.AddTag(Tags.State_Stunned);
 	ActivationBlockedTags.AddTag(Tags.State_Contesting);
 	ActivationBlockedTags.AddTag(Tags.State_Grabbed);
+}
+
+bool UFAGA_Rescue::CanActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	// CDO 로 불릴 때도 있다 — 그때는 인스턴스를 찾아서 본다.
+	const UFAGA_Rescue* Instance = this;
+	if (!IsInstantiated() && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+	{
+		if (const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle))
+		{
+			const TArray<UGameplayAbility*> Instances = Spec->GetAbilityInstances();
+			if (Instances.Num() > 0)
+			{
+				Instance = Cast<UFAGA_Rescue>(Instances[0]);
+			}
+		}
+	}
+
+	const UWorld* World = ActorInfo && ActorInfo->AvatarActor.IsValid() ? ActorInfo->AvatarActor->GetWorld() : nullptr;
+	return !(Instance && World && World->GetTimeSeconds() < Instance->NextRescueAllowedTime);
+}
+
+void UFAGA_Rescue::StartRescueCooldown(UAbilitySystemComponent* RescuerASC)
+{
+	if (!RescuerASC)
+	{
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : RescuerASC->GetActivatableAbilities())
+	{
+		for (UGameplayAbility* Ability : Spec.GetAbilityInstances())
+		{
+			if (UFAGA_Rescue* Rescue = Cast<UFAGA_Rescue>(Ability))
+			{
+				if (const UWorld* World = Rescue->GetWorld())
+				{
+					Rescue->NextRescueAllowedTime = World->GetTimeSeconds() + Rescue->RescueCooldown;
+				}
+				return;
+			}
+		}
+	}
 }
 
 void UFAGA_Rescue::ActivateAbility(

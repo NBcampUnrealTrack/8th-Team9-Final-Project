@@ -4,7 +4,7 @@
 #include "Animation/FAAnimInstance.h"
 
 #include "AbilitySystemComponent.h"
-#include "GAS/FAGameplayTags.h"
+#include "Animation/FAAnimStatusPolicy.h"
 #include "Player/FACharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Interact/FALadder.h"
@@ -46,7 +46,12 @@ void UFAAnimInstance::CacheOwnerReferences()
 
 void UFAAnimInstance::UpdateGASStatusOverride()
 {
-	StatusOverride = ResolveGASStatusOverride();
+	FGameplayTagContainer ActiveTags;
+	if (OwningAbilitySystemComponent)
+	{
+		OwningAbilitySystemComponent->GetOwnedGameplayTags(ActiveTags);
+	}
+	StatusOverride = FAAnimStatusPolicy::Resolve(ActiveTags);
 }
 
 void UFAAnimInstance::UpdateTraversalAnimationData()
@@ -80,54 +85,6 @@ void UFAAnimInstance::UpdateTraversalAnimationData()
 		ClimbSpeed / ReferenceSpeed,
 		-1.5f,
 		1.5f);
-}
-
-EFAAnimStatusOverride UFAAnimInstance::ResolveGASStatusOverride() const
-{
-	if (!OwningAbilitySystemComponent)
-	{
-		return EFAAnimStatusOverride::None;
-	}
-
-	const FAGameplayTags& Tags = FAGameplayTags::Get();
-
-	if (OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Grabbed))
-	{
-		return EFAAnimStatusOverride::Grabbed;
-	}
-
-	if (OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Contesting))
-	{
-		if (OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Human))
-		{
-			return EFAAnimStatusOverride::HumanContesting;
-		}
-
-		if (OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Zombie))
-		{
-			return EFAAnimStatusOverride::ZombieContesting;
-		}
-
-		return EFAAnimStatusOverride::Contesting;
-	}
-
-	if (OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Grabbing))
-	{
-		return EFAAnimStatusOverride::Grabbing;
-	}
-
-	const bool bIsStunned = OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.State_Stunned);
-	if (bIsStunned && OwningAbilitySystemComponent->HasMatchingGameplayTag(Tags.Rule_Move_Seizure))
-	{
-		return EFAAnimStatusOverride::Seizure;
-	}
-
-	if (bIsStunned)
-	{
-		return EFAAnimStatusOverride::Stunned;
-	}
-
-	return EFAAnimStatusOverride::None;
 }
 
 void UFAAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)

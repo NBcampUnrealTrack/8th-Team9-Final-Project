@@ -9,6 +9,7 @@
 #include "GAS/FAGameplayAbility.h"
 #include "GAS/FAGameplayTags.h"
 #include "Animation/FAFirstPersonAnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Interact/FAInteractable.h"
 #include "Interact/FAInteractionComponent.h"
 #include "Interact/FACabinet.h"
@@ -30,6 +31,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Engine/Engine.h"
 #include "Player/FACharacterStatusComponent.h"
+#include "Audio/FAPhantomAudioComponent.h"
 #include "Settings/FASettingsBridge.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
@@ -133,6 +135,7 @@ AFACharacter::AFACharacter(const FObjectInitializer& ObjectInitializer)
 	AttributeSet = CreateDefaultSubobject<UFAAttributeSet>(TEXT("AttributeSet"));
 
 	CharacterStatusComponent = CreateDefaultSubobject<UFACharacterStatusComponent>(TEXT("CharacterStatusComponent"));
+	PhantomAudioComponent = CreateDefaultSubobject<UFAPhantomAudioComponent>(TEXT("PhantomAudioComponent"));
 	TrailComponent = CreateDefaultSubobject<UFATrailComponent>(TEXT("TrailComponent"));
 
 	DetectionUnitComponent =CreateDefaultSubobject<UFADetectionUnitComponent>(TEXT("DetectionUnitComponent"));
@@ -428,8 +431,25 @@ void AFACharacter::SetupCaptureMarker()
 	CaptureMarker->SetVisibility(false);
 }
 
+bool AFACharacter::ShouldHideOverheadUI() const
+{
+	if (!AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	const FAGameplayTags& GameplayTags = FAGameplayTags::Get();
+	// H45 발동과 Z44가 공유하는 실제 반투명 태그를 확인한다.
+	return AbilitySystemComponent->HasMatchingGameplayTag(GameplayTags.Rule_Trade_Ghost);
+}
+
 bool AFACharacter::ShouldShowCaptureMarker() const
 {
+	if (ShouldHideOverheadUI())
+	{
+		return false;
+	}
+
 	// 잡힌 쪽만 머리 위에 띄운다. 잡고 있는 좀비 머리 위에도 뜨면 누가 인질인지 헷갈린다.
 	if (!CaptureState.IsActive() || !CaptureState.bIsVictim)
 	{
@@ -546,6 +566,11 @@ void AFACharacter::RefreshNicknameMarker()
 }
 bool AFACharacter::ShouldShowRuleMarker() const
 {
+	if (ShouldHideOverheadUI())
+	{
+		return false;
+	}
+
 	// 본인 룰은 HUD 좌하단 4칸이 이미 보여준다 — 3인칭에서 자기 머리 위에 또 뜨면 겹친다.
 	if (IsLocallyControlled())
 	{
@@ -703,8 +728,7 @@ bool AFACharacter::ShouldShowOverheadWidget()
 			&& LocalCharacter->GetAbilitySystemComponent() )
 		{
 			//H45 은둔의 반투명 상태 / Z44 유령의 반투명 상태. 
-			if (this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().State_Hidden)
-				|| this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost))
+			if (this->GetAbilitySystemComponent()->HasMatchingGameplayTag(FAGameplayTags::Get().Rule_Trade_Ghost))
 			{
 				if (this->LastKnownTeam != LocalCharacter->LastKnownTeam)
 				{
@@ -1200,10 +1224,25 @@ void AFACharacter::StartInfectionSequence()
 	InfectionDarkenAmount = 1.0f;
 	InfectionRedAmount = InfectionRedTintStrength;
 
+	// 조작이 돌아오는 시점은 "화면이 다 밝아졌을 때" 가 아니라 "완전히 일어섰을 때" 다.
+	float GetUpSeconds = 0.0f;
 	if (InfectionGetUpMontage)
 	{
-		PlayAnimMontage(InfectionGetUpMontage);
+		const float PlayedLength = PlayAnimMontage(InfectionGetUpMontage);
+
+		// 재생이 실패한 인스턴스(전용 서버 등)에서도 잠금 길이는 같아야 한다 — 애셋에서 직접 읽는다.
+		GetUpSeconds = PlayedLength > 0.0f ? PlayedLength : InfectionGetUpMontage->GetPlayLength();
 	}
+
+	// 기상 몽타주가 없으면 예전 그대로 암전이 풀리는 시점이 곧 해제 시점이다.
+	InfectionInputUnlockTime = InfectionSequenceStartTime
+		+ FMath::Max(InfectionBlackoutHoldSeconds + InfectionDarkenReleaseSeconds, GetUpSeconds);
+}
+
+bool AFACharacter::IsInfectionInputLocked() const
+{
+	const UWorld* World = GetWorld();
+	return World != nullptr && World->GetTimeSeconds() < InfectionInputUnlockTime;
 }
 
 void AFACharacter::UpdateInfectionSequence()
@@ -1744,9 +1783,8 @@ void AFACharacter::Move(const FInputActionValue& Value)
 		}
 	}
 
-	// 감염 전환 연출 중에는 움직이지 않는다
-	// 화면이 다 밝아지는 순간(InfectionDarkenAmount == 0) 조작이 돌아온다.
-	if (bInfectionSequenceActive && InfectionDarkenAmount > 0.0f)
+	// 감염 전환 중에는 움직이지 않는다 — 쓰러진 자세에서 완전히 일어설 때까지다.
+	if (IsInfectionInputLocked())
 	{
 		return;
 	}
@@ -1808,6 +1846,23 @@ void AFACharacter::Input_Jump()
 
 	const FAGameplayTags& FATags = FAGameplayTags::Get();
 
+	// 일어서는 중에는 점프도 없다. 뛰면 기상 몽타주가 그 자리에서 끊긴다.
+	if (IsInfectionInputLocked())
+	{
+		return;
+	}
+
+	const UWorld* JumpWorld = GetWorld();
+	const float JumpInputTime = JumpWorld ? JumpWorld->GetTimeSeconds() : 0.0f;
+
+	// QTE 가 끝난 직후에 도착한 스페이스바는 연타의 꼬리다 — 점프로 넘기지 않는다.
+	// 사다리 뛰어내리기 · 캐비넷 나가기도 같은 키라, 분기 전에 한 번에 막는다.
+	if (!IsInRescueContest() && LastContestMashInputTime >= 0.0f &&
+		JumpInputTime - LastContestMashInputTime < PostContestJumpIgnoreSeconds)
+	{
+		return;
+	}
+
 	// 캐비넷 안에서 점프는 '나가기' 다. F 를 다시 누르는 것과 같은 결과다.
 	if (IsHiding())
 	{
@@ -1829,6 +1884,9 @@ void AFACharacter::Input_Jump()
 	// 줄다리기(QTE) 중인 경우 -> 점프 대신 연타 어빌리티
 	if (IsInRescueContest())
 	{
+		// 이 시각이 곧 위 차단 창의 기준점이다.
+		LastContestMashInputTime = JumpInputTime;
+
 		// 연타 감각은 누른 본인에게만 필요.
 		if (IsLocallyControlled())
 		{
@@ -1867,6 +1925,10 @@ void AFACharacter::Input_StopJumping()
 void AFACharacter::ToggleCrouch()
 {
 	if (GetCharacterMovement()->IsFalling())
+		return;
+
+	// 일어서는 중에는 앉지도 않는다 — 기상 몽타주와 자세가 엇갈린다.
+	if (IsInfectionInputLocked())
 		return;
 
 	const bool bCrouchOnly = AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
@@ -2074,7 +2136,31 @@ void AFACharacter::UpdateVisionEffects()
 	else if (bBlackout && GetWorld()) // Vision.Blackout — 주기적인 명멸
 	{
 		const float TimeInCycle = FMath::Fmod(GetWorld()->GetTimeSeconds(), BlackoutPeriod);
-		BlackoutAmount = (TimeInCycle < BlackoutFlashDuration) ? 1.0f : 0.0f;
+		const float FadeIn = FMath::Clamp(
+			BlackoutFadeInSeconds, 0.01f, FMath::Max(BlackoutFlashDuration * 0.5f, 0.01f));
+		const float FadeOut = FMath::Clamp(
+			BlackoutFadeOutSeconds, 0.01f, FMath::Max(BlackoutFlashDuration * 0.5f, 0.01f));
+
+		if (TimeInCycle < BlackoutFlashDuration)
+		{
+			// 검은색으로 들어오고 나오는 구간에 SmoothStep을 사용한다.
+			// 선형 보간보다 시작·끝의 변화가 완만해 눈에 튀는 느낌이 줄어든다.
+			if (TimeInCycle < FadeIn)
+			{
+				const float Alpha = FMath::Clamp(TimeInCycle / FadeIn, 0.0f, 1.0f);
+				BlackoutAmount = Alpha * Alpha * (3.0f - 2.0f * Alpha);
+			}
+			else if (TimeInCycle > BlackoutFlashDuration - FadeOut)
+			{
+				const float Alpha = FMath::Clamp(
+					(BlackoutFlashDuration - TimeInCycle) / FadeOut, 0.0f, 1.0f);
+				BlackoutAmount = Alpha * Alpha * (3.0f - 2.0f * Alpha);
+			}
+			else
+			{
+				BlackoutAmount = 1.0f;
+			}
+		}
 	}
 
 	// 심박 왜곡 (Vision.Shake, Z25) — 가장 가까운 인간까지 거리가 가까울수록 화면을 흔든다.

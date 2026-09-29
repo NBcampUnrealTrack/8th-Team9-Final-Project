@@ -201,6 +201,7 @@ void AFAGameMode::OnSurvivalTick()
 		if (FAPlayerState && FAPlayerState->IsHuman())
 		{
 			FAPlayerState->AddHumanPersonalScore(SurvivalTickScore);
+			FAPlayerState->RecordScoreAward(EFAScoreReason::Survival, SurvivalTickScore, FString(), SurvivalTickInterval);
 		}
 	}
 }
@@ -297,6 +298,7 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 			if (FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound())
 			{
 				FAPlayerState->AddHumanTeamScore(RoundCompleteScore);
+				FAPlayerState->RecordScoreAward(EFAScoreReason::RoundComplete, RoundCompleteScore);
 			}
 		}
 	}
@@ -316,6 +318,7 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 			if (FAPlayerState->IsZombie())
 			{
 				FAPlayerState->AddZombieTeamScore(WipeOutAward);
+				FAPlayerState->RecordScoreAward(EFAScoreReason::WipeOut, WipeOutAward);
 			}
 		}
 	}
@@ -571,6 +574,7 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 	if (Infector && Infector != Victim && Infector->IsZombie())
 	{
 		Infector->AddZombiePersonalScore(InfectionScore);
+		Infector->RecordScoreAward(EFAScoreReason::Infection, InfectionScore, Victim->GetPlayerName());
 	}
 
 	// 생존 시간 확정 → 인간 팀 점수 자격 상실 → 좀비로 전환
@@ -614,6 +618,7 @@ void AFAGameMode::HandleRescueSuccess(AFAPlayerState* Rescuer, AFAPlayerState* V
 	if (Rescuer && Rescuer->IsHuman())
 	{
 		Rescuer->AddHumanPersonalScore(RescueScore);
+		Rescuer->RecordScoreAward(EFAScoreReason::Rescue, RescueScore, Victim ? Victim->GetPlayerName() : FString());
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[FA] %s rescued %s"), Rescuer ? *Rescuer->GetPlayerName() : TEXT("None"),
@@ -726,6 +731,7 @@ void AFAGameMode::AssignStartingTeams()
 		// 수당은 배정 직후에 붙인다 — 위에서 ResetForNewRound() 로 라운드 점수를 이미 비웠으므로
 		// 이 시점에 더하면 라운드 시작과 동시에 HUD 에 찍힌다.
 		Picked->AddZombiePersonalScore(StartingZombieBonus);
+		Picked->RecordScoreAward(EFAScoreReason::StartingZombie, StartingZombieBonus);
 
 		LastStartingZombies.Add(Picked);
 	}
@@ -735,6 +741,7 @@ void AFAGameMode::AssignStartingTeams()
 
 void AFAGameMode::RestartAllPlayers()
 {
+	TArray<APlayerController*> ToRestart;
 	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
 	{
 		APlayerController* PlayerController = Cast<APlayerController>(Iterator->Get());
@@ -743,13 +750,18 @@ void AFAGameMode::RestartAllPlayers()
 			continue;
 		}
 
-		// 라운드마다 진영에 맞는 스폰 지점에서 새로 시작
+		// 라운드마다 진영에 맞는 스폰 지점에서 새로 시작.
+		// 헌 폰을 전부 먼저 치운다 — 섞어서 하면 아직 안 치운 폰이 스폰 자리를 막는다.
 		if (APawn* OldPawn = PlayerController->GetPawn())
 		{
 			PlayerController->UnPossess();
 			OldPawn->Destroy();
 		}
+		ToRestart.Add(PlayerController);
+	}
 
+	for (APlayerController* PlayerController : ToRestart)
+	{
 		RestartPlayer(PlayerController);
 	}
 }
@@ -885,6 +897,11 @@ void AFAGameMode::UpdateGameplayMuteList(APlayerController* aPlayer)
 	UpdateVoiceMuteMatrix();
 }
 
+void AFAGameMode::RefreshVoiceMuteMatrix()
+{
+	UpdateVoiceMuteMatrix();
+}
+
 void AFAGameMode::SetDeathMatchContenders(const TArray<AFAPlayerState*>& Contenders)
 {
 	DeathMatchContenders.Reset(Contenders.Num());
@@ -973,9 +990,34 @@ void AFAGameMode::UpdateVoiceMuteMatrix()
 			}
 
 			const FUniqueNetIdRepl& SpeakerId = Speaker->PlayerState->GetUniqueId();
+			const AFAPlayerState* SpeakerState = Cast<AFAPlayerState>(Speaker->PlayerState);
+			const AFAPlayerState* ListenerState = Cast<AFAPlayerState>(Listener->PlayerState);
+			const AFACharacter* SpeakerCharacter = Cast<AFACharacter>(Speaker->GetPawn());
+			const UFAAbilitySystemComponent* SpeakerASC =
+				SpeakerCharacter ? SpeakerCharacter->GetFAAbilitySystemComponent() : nullptr;
+
+			// H30: 인간 화자의 음성은 좀비에게만 전달한다.
+			// 거리 감쇠는 VoiceComponent가 그대로 적용하므로 여기서는
+			// 인간 청취자만 GameplayMute로 차단한다.
+			const bool bLeakVoice =
+				SpeakerState && SpeakerState->IsHuman() &&
+				SpeakerASC && SpeakerASC->HasMatchingGameplayTag(
+					FAGameplayTags::Get().Rule_Social_LeakVoice);
+			const bool bLeakVoiceBlocked =
+				bLeakVoice && ListenerState && ListenerState->IsHuman();
+
+			// Z36: 좀비 화자의 음성은 인간 전원에게 전달한다.
+			// VoiceComponent가 감쇠를 제거하므로, 여기서는 좀비 청취자만 차단한다.
+			const bool bBroadcastVoice =
+				SpeakerState && SpeakerState->IsZombie() &&
+				SpeakerASC && SpeakerASC->HasMatchingGameplayTag(
+					FAGameplayTags::Get().Rule_Social_Broadcast);
+			const bool bBroadcastVoiceBlocked =
+				bBroadcastVoice && ListenerState && ListenerState->IsZombie();
 
 			// 관전 여부가 서로 다르면 차단. 같으면(둘 다 관전 / 둘 다 인게임).
-			if (bListenerSpectating != IsVoiceSpectator(Speaker))
+			if (bListenerSpectating != IsVoiceSpectator(Speaker)
+				|| bLeakVoiceBlocked || bBroadcastVoiceBlocked)
 			{
 				Listener->GameplayMutePlayer(SpeakerId);
 			}
@@ -1019,9 +1061,35 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 		}
 	}
 
+	// 같은 프레임에 여러 명을 스폰하므로, 먼저 스폰된 폰이 서 있는 자리를 또 뽑으면
+	// SpawnActor 가 충돌로 실패해 폰 없이 라운드를 시작한다 (09/23 플레이테스트, 6명 중 2명).
+	const float OccupiedRadiusSq = FMath::Square(OccupiedStartRadius);
+	auto PickFreeRandom = [this, OccupiedRadiusSq](const TArray<AActor*>& Starts) -> AActor*
+	{
+		TArray<AActor*> FreeStarts = Starts.FilterByPredicate([this, OccupiedRadiusSq](const AActor* Start)
+		{
+			for (TActorIterator<APawn> PawnIt(GetWorld()); PawnIt; ++PawnIt)
+			{
+				if (FVector::DistSquared(PawnIt->GetActorLocation(), Start->GetActorLocation()) < OccupiedRadiusSq)
+				{
+					return false;
+				}
+			}
+			return true;
+		});
+
+		if (FreeStarts.Num() > 0)
+		{
+			return FreeStarts[FMath::RandRange(0, FreeStarts.Num() - 1)];
+		}
+
+		UE_LOG(LogTemp, Warning, TEXT("[FA] 빈 PlayerStart 가 없다 (후보 %d개 전부 사용 중) — 겹쳐서 스폰에 실패할 수 있다 (맵에 스폰 추가 필요)"), Starts.Num());
+		return Starts[FMath::RandRange(0, Starts.Num() - 1)];
+	};
+
 	if (TeamCandidates.Num() > 0)
 	{
-		return TeamCandidates[FMath::RandRange(0, TeamCandidates.Num() - 1)];
+		return PickFreeRandom(TeamCandidates);
 	}
 
 	if (bTeamDecided)
@@ -1034,7 +1102,7 @@ AActor* AFAGameMode::ChoosePlayerStart_Implementation(AController* Player)
 
 	if (AnyCandidates.Num() > 0)
 	{
-		return AnyCandidates[FMath::RandRange(0, AnyCandidates.Num() - 1)];
+		return PickFreeRandom(AnyCandidates);
 	}
 
 	return Super::ChoosePlayerStart_Implementation(Player);

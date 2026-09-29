@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "Game/FAGameTypes.h"
+#include "UI/FAScoreFeedTypes.h"
 #include "FAPlayerState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFAOnTeamChanged, EFATeam, NewTeam);
@@ -129,6 +130,9 @@ public:
 	void AddZombieTeamScore(int32 Amount);
 	void AddZombiePersonalScore(int32 Amount);
 
+	void RecordScoreAward(EFAScoreReason Reason, int32 Points, const FString& PlayerName = FString(), float IntervalSeconds = 0.f);
+	const TArray<FFAScoreFeedEntry>& GetScoreHistory() const { return ScoreHistory; }
+
 	/** 라운드 점수를 매치 누적에 합산하고 라운드 점수를 비운다. */
 	void CommitRoundScore();
 
@@ -170,6 +174,11 @@ protected:
 
 
 private:
+	UPROPERTY(Replicated)
+	TArray<FFAScoreFeedEntry> ScoreHistory;
+
+	int32 ScoreSequence = 0;
+
 	UPROPERTY(ReplicatedUsing = OnRep_Team, VisibleAnywhere, Category = "FallingApart|Game")
 	EFATeam Team = EFATeam::None;
 

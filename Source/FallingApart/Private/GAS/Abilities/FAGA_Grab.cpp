@@ -203,7 +203,7 @@ void UFAGA_Grab::ResolveGrabAttempt()
 		{
 			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(FailStunEffectClass);
 
-			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 5.f);
+			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, 3.f);
 			SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 		}
 
@@ -673,32 +673,73 @@ void UFAGA_Grab::EndAbility(
 
 AFACharacter* UFAGA_Grab::FindTargetInFront(AFACharacter* Avatar, float Range, float Radius, FGameplayTag RequiredTag)
 {
-	if (!Avatar) return nullptr;
+	if (!Avatar)
+	{
+		return nullptr;
+	}
 
-	FVector StartLoc = Avatar->GetActorLocation();
-	FVector EndLoc = StartLoc + (Avatar->GetActorForwardVector() * Range);
+	UWorld* World = Avatar->GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const FVector Start = Avatar->GetActorLocation();
+	const FVector Forward = Avatar->GetActorForwardVector().GetSafeNormal2D();
+	const FVector End = Start + (Forward * Range);
 
 	TArray<FHitResult> HitResults;
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(Avatar);
 
-	bool bHit = Avatar->GetWorld()->SweepMultiByChannel(
-		HitResults, StartLoc, EndLoc, FQuat::Identity, ECC_Pawn,
-		FCollisionShape::MakeSphere(Radius), QueryParams
-	);
-
-	if (bHit)
+	const bool bHit = World->SweepMultiByChannel(HitResults, Start, End, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeSphere(Radius), QueryParams);
+	if (!bHit)
 	{
-		for (const FHitResult& Hit : HitResults)
+		return nullptr;
+	}
+
+	AFACharacter* BestTarget = nullptr;
+	float BestAlignment = -1.0f; // 높을수록 캐릭터 정면에 가까움.
+	float BestDistanceSq = TNumericLimits<float>::Max(); // Alignment가 비슷할 경우 가까운 대상을 선택.
+	constexpr float AlignmentTieTolerance = 0.02f; // 정면 각도가 거의 비슷한 후보라면 거리를 우선.
+
+	for (const FHitResult& Hit : HitResults)
+	{
+		AFACharacter* Candidate = Cast<AFACharacter>(Hit.GetActor());
+		if (!Candidate)
+			continue;
+
+		UAbilitySystemComponent* CandidateASC = Candidate->GetAbilitySystemComponent();
+		if (!CandidateASC)
+			continue;
+
+		// 인간 등 Grab 가능한 대상인지 확인.
+		if (!CandidateASC->HasMatchingGameplayTag(RequiredTag))
+			continue;
+
+		// 이미 다른 좀비에게 잡혀 있는 대상은 후보에서 제외.
+		if (CandidateASC->HasMatchingGameplayTag(Tags.State_Grabbed))
+			continue;
+
+		const FVector ToCandidate = Candidate->GetActorLocation() - Start;
+		const FVector DirectionToCandidate = ToCandidate.GetSafeNormal2D();
+
+		// 1에 가까울수록 정확히 정면.
+		const float Alignment = FVector::DotProduct(Forward, DirectionToCandidate);
+		const float DistanceSq = ToCandidate.SizeSquared();
+		const bool bMoreCentered = Alignment > BestAlignment + AlignmentTieTolerance;
+		const bool bSimilarAngleButCloser = FMath::Abs(Alignment - BestAlignment) <= AlignmentTieTolerance && DistanceSq < BestDistanceSq;
+
+		if (bMoreCentered || bSimilarAngleButCloser)
 		{
-			AFACharacter* Target = Cast<AFACharacter>(Hit.GetActor());
-			if (Target && Target->GetAbilitySystemComponent()->HasMatchingGameplayTag(RequiredTag))
-			{
-				return Target;
-			}
+			BestTarget = Candidate;
+			BestAlignment = Alignment;
+			BestDistanceSq = DistanceSq;
 		}
 	}
-	return nullptr;
+
+	return BestTarget;
 }
 
 AFACharacter* UFAGA_Grab::FindTargetOnLadder(AFACharacter* Avatar, float Range, FGameplayTag RequiredTag) const

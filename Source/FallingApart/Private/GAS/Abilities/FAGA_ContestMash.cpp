@@ -60,11 +60,18 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		}
 	}
 
+	// 게이지 주인(좀비)과 그 줄다리기 인스턴스를 먼저 잡는다 — 좀비 가중치가 여기에 달려 있다.
+	AFACharacter* TargetZombie = FindTargetZombie(AvatarChar);
+	UAbilitySystemComponent* TargetASC = TargetZombie ? TargetZombie->GetAbilitySystemComponent() : nullptr;
+	UFAGA_RescueContest* Contest = TargetASC ? UFAGA_RescueContest::FindActiveInstance(TargetASC) : nullptr;
+
 	// 역할별 QTE 가중치 계산
 	switch (Role)
 	{
 	case EFAContestRole::Zombie:
-		ScoreDelta = ZombieMashDelta; // 좀비는 누를 때마다 게이지 감소
+		// 좀비는 누를 때마다 게이지 감소.
+		// 같은 인질을 잡았다가 구출당하기를 반복했다면 그 횟수만큼 더 무겁게 누른다.
+		ScoreDelta = ZombieMashDelta + (Contest ? Contest->GetZombieMashBonus() : 0.0f);
 		break;
 
 	case EFAContestRole::Victim:
@@ -93,21 +100,16 @@ void UFAGA_ContestMash::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 
 	// 연타 타격감(QTE_Press)은 여기서 내지 않는다.
 
-	// 호스트 좀비를 찾아 GE(MashEffect)를 통해 ContestGauge 를 가감한다.
-	AFACharacter* TargetZombie = FindTargetZombie(AvatarChar);
-	if (TargetZombie)
+	// 호스트 좀비의 GE(MashEffect)를 통해 ContestGauge 를 가감한다.
+	if (TargetASC)
 	{
-		UAbilitySystemComponent* TargetASC = TargetZombie->GetAbilitySystemComponent();
-		if (TargetASC)
-		{
-			FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(MashEffectClass);
-			SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, ScoreDelta);
-			TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(MashEffectClass);
+		SpecHandle.Data->SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, ScoreDelta);
+		TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 
-			if (UFAGA_RescueContest* Contest = UFAGA_RescueContest::FindActiveInstance(TargetASC))
-			{
-				Contest->RecordMash(Role);
-			}
+		if (Contest)
+		{
+			Contest->RecordMash(Role);
 		}
 	}
 

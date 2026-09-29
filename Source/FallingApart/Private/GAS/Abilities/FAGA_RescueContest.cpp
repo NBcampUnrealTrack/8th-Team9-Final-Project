@@ -1,5 +1,6 @@
 #include "GAS/Abilities/FAGA_RescueContest.h"
 #include "GAS/Abilities/FAGA_Grab.h"
+#include "GAS/Abilities/FAGA_Rescue.h"
 #include "GAS/FAGameplayTags.h"
 #include "AttributeSet/FAAttributeSet.h"
 #include "Game/FAGameMode.h"
@@ -53,6 +54,19 @@ void UFAGA_RescueContest::ActivateAbility(const FGameplayAbilitySpecHandle Handl
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
+	}
+
+	// 같은 인질을 잡았다가 구출당하기를 반복하면 좀비 연타를 한 번당 RepeatRescueMashStep 만큼 무겁게 한다.
+	// 상대가 바뀌면 누적을 버리고 −2.5 대 3 에서 다시 시작한다.
+	if (GrabbedVictim.IsValid() && GrabbedVictim.Get() == RepeatRescueVictim.Get())
+	{
+		ZombieMashBonus = -RepeatRescueMashStep * RepeatRescueCount;
+	}
+	else
+	{
+		RepeatRescueVictim = GrabbedVictim;
+		RepeatRescueCount = 0;
+		ZombieMashBonus = 0.0f;
 	}
 
 	// 3명 전원에게 Contesting(이동/행동 불가) GE를 적용하고 핸들을 보관한다.
@@ -218,15 +232,22 @@ void UFAGA_RescueContest::ResolveContestOutcome(bool bHumanWon)
 			const APlayerState* PS = Char.IsValid() ? Char->GetPlayerState() : nullptr;
 			return PS ? PS->GetPlayerName() : FString(TEXT("None"));
 		};
-		UE_LOG(LogTemp, Log, TEXT("[QTE] 결과=%s | 경과=%.2fs | 게이지=%.1f | 좀비(%s)=%d회 | 구조자(%s)=%d회 | 인질(%s)=%d회"),
+		UE_LOG(LogTemp, Log, TEXT("[QTE] 결과=%s | 경과=%.2fs | 게이지=%.1f | 좀비(%s)=%d회 | 구조자(%s)=%d회 | 인질(%s)=%d회 | 좀비보정=%+.1f(같은 인질 구출 %d회)"),
 			bHumanWon ? TEXT("인간승") : TEXT("좀비승"), Elapsed, FinalGauge,
 			*NameOf(TargetZombie), ZombieMashCount,
 			*NameOf(Rescuer), RescuerMashCount,
-			*NameOf(GrabbedVictim), VictimMashCount);
+			*NameOf(GrabbedVictim), VictimMashCount,
+			ZombieMashBonus, RepeatRescueCount);
 	}
 
 	if (bHumanWon)
 	{
+		// 이 인질은 또 구출됐다 — 같은 사람을 다시 잡으면 그만큼 좀비 연타가 무거워진다.
+		if (GrabbedVictim.IsValid() && GrabbedVictim.Get() == RepeatRescueVictim.Get())
+		{
+			++RepeatRescueCount;
+		}
+
 		// [인간 승리] 좀비의 포획(Grab)을 강제 취소하고 기절시킨다.
 		if (TargetZombie.IsValid())
 		{
@@ -309,6 +330,12 @@ void UFAGA_RescueContest::EndAbility(const FGameplayAbilitySpecHandle Handle, co
 		}
 	}
 	ContestingHandles.Empty();
+
+	// 같은 구조자가 끝나자마자 또 구출에 들어가지 못하게 한다 (이기든 지든).
+	if (Rescuer.IsValid())
+	{
+		UFAGA_Rescue::StartRescueCooldown(Rescuer->GetAbilitySystemComponent());
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

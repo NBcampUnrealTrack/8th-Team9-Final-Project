@@ -67,6 +67,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	bool IsVoiceSpectator(APlayerController* PlayerController) const;
 
+	/** Social.LeakVoice 등 음성 룰 변경 뒤 수신자별 GameplayMute 목록을 다시 계산한다. */
+	void RefreshVoiceMuteMatrix();
+
 	/** 이번 매치에서 시작 좀비 몇 명으로 시작하는지 (GDD 9부: 6~8인 1명 / 9~12인 2명) */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Game")
 	int32 GetStartingZombieCount(int32 InPlayerCount) const;
@@ -251,6 +254,10 @@ protected:
 	/** 좀비 스폰 지점으로 쓸 PlayerStart 의 Player Start Tag */
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Spawn")
 	FName ZombiePlayerStartTag = FName(TEXT("Zombie"));
+
+	/** 이 반경 안에 폰이 서 있는 PlayerStart 는 차 있는 자리로 보고 건너뛴다 (캡슐 지름보다 넉넉히) */
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|Spawn")
+	float OccupiedStartRadius = 120.f;
 
 private:
 	/** 데스매치 참가자. 서버 전용. */

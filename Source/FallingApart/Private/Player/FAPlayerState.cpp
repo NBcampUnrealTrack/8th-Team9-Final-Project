@@ -5,6 +5,7 @@
 
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "Game/FAGameState.h"
 #include "Player/FACharacter.h"
 #include "Rule/FARuleDraftSubsystem.h"
 #include "UI/FAHUD.h"
@@ -28,6 +29,7 @@ void AFAPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AFAPlayerState, RoundScore);
 	DOREPLIFETIME(AFAPlayerState, MatchScore);
 	DOREPLIFETIME(AFAPlayerState, DeathMatchPlacement);
+	DOREPLIFETIME_CONDITION(AFAPlayerState, ScoreHistory, COND_OwnerOnly);
 }
 
 void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
@@ -41,6 +43,8 @@ void AFAPlayerState::CopyProperties(APlayerState* PlayerState)
 		FAPlayerState->RoundScore = RoundScore;
 		FAPlayerState->MatchScore = MatchScore;
 		FAPlayerState->DeathMatchPlacement = DeathMatchPlacement;
+		FAPlayerState->ScoreHistory = ScoreHistory;
+		FAPlayerState->ScoreSequence = ScoreSequence;
 	}
 }
 
@@ -85,6 +89,8 @@ void AFAPlayerState::ResetForNewMatch()
 	}
 
 	MatchScore.Reset();
+	ScoreHistory.Reset();
+	ScoreSequence = 0;
 	RoundScore.Reset();
 	SurvivalClockStart = -1.0f;
 	Team = EFATeam::None;
@@ -296,4 +302,26 @@ bool AFAPlayerState::Server_ConfirmDraft_Validate(int32 SelectedIndex)
 {
 	// 후보는 항상 3장(0~2)이므로, 이 범위를 벗어나면 애초에 조작된 요청으로 간주해 거부.
 	return SelectedIndex >= 0 && SelectedIndex < 3;
+}
+
+void AFAPlayerState::RecordScoreAward(EFAScoreReason Reason, int32 Points, const FString& PlayerName, float IntervalSeconds)
+{
+	if (!ensure(HasAuthority()) || Points == 0)
+	{
+		return;
+	}
+	FFAScoreFeedEntry Entry;
+	Entry.Reason = Reason;
+	Entry.Points = Points;
+	Entry.PlayerName = PlayerName;
+	Entry.IntervalSeconds = IntervalSeconds;
+	Entry.Sequence = ++ScoreSequence;
+	const AFAGameState* State = GetWorld()->GetGameState<AFAGameState>();
+	Entry.Round = State ? State->GetCurrentRound() : 0;
+	if (ScoreHistory.Num() >= 32)
+	{
+		ScoreHistory.RemoveAt(0);
+	}
+	ScoreHistory.Add(MoveTemp(Entry));
+	ForceNetUpdate();
 }

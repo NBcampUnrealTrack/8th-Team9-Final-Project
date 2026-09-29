@@ -64,9 +64,12 @@ protected:
 	/** 복제된 상태를 목표 회전으로 바꾸고 보간을 켠다. 서버·클라 공통 경로. */
 	void ApplyOpenState(bool bPlaySound);
 
-	/** 상호작용한 캐릭터의 문 열기/닫기 몽타주를 모든 클라이언트에서 재생한다. */
+	/** 상태 변경 뒤 실제 문짝 이동으로 밀기/당기기를 고른다. 판단할 수 없으면 기존 개폐 몽타주를 쓴다. */
+	UAnimMontage* SelectDoorInteractionMontage(const AFACharacter* Interactor, bool bOpening) const;
+
+	/** 서버가 선택한 몽타주를 모든 클라이언트에서 동일하게 재생한다. */
 	UFUNCTION(NetMulticast, Reliable)
-	void MulticastPlayDoorInteractionMontage(AFACharacter* Interactor, bool bOpening);
+	void MulticastPlayDoorInteractionMontage(AFACharacter* Interactor, UAnimMontage* MontageToPlay);
 
 	/** 지금 상태에 해당하는 피벗의 목표 상대 회전. */
 	FRotator GetTargetPivotRotation() const;
@@ -162,11 +165,19 @@ public:
 
 	//~ ---------------- 캐릭터 애니메이션 ----------------
 
-	/** 캐릭터가 문을 열 때 재생할 몽타주. 비워두면 재생하지 않는다. */
+	/** 문짝이 캐릭터에게서 멀어질 때 재생한다. 비워두면 기존 열기/닫기 몽타주를 쓴다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
+	TObjectPtr<UAnimMontage> DoorPushMontage;
+
+	/** 문짝이 캐릭터에게 다가올 때 재생한다. 비워두면 기존 열기/닫기 몽타주를 쓴다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
+	TObjectPtr<UAnimMontage> DoorPullMontage;
+
+	/** 방향별 몽타주가 없거나 이동 방향을 판단할 수 없을 때 쓰는 기존 문 열기 몽타주. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
 	TObjectPtr<UAnimMontage> DoorOpenMontage;
 
-	/** 캐릭터가 문을 닫을 때 재생할 몽타주. 비워두면 재생하지 않는다. */
+	/** 방향별 몽타주가 없거나 이동 방향을 판단할 수 없을 때 쓰는 기존 문 닫기 몽타주. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FallingApart|Door|Animation")
 	TObjectPtr<UAnimMontage> DoorCloseMontage;
 

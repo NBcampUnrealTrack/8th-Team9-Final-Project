@@ -35,6 +35,7 @@ void FAGameplayTags::AddAllTags()
 	Rule_Input_FlipLR      = AddTag(TEXT("Rule.Input.FlipLR"),TEXT("Z13/H10 . 5초 마다 좌우 입력 반전 "));
 
 	//~ 룰 - Vision
+	Rule_Vision_Dark = AddTag(TEXT("Rule.Vision.Dark"), TEXT("H16 어둠 — 화면 2/3 가림."));
 	Rule_Vision_NarrowFOV  = AddTag(TEXT("Rule.Vision.NarrowFov"), TEXT("Z16/H17. 시야각 -35% "));
 	Rule_Vision_Desaturate = AddTag(TEXT("Rule.Vision.Desaturate"), TEXT("Z17/H18 흑백 — 로컬 PostProcess 채도 0. "));
 	Rule_Vision_Fog       = AddTag(TEXT("Rule.Vision.Fog"),       TEXT("Z18/H19 안개 — VisionRange 800uu + PostProcess 안개."));
@@ -46,9 +47,10 @@ void FAGameplayTags::AddAllTags()
 	Rule_Vision_Shake     = AddTag(TEXT("Rule.Vision.Shake"),     TEXT("Z25 심박 왜곡 — 인간 근접 시 카메라 흔들림 심화."));
 
 	//~ 룰 - Audio
-	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("Z23 환청 — 가짜 발소리를 로컬에서 랜덤 재생."));
+	Rule_Audio_Phantom = AddTag(TEXT("Rule.Audio.Phantom"), TEXT("환청 — H26 가짜 비명 / Z23 가짜 발소리를 로컬에서 랜덤 재생."));
 	// [Z22 귀먹음 추가] 청취 서브시스템에서 조회할 공통 태그를 등록한다.
 	Rule_Audio_Deaf = AddTag(TEXT("Rule.Audio.Deaf"), TEXT("Z22 귀먹음 — 발소리와 수신 음성 차단."));
+	Rule_Audio_NoStep = AddTag(TEXT("Rule.Audio.NoStep"), TEXT("H25 이명 — 좀비 발소리 차단."));
 
 	//~ 상태
 	State_Human         = AddTag(TEXT("State.Human"),         TEXT("현재 인간. 진영 전환 시 서버가 갈아끼운다."));
@@ -60,6 +62,7 @@ void FAGameplayTags::AddAllTags()
 	State_Grabbed       = AddTag(TEXT("State.Grabbed"),       TEXT("인간이 포획당한 상태."));
 	State_Contesting    = AddTag(TEXT("State.Contesting"),    TEXT("구출 QTE 참여 중 — 이동·점프 봉인 (설계문서 §3.3)."));
 	State_Input_Flipped = AddTag(TEXT("State.Input.Flipped"), TEXT("현재 앞뒤좌우 이동 입력이 반전된 구간."));
+	State_BackwardOnly = AddTag(TEXT("State.BackwardOnly"), TEXT("Z06 역행의 현재 구간 — 전후 입력을 후진으로 제한."));
 	State_Climbing      = AddTag(TEXT("State.Climbing"),      TEXT("사다리 등반 중. 이동 모드가 Flying 이라 등반 여부를 태그로 구분한다."));
 	State_Hiding        = AddTag(TEXT("State.Hiding"),        TEXT("캐비넷 안에 숨은 상태. 문이 닫혀 있는 동안은 포획 대상에서 빠진다."));
 	State_Exposed		= AddTag(TEXT("State.Exposed"),		  TEXT("캐릭터의 위치가 외곽선(X-Ray)으로 노출되는 상태. Z38, H44 등에서 사용."));
@@ -82,7 +85,7 @@ void FAGameplayTags::AddAllTags()
 	Data_Rule_Magnitude = AddTag(TEXT("Data.Rule.Magnitude"), TEXT("룰 GE Modifier 의 SetByCaller 수치. DataTable 의 Magnitude 열이 주입한다."));
 
 	//~ 룰 - Gamble
-	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -50%~+50% 랜덤."));
+	Rule_Gamble_Speed = AddTag(TEXT("Rule.Gamble.Speed"), TEXT("H50 / Z49 10초마다 이동속도 -35%~+20% 랜덤."));
 	Rule_Gamble_Plague = AddTag(TEXT("Rule.Gamble.Plague"), TEXT("Z50 감염 시 1명 추가 감염, 실패 시 20초 정지 ( 감염될 확률 35% ) ."));
 	Rule_State_Recall = AddTag(TEXT("Rule.State.Recall"), TEXT("H43 도박꾼 / Z40 귀환. 40초마다 공유 스폰 지점 중 무작위 위치로 순간이동"));
 
@@ -92,7 +95,6 @@ void FAGameplayTags::AddAllTags()
 #pragma region Zombie Rule
 
 	//~ 룰 - Move
-	Rule_Move_SpeedDown_L  = AddTag(TEXT("Rule.Move.SpeedDown.L"),  TEXT("Z03 이동속도 -30%."));
 	Rule_Move_BackwardOnly  = AddTag(TEXT("Rule.Move.BackwardOnly"),  TEXT("Z06 후진만 가능"));
 	Rule_Move_LowJump  = AddTag(TEXT("Rule.Move.LowJump"),  TEXT("Z12 점프 높이 -60%"));
 
@@ -119,10 +121,12 @@ void FAGameplayTags::AddAllTags()
 
 	//~ 룰 - Social
 	Rule_Social_Mute = AddTag(TEXT("Rule.Social.Mute"), TEXT("H29 / Z35 침묵 — 보이스 송신 차단."));
+	Rule_Social_LeakVoice = AddTag(TEXT("Rule.Social.LeakVoice"), TEXT("H30 배신자의 입 — 인간의 음성이 좀비에게만 들린다."));
+	Rule_Social_Broadcast = AddTag(TEXT("Rule.Social.Broadcast"), TEXT("Z36 확성 — 좀비의 음성이 감쇠 없이 인간 전원에게 들린다."));
 
 	//~ 룰 - Trade
 	Rule_Trade_Frenzy = AddTag(TEXT("Rule.Trade.Frenzy"), TEXT("Z43 광폭 — 이동속도 +35%, 감염 시간 10초, 최대 저항 시 20초"));
-	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("Z44 유령 — 반투명, 이동속도 -35%"));
+	Rule_Trade_Ghost = AddTag(TEXT("Rule.Trade.Ghost"), TEXT("H45 은둔 발동 / Z44 유령 — 공통 반투명 상태"));
 	Rule_Trade_Instant = AddTag(TEXT("Rule.Trade.Instant"), TEXT("Z45 즉살 이빨 — 감염 시간 1초, 최대 저항 5초, 이동속도 -80%"));
 	Rule_Trade_WallPhase = AddTag(TEXT("Rule.Trade.WallPhase"),TEXT("Z46 위상 이동 — 특정 벽 통과"));
 
@@ -134,11 +138,14 @@ void FAGameplayTags::AddAllTags()
 #pragma region Human Rule
 
 	//~ 룰 - Move
-	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03 전력질주 봉인"));
+	Rule_Move_NoSprint = AddTag(TEXT("Rule.Move.NoSprint"), TEXT("H03/Z03 이동 피로: 6초 이동 후 최대 25% 감속, 정지 시 회복"));
 	Rule_Move_CrouchOnly = AddTag(TEXT("Rule.Move.CrouchOnly"), TEXT("H07 웅크린 상태로만 이동"));
 	Rule_Move_Burden = AddTag(TEXT("Rule.Move.Burden"), TEXT("H11 이동속도-25%,점프높이 -40%"));
 	Rule_Move_SlowTurn = AddTag(TEXT("Rule.Move.SlowTurn"), TEXT("H14 카메라 선회속도 -45%"));
 	Rule_Move_NoisyJump = AddTag(TEXT("Rule.Move.NoisyJump"), TEXT("H13 삐걱대는 무릎 — 점프 시 반경 25m에 소음 발생."));
+
+	//~ 룰 - Social
+	Rule_Social_ForceScream = AddTag(TEXT("Rule.Social.ForceScream"), TEXT("H31 절규 — 8초마다 자동으로 비명 발생"));
 
 	//~ 룰 - Rescue
 	Rule_Rescue_Disabled = AddTag(TEXT("Rule.Rescue.Disabled"), TEXT("H32 겁쟁이 — 구출 입력 봉인"));
@@ -153,7 +160,6 @@ void FAGameplayTags::AddAllTags()
 	Rule_Trade_SecondLife = AddTag(TEXT("Rule.Trade.SecondLife"), TEXT("H49 불사 — 첫 포획 1회 무효, 이동속도 -30%"));
 
 	State_SecondLife_Consumed = AddTag(TEXT("State.SecondLife.Consumed"), TEXT("H49 첫 포획 무효 소비 상태"));
-	State_Hidden = AddTag(TEXT("State.Hidden"), TEXT("H45 은둔 반투명 발동 상태"));
 
 	//~ 룰 - State
 	Rule_State_Camp = AddTag(TEXT("Rule.State.Camp"),TEXT("H36 뿌리내림 — 한 자리에 4초 이상 머물면 위치 노출."));

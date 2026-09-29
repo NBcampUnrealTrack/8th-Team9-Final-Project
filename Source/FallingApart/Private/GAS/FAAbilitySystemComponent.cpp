@@ -56,7 +56,11 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 	}
 
 	// 찾은 룰이 에셋에 있는지 확인
-	UClass* EffectClass = Row->RuleEffect.LoadSynchronous();
+	// H03/Z03은 기존 H03의 태그 부여 GE를 공유한다. 피로 동작은 Status에서 처리한다.
+	// Z03의 구형 상시 감속 GE를 함께 적용하지 않는다.
+	const bool bFatigueRule = RuleId == FName(TEXT("H03")) || RuleId == FName(TEXT("Z03"));
+	const FFARuleCardRow* EffectRow = bFatigueRule ? UFARuleSettings::FindRuleCard(TEXT("H03")) : Row;
+	UClass* EffectClass = EffectRow ? EffectRow->RuleEffect.LoadSynchronous() : nullptr;
 	if (!EffectClass)
 	{
 		// 아직 GE 애셋을 안 만든 카드. 표에 행만 있고 애셋이 비어 있는 상태.
@@ -94,6 +98,11 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 
 	FGameplayEffectSpec& Spec = *SpecHandle.Data.Get();
 	const FAGameplayTags& Tags = FAGameplayTags::Get();
+	const FGameplayTag EffectiveRuleTag = bFatigueRule ? Tags.Rule_Move_NoSprint : Row->RuleTag;
+	if (bFatigueRule)
+	{
+		Spec.DynamicGrantedTags.AddTag(EffectiveRuleTag);
+	}
 
 	// 공통 룰은 GE 애셋을 좀비/인간이 공유. 진영 구분은 애셋이 아니라 여기서 붙임.
 	// DynamicGrantedTags 는 복제되므로 클라이언트도 "이건 인간 룰"임을 알 수 있음.
@@ -111,7 +120,7 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 	}
 
 	// 밸런싱 수치 주입. GE 가 SetByCaller 를 안 쓰면 그냥 무시.
-	Spec.SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, Row->Magnitude);
+	Spec.SetSetByCallerMagnitude(Tags.Data_Rule_Magnitude, EffectRow->Magnitude);
 
 	// ApplyGameplayEffectSpecToSelf()는 그 효과를 실제로 ASC에 적용하는 단계 효과 적용
 	const FActiveGameplayEffectHandle Handle = ApplyGameplayEffectSpecToSelf(Spec);
@@ -156,11 +165,11 @@ bool UFAAbilitySystemComponent::ApplyRuleCard(FName RuleId)
 
 	// 태그를 부여하지 않는 GE 는 아무 일도 하지 않는다 (CMC·어빌리티가 전부 태그만 본다).
 	// 조용히 실패하면 "룰은 붙었다는데 게임은 그대로"가 되므로 여기서 크게 잡는다.
-	if (Row->RuleTag.IsValid() && !HasMatchingGameplayTag(Row->RuleTag))
+	if (EffectiveRuleTag.IsValid() && !HasMatchingGameplayTag(EffectiveRuleTag))
 	{
 		UE_LOG(LogTemp, Error,
 			TEXT("[Rule] %s: GE(%s) 가 태그 %s 를 부여하지 않았다 — 애셋의 Components → Grant Tags to Target Actor → Add to Inherited 를 확인할 것"),
-			*RuleId.ToString(), *GetNameSafe(EffectClass), *Row->RuleTag.ToString());
+			*RuleId.ToString(), *GetNameSafe(EffectClass), *EffectiveRuleTag.ToString());
 	}
 
 	// 보유 룰 확인
