@@ -18,6 +18,7 @@ class UVerticalBox;
 class UWidget;
 class UPanelWidget;
 class UWidgetSwitcher;
+class UGameUserSettings;
 class USKSettingsMenuWidget;
 
 /**
@@ -302,25 +303,25 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UWidget> Txt_SubtitleScaleValue;
 
-	//~ 세부 화질 (0~3). 움직이면 프리셋이 "커스텀"으로 바뀐다.
+	//~ 세부 화질 콤보 (매우 높음 ~ 매우 낮음). 바꾸면 프리셋이 "커스텀"으로 바뀐다.
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_ShadowQuality;
+	TObjectPtr<UComboBoxString> Cmb_ShadowQuality;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_TextureQuality;
+	TObjectPtr<UComboBoxString> Cmb_TextureQuality;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_EffectsQuality;
+	TObjectPtr<UComboBoxString> Cmb_EffectsQuality;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_ViewDistance;
+	TObjectPtr<UComboBoxString> Cmb_ViewDistance;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_AntiAliasing;
+	TObjectPtr<UComboBoxString> Cmb_AntiAliasing;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
-	TObjectPtr<USlider> Sld_PostProcess;
+	TObjectPtr<UComboBoxString> Cmb_PostProcess;
 
 	//~ ---------------- 조작 탭 ----------------
 
@@ -491,12 +492,12 @@ private:
 	UFUNCTION() void HandleGammaChanged(float V);
 	UFUNCTION() void HandleFOVChanged(float V);
 	UFUNCTION() void HandleSubtitleScaleChanged(float V);
-	UFUNCTION() void HandleShadowQualityChanged(float V);
-	UFUNCTION() void HandleTextureQualityChanged(float V);
-	UFUNCTION() void HandleEffectsQualityChanged(float V);
-	UFUNCTION() void HandleViewDistanceChanged(float V);
-	UFUNCTION() void HandleAntiAliasingChanged(float V);
-	UFUNCTION() void HandlePostProcessChanged(float V);
+	UFUNCTION() void HandleShadowQualitySelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandleTextureQualitySelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandleEffectsQualitySelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandleViewDistanceSelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandleAntiAliasingSelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandlePostProcessSelected(FString Item, ESelectInfo::Type Type);
 
 	//~ 조작 콜백
 	UFUNCTION() void HandleMouseSensitivityChanged(float V);
@@ -539,6 +540,9 @@ private:
 
 	/** 세부 화질을 건드렸을 때 프리셋 콤보를 "커스텀"으로. */
 	void SyncPresetComboToCustom();
+
+	/** 세부 화질 콤보 공통 처리 — 고른 칸을 엔진 단계로 바꿔 Setter 에 넣고 즉시 적용. */
+	void ApplyDetailQuality(UComboBoxString* Combo, ESelectInfo::Type Type, TFunctionRef<void(UGameUserSettings*, int32)> Setter);
 
 	/** 임시 레이아웃일 때 키 목록을 C++ 이 직접 채운다. */
 	void RebuildFallbackKeybindList();

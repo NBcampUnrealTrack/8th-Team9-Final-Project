@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "SettingsKitSubsystem.h"
 
@@ -36,8 +36,24 @@ void USKSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// 감마만 여기서 바로 반영한다 — 나머지는 리스너가 붙은 뒤 BroadcastAll() 로 전달된다.
 	ApplyGamma();
+	ApplyGraphicsDefaultsOnce();
 
 	TakeSnapshot();
+}
+
+void USKSettingsSubsystem::ApplyGraphicsDefaultsOnce()
+{
+	if (GraphicsDefaultsVersion >= SKQuality::DefaultsVersion) { return; }
+
+	UGameUserSettings* GUS = GEngine ? GEngine->GetGameUserSettings() : nullptr;
+	if (!GUS) { return; } // 엔진 설정이 아직 없으면 다음 실행 때 다시 시도한다.
+
+	GUS->SetOverallScalabilityLevel(SKQuality::DefaultLevel);
+	GUS->ApplyNonResolutionSettings();
+	GUS->SaveSettings();
+
+	GraphicsDefaultsVersion = SKQuality::DefaultsVersion;
+	SaveConfig();
 }
 
 void USKSettingsSubsystem::Deinitialize()
@@ -263,11 +279,11 @@ void USKSettingsSubsystem::ResetCategoryToDefaults(ESKSettingsTab Category)
 		Values.SubtitleScale     = Defaults.SubtitleScale;
 		Values.LanguageCulture   = Defaults.LanguageCulture;
 
-		// 엔진 쪽 그래픽도 같이 되돌린다 — 화질 High, VSync 켬, 프레임 무제한.
+		// 엔진 쪽 그래픽도 같이 되돌린다 — 화질 "중간"(High), VSync 켬, 프레임 무제한.
 		// 해상도는 건드리지 않는다. 되돌리다 화면이 안 나오면 사용자가 손쓸 방법이 없다.
 		if (UGameUserSettings* GUS = GEngine ? GEngine->GetGameUserSettings() : nullptr)
 		{
-			GUS->SetOverallScalabilityLevel(2);
+			GUS->SetOverallScalabilityLevel(SKQuality::DefaultLevel);
 			GUS->SetVSyncEnabled(true);
 			GUS->SetFrameRateLimit(0.f);
 			GUS->ApplyNonResolutionSettings();

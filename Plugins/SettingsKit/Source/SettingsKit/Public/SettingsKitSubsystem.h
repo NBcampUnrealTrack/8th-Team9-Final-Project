@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -232,6 +232,16 @@ private:
 	 */
 	UPROPERTY(Config)
 	FSKSettingsValues Values;
+
+	/**
+	 * 그래픽 기본값을 이 PC 에 몇 번째 판까지 넣었는지. 화질은 엔진 GameUserSettings 가 들고 있어서
+	 * 예전에 다른 단계로 저장된 PC 는 그대로 남는다 — 그래서 첫 실행 때 한 번만 맞춰 준다.
+	 */
+	UPROPERTY(Config)
+	int32 GraphicsDefaultsVersion = 0;
+
+	/** GraphicsDefaultsVersion 이 SKQuality::DefaultsVersion 보다 낮으면 화질을 기본 단계로 맞추고 저장한다. */
+	void ApplyGraphicsDefaultsOnce();
 
 	/** 취소 시 돌아갈 지점. 설정창을 열 때 잡는다. */
 	FSKSettingsValues Snapshot;
