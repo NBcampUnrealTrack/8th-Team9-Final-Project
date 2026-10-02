@@ -45,12 +45,18 @@ namespace SKMenu
 		LOCTEXT("WindowMode_Windowed", "창모드"),
 	};
 
+	// 콤보에는 위에서부터 높은 순으로 놓는다. 엔진 단계 = (NumLevels - 1) - 인덱스.
 	static const FText QualityLabels[] = {
-		LOCTEXT("Quality_Low", "낮음"),
-		LOCTEXT("Quality_Medium", "중간"),
+		LOCTEXT("Quality_VeryHigh", "매우 높음"),
 		LOCTEXT("Quality_High", "높음"),
-		LOCTEXT("Quality_Epic", "최고"),
+		LOCTEXT("Quality_Medium", "중간"),
+		LOCTEXT("Quality_Low", "낮음"),
+		LOCTEXT("Quality_VeryLow", "매우 낮음"),
 	};
+	static_assert(UE_ARRAY_COUNT(QualityLabels) == SKQuality::NumLevels, "화질 라벨 수와 단계 수가 다르다");
+
+	static int32 QualityIndexToLevel(int32 Index) { return SKQuality::NumLevels - 1 - Index; }
+	static int32 QualityLevelToIndex(int32 Level) { return SKQuality::NumLevels - 1 - FMath::Clamp(Level, 0, SKQuality::NumLevels - 1); }
 	static const FText CustomQualityLabel = LOCTEXT("Quality_Custom", "커스텀");
 
 	static const FText FrameLimitLabels[] = {
@@ -211,7 +217,7 @@ void USKSettingsMenuWidget::HandleTextRevisionChanged()
 // ============================================================
 void USKSettingsMenuWidget::ApplySliderRanges()
 {
-	auto SetRange = [](USlider* Slider, float Min, float Max, bool bIntegerSteps = false)
+	auto SetRange = [](USlider* Slider, float Min, float Max)
 	{
 		if (!Slider)
 		{
@@ -219,11 +225,6 @@ void USKSettingsMenuWidget::ApplySliderRanges()
 		}
 		Slider->SetMinValue(Min);
 		Slider->SetMaxValue(Max);
-		if (bIntegerSteps)
-		{
-			Slider->SetStepSize(1.f);
-			Slider->MouseUsesStep = true;
-		}
 	};
 
 	//~ 0~1 짜리 (볼륨·보이스). UMG 기본값과 같지만 명시해 둔다.
@@ -241,13 +242,6 @@ void USKSettingsMenuWidget::ApplySliderRanges()
 	SetRange(Sld_SubtitleScale, 0.5f, 2.f);
 	SetRange(Sld_MouseSensitivity, 0.1f, 3.f);
 
-	//~ 세부 화질은 0~3 정수 단계다.
-	SetRange(Sld_ShadowQuality, 0.f, 3.f, true);
-	SetRange(Sld_TextureQuality, 0.f, 3.f, true);
-	SetRange(Sld_EffectsQuality, 0.f, 3.f, true);
-	SetRange(Sld_ViewDistance, 0.f, 3.f, true);
-	SetRange(Sld_AntiAliasing, 0.f, 3.f, true);
-	SetRange(Sld_PostProcess, 0.f, 3.f, true);
 }
 
 // ============================================================
@@ -289,12 +283,12 @@ void USKSettingsMenuWidget::BindCallbacks()
 	if (Sld_FOV)           Sld_FOV->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleFOVChanged);
 	if (Sld_SubtitleScale) Sld_SubtitleScale->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleSubtitleScaleChanged);
 
-	if (Sld_ShadowQuality)  Sld_ShadowQuality->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleShadowQualityChanged);
-	if (Sld_TextureQuality) Sld_TextureQuality->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleTextureQualityChanged);
-	if (Sld_EffectsQuality) Sld_EffectsQuality->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleEffectsQualityChanged);
-	if (Sld_ViewDistance)   Sld_ViewDistance->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleViewDistanceChanged);
-	if (Sld_AntiAliasing)   Sld_AntiAliasing->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleAntiAliasingChanged);
-	if (Sld_PostProcess)    Sld_PostProcess->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandlePostProcessChanged);
+	if (Cmb_ShadowQuality)  Cmb_ShadowQuality->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleShadowQualitySelected);
+	if (Cmb_TextureQuality) Cmb_TextureQuality->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleTextureQualitySelected);
+	if (Cmb_EffectsQuality) Cmb_EffectsQuality->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleEffectsQualitySelected);
+	if (Cmb_ViewDistance)   Cmb_ViewDistance->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleViewDistanceSelected);
+	if (Cmb_AntiAliasing)   Cmb_AntiAliasing->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleAntiAliasingSelected);
+	if (Cmb_PostProcess)    Cmb_PostProcess->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandlePostProcessSelected);
 
 	// 조작
 	if (Sld_MouseSensitivity) Sld_MouseSensitivity->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleMouseSensitivityChanged);
@@ -354,6 +348,16 @@ void USKSettingsMenuWidget::PopulateStaticCombos()
 			Cmb_QualityPreset->AddOption(Label.ToString());
 		}
 		Cmb_QualityPreset->AddOption(SKMenu::CustomQualityLabel.ToString());
+	}
+	for (UComboBoxString* Combo : { Cmb_ShadowQuality.Get(), Cmb_TextureQuality.Get(), Cmb_EffectsQuality.Get(),
+	                                Cmb_ViewDistance.Get(), Cmb_AntiAliasing.Get(), Cmb_PostProcess.Get() })
+	{
+		if (!Combo) { continue; }
+		Combo->ClearOptions();
+		for (const FText& Label : SKMenu::QualityLabels)
+		{
+			Combo->AddOption(Label.ToString());
+		}
 	}
 	if (Cmb_FrameLimit)
 	{
@@ -792,7 +796,7 @@ void USKSettingsMenuWidget::PopulateFromSettings()
 		if (Cmb_QualityPreset)
 		{
 			const int32 Level = GUS->GetOverallScalabilityLevel(); // -1 = 커스텀
-			Cmb_QualityPreset->SetSelectedIndex(Level < 0 ? UE_ARRAY_COUNT(SKMenu::QualityLabels) : FMath::Clamp(Level, 0, 3));
+			Cmb_QualityPreset->SetSelectedIndex(Level < 0 ? UE_ARRAY_COUNT(SKMenu::QualityLabels) : SKMenu::QualityLevelToIndex(Level));
 		}
 		if (Cmb_FrameLimit)
 		{
@@ -800,12 +804,12 @@ void USKSettingsMenuWidget::PopulateFromSettings()
 		}
 		if (Chk_VSync) Chk_VSync->SetIsChecked(GUS->IsVSyncEnabled());
 
-		if (Sld_ShadowQuality)  Sld_ShadowQuality->SetValue(GUS->GetShadowQuality());
-		if (Sld_TextureQuality) Sld_TextureQuality->SetValue(GUS->GetTextureQuality());
-		if (Sld_EffectsQuality) Sld_EffectsQuality->SetValue(GUS->GetVisualEffectQuality());
-		if (Sld_ViewDistance)   Sld_ViewDistance->SetValue(GUS->GetViewDistanceQuality());
-		if (Sld_AntiAliasing)   Sld_AntiAliasing->SetValue(GUS->GetAntiAliasingQuality());
-		if (Sld_PostProcess)    Sld_PostProcess->SetValue(GUS->GetPostProcessingQuality());
+		if (Cmb_ShadowQuality)  Cmb_ShadowQuality->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetShadowQuality()));
+		if (Cmb_TextureQuality) Cmb_TextureQuality->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetTextureQuality()));
+		if (Cmb_EffectsQuality) Cmb_EffectsQuality->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetVisualEffectQuality()));
+		if (Cmb_ViewDistance)   Cmb_ViewDistance->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetViewDistanceQuality()));
+		if (Cmb_AntiAliasing)   Cmb_AntiAliasing->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetAntiAliasingQuality()));
+		if (Cmb_PostProcess)    Cmb_PostProcess->SetSelectedIndex(SKMenu::QualityLevelToIndex(GUS->GetPostProcessingQuality()));
 	}
 
 	// 조작
@@ -954,14 +958,14 @@ void USKSettingsMenuWidget::HandleQualityPresetSelected(FString Item, ESelectInf
 	if (!GUS) { return; }
 
 	const int32 Index = Cmb_QualityPreset->GetSelectedIndex();
-	if (Index >= 0 && Index <= 3)
+	if (Index >= 0 && Index < SKQuality::NumLevels)
 	{
-		GUS->SetOverallScalabilityLevel(Index);
+		GUS->SetOverallScalabilityLevel(SKMenu::QualityIndexToLevel(Index));
 		GUS->ApplyNonResolutionSettings();
 		if (USKSettingsSubsystem* Settings = GetSettings()) { Settings->MarkDirty(); }
-		PopulateFromSettings(); // 세부 슬라이더도 프리셋값으로 따라간다.
+		PopulateFromSettings(); // 세부 콤보도 프리셋값으로 따라간다.
 	}
-	// "커스텀" 선택은 아무것도 하지 않는다 — 세부 슬라이더로 조절하는 상태다.
+	// "커스텀" 선택은 아무것도 하지 않는다 — 세부 콤보로 조절하는 상태다.
 }
 
 void USKSettingsMenuWidget::HandleFrameLimitSelected(FString Item, ESelectInfo::Type Type)
@@ -1055,60 +1059,49 @@ void USKSettingsMenuWidget::SyncPresetComboToCustom()
 	}
 }
 
-namespace
+void USKSettingsMenuWidget::ApplyDetailQuality(UComboBoxString* Combo, ESelectInfo::Type Type, TFunctionRef<void(UGameUserSettings*, int32)> Setter)
 {
-	/** 세부 화질 슬라이더 공통 — 0~3 으로 반올림해 엔진에 넣고 즉시 적용. */
-	template <typename TSetter>
-	void ApplyQualityLevel(float Value, TSetter&& Setter)
+	if (bPopulating || Type == ESelectInfo::Direct || !Combo) { return; }
+
+	const int32 Index = Combo->GetSelectedIndex();
+	if (Index < 0 || Index >= SKQuality::NumLevels) { return; }
+
+	if (UGameUserSettings* GUS = GEngine ? GEngine->GetGameUserSettings() : nullptr)
 	{
-		if (UGameUserSettings* GUS = GEngine ? GEngine->GetGameUserSettings() : nullptr)
-		{
-			Setter(GUS, FMath::Clamp(FMath::RoundToInt(Value), 0, 3));
-			GUS->ApplyNonResolutionSettings();
-		}
+		Setter(GUS, SKMenu::QualityIndexToLevel(Index));
+		GUS->ApplyNonResolutionSettings();
 	}
-}
-
-void USKSettingsMenuWidget::HandleShadowQualityChanged(float V)
-{
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetShadowQuality(Level); });
 	SyncPresetComboToCustom();
 }
 
-void USKSettingsMenuWidget::HandleTextureQualityChanged(float V)
+void USKSettingsMenuWidget::HandleShadowQualitySelected(FString Item, ESelectInfo::Type Type)
 {
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetTextureQuality(Level); });
-	SyncPresetComboToCustom();
+	ApplyDetailQuality(Cmb_ShadowQuality, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetShadowQuality(Level); });
 }
 
-void USKSettingsMenuWidget::HandleEffectsQualityChanged(float V)
+void USKSettingsMenuWidget::HandleTextureQualitySelected(FString Item, ESelectInfo::Type Type)
 {
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetVisualEffectQuality(Level); });
-	SyncPresetComboToCustom();
+	ApplyDetailQuality(Cmb_TextureQuality, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetTextureQuality(Level); });
 }
 
-void USKSettingsMenuWidget::HandleViewDistanceChanged(float V)
+void USKSettingsMenuWidget::HandleEffectsQualitySelected(FString Item, ESelectInfo::Type Type)
 {
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetViewDistanceQuality(Level); });
-	SyncPresetComboToCustom();
+	ApplyDetailQuality(Cmb_EffectsQuality, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetVisualEffectQuality(Level); });
 }
 
-void USKSettingsMenuWidget::HandleAntiAliasingChanged(float V)
+void USKSettingsMenuWidget::HandleViewDistanceSelected(FString Item, ESelectInfo::Type Type)
 {
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetAntiAliasingQuality(Level); });
-	SyncPresetComboToCustom();
+	ApplyDetailQuality(Cmb_ViewDistance, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetViewDistanceQuality(Level); });
 }
 
-void USKSettingsMenuWidget::HandlePostProcessChanged(float V)
+void USKSettingsMenuWidget::HandleAntiAliasingSelected(FString Item, ESelectInfo::Type Type)
 {
-	if (bPopulating) { return; }
-	ApplyQualityLevel(V, [](UGameUserSettings* GUS, int32 Level) { GUS->SetPostProcessingQuality(Level); });
-	SyncPresetComboToCustom();
+	ApplyDetailQuality(Cmb_AntiAliasing, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetAntiAliasingQuality(Level); });
+}
+
+void USKSettingsMenuWidget::HandlePostProcessSelected(FString Item, ESelectInfo::Type Type)
+{
+	ApplyDetailQuality(Cmb_PostProcess, Type, [](UGameUserSettings* GUS, int32 Level) { GUS->SetPostProcessingQuality(Level); });
 }
 
 // ============================================================

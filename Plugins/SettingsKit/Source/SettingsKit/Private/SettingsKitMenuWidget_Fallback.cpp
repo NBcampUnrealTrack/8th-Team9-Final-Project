@@ -312,26 +312,12 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		}
 		Cmb_QualityPreset = AddFallbackCombo(Tab, LOCTEXT("Preset", "프리셋"));
 
-		// 세부 화질은 0~3 단계라 옆에 숫자를 붙여도 읽히지 않는다. 라벨은 만들되 감춘다.
-		auto AddQualitySlider = [this, Tab](const FText& Label) -> USlider*
-		{
-			TObjectPtr<UWidget> HiddenLabel = nullptr;
-			USlider* Slider = AddFallbackSlider(Tab, Label, 0.f, 3.f, HiddenLabel);
-			Slider->SetStepSize(1.f);
-			Slider->MouseUsesStep = true;
-			if (HiddenLabel)
-			{
-				HiddenLabel->SetVisibility(ESlateVisibility::Collapsed);
-			}
-			return Slider;
-		};
-
-		Sld_ShadowQuality  = AddQualitySlider(LOCTEXT("Shadow", "그림자"));
-		Sld_TextureQuality = AddQualitySlider(LOCTEXT("Texture", "텍스처"));
-		Sld_EffectsQuality = AddQualitySlider(LOCTEXT("Effects", "이펙트"));
-		Sld_ViewDistance   = AddQualitySlider(LOCTEXT("ViewDist", "시야 거리"));
-		Sld_AntiAliasing   = AddQualitySlider(LOCTEXT("AA", "안티앨리어싱"));
-		Sld_PostProcess    = AddQualitySlider(LOCTEXT("PostProcess", "후처리"));
+		Cmb_ShadowQuality  = AddFallbackCombo(Tab, LOCTEXT("Shadow", "그림자"));
+		Cmb_TextureQuality = AddFallbackCombo(Tab, LOCTEXT("Texture", "텍스처"));
+		Cmb_EffectsQuality = AddFallbackCombo(Tab, LOCTEXT("Effects", "이펙트"));
+		Cmb_ViewDistance   = AddFallbackCombo(Tab, LOCTEXT("ViewDist", "시야 거리"));
+		Cmb_AntiAliasing   = AddFallbackCombo(Tab, LOCTEXT("AA", "안티앨리어싱"));
+		Cmb_PostProcess    = AddFallbackCombo(Tab, LOCTEXT("PostProcess", "후처리"));
 
 		if (UVerticalBoxSlot* SecSlot = Tab->AddChildToVerticalBox(MakeFallbackText(LOCTEXT("SecAccess", "표시"), 18, SKFallback::SectionColor)))
 		{

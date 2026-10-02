@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -6,6 +6,24 @@
 #include "SettingsKitTypes.generated.h"
 
 class UUserWidget;
+
+/**
+ * 세부 화질 단계. 엔진 스케일러빌리티 0(Low)~4(Cinematic) 를 그대로 쓴다.
+ * 설정창은 이걸 "매우 낮음 ~ 매우 높음" 다섯 칸으로 보여준다.
+ */
+namespace SKQuality
+{
+	inline constexpr int32 NumLevels = 5;
+
+	/** 첫 실행·되돌리기 기본값 = "중간" (엔진 High). */
+	inline constexpr int32 DefaultLevel = 2;
+
+	/**
+	 * 기본 단계를 바꿀 때마다 올린다. 저장된 값이 이보다 낮은 PC 는 다음 실행 때 한 번 새 기본값으로 맞춰진다.
+	 * 1 = 높음(10/02 오전), 2 = 중간.
+	 */
+	inline constexpr int32 DefaultsVersion = 2;
+}
 
 /** 설정창 탭. 위젯 스위처의 인덱스와 같은 순서다. */
 UENUM(BlueprintType)
