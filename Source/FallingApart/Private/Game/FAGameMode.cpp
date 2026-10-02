@@ -201,6 +201,7 @@ void AFAGameMode::OnSurvivalTick()
 		if (FAPlayerState && FAPlayerState->IsHuman())
 		{
 			FAPlayerState->AddHumanPersonalScore(SurvivalTickScore);
+			FAPlayerState->RecordScoreAward(EFAScoreReason::Survival, SurvivalTickScore, FString(), SurvivalTickInterval);
 		}
 	}
 }
@@ -297,6 +298,7 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 			if (FAPlayerState->IsHuman() && !FAPlayerState->WasInfectedThisRound())
 			{
 				FAPlayerState->AddHumanTeamScore(RoundCompleteScore);
+				FAPlayerState->RecordScoreAward(EFAScoreReason::RoundComplete, RoundCompleteScore);
 			}
 		}
 	}
@@ -316,6 +318,7 @@ void AFAGameMode::SettleRoundScore(EFARoundResult Result)
 			if (FAPlayerState->IsZombie())
 			{
 				FAPlayerState->AddZombieTeamScore(WipeOutAward);
+				FAPlayerState->RecordScoreAward(EFAScoreReason::WipeOut, WipeOutAward);
 			}
 		}
 	}
@@ -571,6 +574,7 @@ void AFAGameMode::HandleInfection(AFAPlayerState* Victim, AFAPlayerState* Infect
 	if (Infector && Infector != Victim && Infector->IsZombie())
 	{
 		Infector->AddZombiePersonalScore(InfectionScore);
+		Infector->RecordScoreAward(EFAScoreReason::Infection, InfectionScore, Victim->GetPlayerName());
 	}
 
 	// 생존 시간 확정 → 인간 팀 점수 자격 상실 → 좀비로 전환
@@ -614,6 +618,7 @@ void AFAGameMode::HandleRescueSuccess(AFAPlayerState* Rescuer, AFAPlayerState* V
 	if (Rescuer && Rescuer->IsHuman())
 	{
 		Rescuer->AddHumanPersonalScore(RescueScore);
+		Rescuer->RecordScoreAward(EFAScoreReason::Rescue, RescueScore, Victim ? Victim->GetPlayerName() : FString());
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[FA] %s rescued %s"), Rescuer ? *Rescuer->GetPlayerName() : TEXT("None"),
@@ -726,6 +731,7 @@ void AFAGameMode::AssignStartingTeams()
 		// 수당은 배정 직후에 붙인다 — 위에서 ResetForNewRound() 로 라운드 점수를 이미 비웠으므로
 		// 이 시점에 더하면 라운드 시작과 동시에 HUD 에 찍힌다.
 		Picked->AddZombiePersonalScore(StartingZombieBonus);
+		Picked->RecordScoreAward(EFAScoreReason::StartingZombie, StartingZombieBonus);
 
 		LastStartingZombies.Add(Picked);
 	}

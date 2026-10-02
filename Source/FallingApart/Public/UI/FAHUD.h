@@ -9,6 +9,7 @@
 
 class UFADraftWidget;
 class UFAHUDWidget;
+class UFAHUDDetailsWidget;
 class UFARuleSlotsWidget;
 
 /**
@@ -57,6 +58,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
 	int32 HUDWidgetZOrder = 0;
 
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
+	TSubclassOf<UFAHUDDetailsWidget> DetailsWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FallingApart|HUD")
+	int32 DetailsWidgetZOrder = 2;
+
 	/**
 	 * 드래프트 선택 창. 기본값은 C++ 기본 위젯이라 WBP 없이도 뜬다.
 	 * UI 담당이 UFADraftWidget 을 상속한 WBP_FADraft 를 만들면 여기서 갈아끼울 것.
@@ -80,6 +87,9 @@ protected:
 	int32 RuleSlotsZOrder = 1;
 
 private:
+	UPROPERTY(Transient)
+	TObjectPtr<UFAHUDDetailsWidget> DetailsWidget;
+
 	/** 룰 칸 위젯을 만들어 뷰포트에 올린다. 클래스가 비어 있으면 아무것도 하지 않는다. */
 	void CreateRuleSlotsWidget();
 

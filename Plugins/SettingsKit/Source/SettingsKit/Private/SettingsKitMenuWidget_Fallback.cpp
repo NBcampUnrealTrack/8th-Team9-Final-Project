@@ -284,6 +284,7 @@ void USKSettingsMenuWidget::BuildFallbackLayout()
 		{
 			SecSlot->SetPadding(FMargin(0.f, 16.f, 0.f, 10.f));
 		}
+		Cmb_VoiceInputDevice = AddFallbackCombo(Tab, LOCTEXT("VoiceInputDevice", "입력 장치"));
 		Cmb_VoiceMicMode = AddFallbackCombo(Tab, LOCTEXT("VoiceMicMode", "마이크 방식"));
 		Sld_VoiceInput = AddFallbackSlider(Tab, LOCTEXT("VoiceIn", "입력 감도"), 0.f, 1.f, Txt_VoiceInputValue);
 		Sld_VoiceGate  = AddFallbackSlider(Tab, LOCTEXT("VoiceGate", "잡음 차단"), 0.f, 1.f, Txt_VoiceGateValue);

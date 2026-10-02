@@ -114,6 +114,17 @@ void USKSettingsSubsystem::SetVoiceMicMode(ESKVoiceMicMode NewMode)
 	NotifyChanged(ESKSettingsTab::Voice);
 }
 
+void USKSettingsSubsystem::SetVoiceMicDevice(const FString& NewDeviceName)
+{
+	Values.MicDeviceName = NewDeviceName;
+	NotifyChanged(ESKSettingsTab::Voice);
+}
+
+TArray<FString> USKSettingsSubsystem::GetMicDeviceNames() const
+{
+	return MicDeviceProvider.IsBound() ? MicDeviceProvider.Execute() : TArray<FString>();
+}
+
 // ============================================================
 // 화면
 // ============================================================
@@ -241,6 +252,7 @@ void USKSettingsSubsystem::ResetCategoryToDefaults(ESKSettingsTab Category)
 		Values.VoiceGateThreshold = Defaults.VoiceGateThreshold;
 		Values.bVoiceMuted        = Defaults.bVoiceMuted;
 		Values.MicMode            = Defaults.MicMode;
+		Values.MicDeviceName      = Defaults.MicDeviceName;
 		break;
 
 	case ESKSettingsTab::Video:

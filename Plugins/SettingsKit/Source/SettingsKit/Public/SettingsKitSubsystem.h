@@ -17,6 +17,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSKOnSettingsChanged, ESKSettingsTab
 /** 설정창이 소리를 내달라고 요청한다(클릭·호버·볼륨 미리듣기). 게임이 자기 사운드 시스템에 연결한다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSKOnUISoundRequested, FName, SoundId);
 
+/** 지금 고를 수 있는 마이크 장치 이름들. 게임이 자기 보이스 백엔드에서 읽어 채운다. */
+DECLARE_DELEGATE_RetVal(TArray<FString>, FSKGetMicDeviceNames);
+
 /**
  * 설정값의 보관·저장·되돌리기를 맡는 곳. 플러그인의 심장.
  *
@@ -81,6 +84,23 @@ public:
 	/** 오픈 마이크 / 푸시투토크. 실제 마이크 제어는 게임이 OnSettingsChanged 를 받아서 한다. */
 	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Voice")
 	void SetVoiceMicMode(ESKVoiceMicMode NewMode);
+
+	/** 마이크 입력 장치. 빈 문자열 = 시스템 기본. 실제 장치 교체는 게임이 OnSettingsChanged 를 받아서 한다. */
+	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Voice")
+	void SetVoiceMicDevice(const FString& NewDeviceName);
+
+	/**
+	 * 고를 수 있는 마이크 장치 이름들. MicDeviceProvider 가 안 붙어 있으면 빈 배열이고,
+	 * 그러면 설정창 콤보에는 "시스템 기본값" 하나만 뜬다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "SettingsKit|Voice")
+	TArray<FString> GetMicDeviceNames() const;
+
+	/**
+	 * 마이크 장치 목록을 공급하는 곳. 플러그인은 오디오 장치를 직접 만지지 않으므로 게임이 여기에 붙인다.
+	 * 설정창을 열 때마다 불리므로 게임 중에 꽂은 장치도 다음에 열 때 보인다.
+	 */
+	FSKGetMicDeviceNames MicDeviceProvider;
 
 	//~ ---------------- 화면 ----------------
 

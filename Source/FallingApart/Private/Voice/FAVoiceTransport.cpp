@@ -10,6 +10,7 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemNames.h"
 #include "OnlineSubsystemUtils.h"
+#include "Voice/FAVoiceStatics.h"
 #include "Voice/FAVoiceTypes.h"
 
 namespace FAVoice
@@ -59,6 +60,10 @@ void UFAEngineVoiceTransport::SetLocalTalking(APlayerController* OwningControlle
 		if (VoiceInterface.IsValid() && LocalPlayer != nullptr)
 		{
 			VoiceInterface->RegisterLocalTalker(static_cast<uint32>(LocalPlayer->GetControllerId()));
+
+			// 엔진 캡처는 위 호출에서 처음 생기고 늘 기본 장치로 태어난다. 녹음이 켜지기(ToggleSpeaking) 전에
+			// 설정창에서 고른 장치로 바꿔 둔다. 이미 넣은 캡처면 아무것도 안 한다.
+			UFAVoiceStatics::ApplyCaptureDevice(OwningController);
 		}
 	}
 

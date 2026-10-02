@@ -70,7 +70,7 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="FallingApart|Trail", meta=(ClampMin="1.0"))
 	float PointSpacing = 75.0f;
 
-	static constexpr double TrailLifetime = 20.0;
+	static constexpr double TrailLifetime = 10.0;
 	FTimerHandle UpdateTimer;
 	bool bRecording = false;
 	bool bHasLastLocation = false;
