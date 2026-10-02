@@ -75,6 +75,8 @@ namespace SKMenu
 		LOCTEXT("MicMode_PushToTalk", "누르는 동안만"),
 	};
 
+	static const FText MicDeviceDefaultLabel = LOCTEXT("MicDevice_SystemDefault", "시스템 기본값");
+
 	struct FLangOption { FText Label; const TCHAR* Culture; };
 	static const FLangOption Languages[] = {
 		{ LOCTEXT("Language_SystemDefault", "시스템 기본"), TEXT("") },
@@ -174,6 +176,7 @@ void USKSettingsMenuWidget::OpenSettings()
 
 	PopulateStaticCombos();
 	PopulateResolutionCombo();
+	PopulateMicDeviceCombo();
 	PopulateFromSettings();
 	RequestKeybindListRefresh();
 
@@ -199,6 +202,7 @@ void USKSettingsMenuWidget::HandleTextRevisionChanged()
 	// UComboBoxString 옵션은 FText 가 아니라 현재 번역된 FString 을 복사해 둔다.
 	// 문화권이 바뀌면 정적 옵션을 다시 넣고 설정값에서 선택 상태를 복원한다.
 	PopulateStaticCombos();
+	PopulateMicDeviceCombo();
 	PopulateFromSettings();
 }
 
@@ -270,6 +274,7 @@ void USKSettingsMenuWidget::BindCallbacks()
 	if (Sld_VoiceGate)   Sld_VoiceGate->OnValueChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceGateChanged);
 	if (Chk_VoiceMute)   Chk_VoiceMute->OnCheckStateChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMuteChanged);
 	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceMicModeSelected);
+	if (Cmb_VoiceInputDevice) Cmb_VoiceInputDevice->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleVoiceInputDeviceSelected);
 
 	// 화면
 	if (Cmb_Resolution)    Cmb_Resolution->OnSelectionChanged.AddUniqueDynamic(this, &USKSettingsMenuWidget::HandleResolutionSelected);
@@ -402,6 +407,55 @@ void USKSettingsMenuWidget::PopulateResolutionCombo()
 	{
 		Cmb_Resolution->AddOption(FString::Printf(TEXT("%d x %d"), Resolution.X, Resolution.Y));
 	}
+}
+
+void USKSettingsMenuWidget::PopulateMicDeviceCombo()
+{
+	if (!Cmb_VoiceInputDevice)
+	{
+		return;
+	}
+
+	TGuardValue<bool> Guard(bPopulating, true);
+
+	Cmb_VoiceInputDevice->ClearOptions();
+	MicDeviceOptionValues.Reset();
+
+	Cmb_VoiceInputDevice->AddOption(SKMenu::MicDeviceDefaultLabel.ToString());
+	MicDeviceOptionValues.Add(FString());
+
+	if (const USKSettingsSubsystem* Settings = GetSettings())
+	{
+		for (const FString& DeviceName : Settings->GetMicDeviceNames())
+		{
+			if (DeviceName.IsEmpty() || MicDeviceOptionValues.Contains(DeviceName))
+			{
+				continue;
+			}
+			Cmb_VoiceInputDevice->AddOption(DeviceName);
+			MicDeviceOptionValues.Add(DeviceName);
+		}
+	}
+}
+
+void USKSettingsMenuWidget::SelectMicDeviceOption(const FString& DeviceName)
+{
+	if (!Cmb_VoiceInputDevice)
+	{
+		return;
+	}
+
+	TGuardValue<bool> Guard(bPopulating, true);
+
+	int32 Index = MicDeviceOptionValues.IndexOfByKey(DeviceName);
+	if (Index == INDEX_NONE)
+	{
+		Cmb_VoiceInputDevice->AddOption(FText::Format(
+			LOCTEXT("MicDevice_Disconnected", "{0} (연결 안 됨 · 다른 마이크 사용 중)"), FText::FromString(DeviceName)).ToString());
+		Index = MicDeviceOptionValues.Add(DeviceName);
+	}
+
+	Cmb_VoiceInputDevice->SetSelectedIndex(Index);
 }
 
 // ============================================================
@@ -694,6 +748,7 @@ void USKSettingsMenuWidget::PopulateFromSettings()
 	if (Sld_VoiceGate)   Sld_VoiceGate->SetValue(V.VoiceGateThreshold);
 	if (Chk_VoiceMute)   Chk_VoiceMute->SetIsChecked(V.bVoiceMuted);
 	if (Cmb_VoiceMicMode) Cmb_VoiceMicMode->SetSelectedIndex(static_cast<int32>(V.MicMode));
+	SelectMicDeviceOption(V.MicDeviceName);
 	SetPercentLabel(Txt_VoiceOutputValue, V.VoiceOutputVolume);
 	SetPercentLabel(Txt_VoiceInputValue, V.VoiceInputGain);
 	SetPercentLabel(Txt_VoiceGateValue, V.VoiceGateThreshold);
@@ -835,6 +890,22 @@ void USKSettingsMenuWidget::HandleVoiceMicModeSelected(FString Item, ESelectInfo
 		const int32 Index = FMath::Clamp(Cmb_VoiceMicMode->GetSelectedIndex(), 0,
 			static_cast<int32>(UE_ARRAY_COUNT(SKMenu::MicModeLabels)) - 1);
 		Settings->SetVoiceMicMode(static_cast<ESKVoiceMicMode>(Index));
+	}
+}
+
+void USKSettingsMenuWidget::HandleVoiceInputDeviceSelected(FString Item, ESelectInfo::Type Type)
+{
+	if (bPopulating || Type == ESelectInfo::Direct || !Cmb_VoiceInputDevice) { return; }
+
+	const int32 Index = Cmb_VoiceInputDevice->GetSelectedIndex();
+	if (!MicDeviceOptionValues.IsValidIndex(Index))
+	{
+		return;
+	}
+
+	if (USKSettingsSubsystem* Settings = GetSettings())
+	{
+		Settings->SetVoiceMicDevice(MicDeviceOptionValues[Index]);
 	}
 }
 

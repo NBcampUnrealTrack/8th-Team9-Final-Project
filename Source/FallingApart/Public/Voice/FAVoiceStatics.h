@@ -46,6 +46,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
 	static bool IsPushToTalkEnabled();
 
+	/**
+	 * 지금 연결된 마이크 장치 이름들(윈도우 전용, 다른 플랫폼은 빈 배열).
+	 * 부를 때마다 새로 읽는다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice")
+	static TArray<FString> GetCaptureDevices();
+
+	/**
+	 * 마이크 입력 장치. 빈 문자열 = 시스템 기본. 설정창의 '입력 장치'가 여기로 들어온다.
+	 *
+	 * 값은 CVar FAVoice.CaptureDevice 에 두고, 엔진 캡처가 이미 있으면 바로 바꾼다.
+	 * 캡처는 처음 말할 때(RegisterLocalTalker) 생기므로 메인 메뉴에서 고른 값은 그때 ApplyCaptureDevice 가 넣는다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FallingApart|Voice", meta = (WorldContext = "WorldContextObject"))
+	static void SetCaptureDevice(const UObject* WorldContextObject, const FString& DeviceName);
+
+	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice")
+	static FString GetCaptureDevice();
+
+	/**
+	 * CVar 에 적힌 장치를 엔진 캡처에 넣는다. 이미 이 캡처에 같은 장치를 넣었으면 아무것도 안 한다.
+	 * 실패하면(장치를 뽑았거나 게임 실행 뒤에 꽂은 장치) 기본 장치로 되돌린다. 저장값은 그대로 둔다.
+	 */
+	static void ApplyCaptureDevice(const UObject* WorldContextObject);
+
 	/** 내가 조종 중인 Pawn 의 보이스 컴포넌트. 관전 Pawn 도 같은 컴포넌트를 단다. */
 	UFUNCTION(BlueprintPure, Category = "FallingApart|Voice", meta = (WorldContext = "WorldContextObject"))
 	static UFAVoiceComponent* GetLocalVoiceComponent(const UObject* WorldContextObject);

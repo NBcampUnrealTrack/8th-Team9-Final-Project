@@ -126,6 +126,14 @@ struct SETTINGSKIT_API FSKSettingsValues
 	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
 	ESKVoiceMicMode MicMode = ESKVoiceMicMode::OpenMic;
 
+	/**
+	 * 마이크 입력 장치 이름. 비우면 시스템 기본 장치.
+	 * 이름 목록을 주는 것도, 실제로 장치를 바꾸는 것도 게임 쪽이다(USKSettingsSubsystem::MicDeviceProvider).
+	 * 장치를 뽑아도 값은 지우지 않는다 — 다시 꽂으면 그 장치로 돌아가야 한다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "SettingsKit|Voice")
+	FString MicDeviceName;
+
 	//~ ---------------- 화면 (엔진 GameUserSettings 에 없는 것만) ----------------
 
 	/** 감마. 2.2 가 표준. */

@@ -242,6 +242,13 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UComboBoxString> Cmb_VoiceMicMode;
 
+	/**
+	 * 마이크 입력 장치. 첫 항목은 항상 "시스템 기본값"이고 나머지는 게임이 준 장치 이름이다.
+	 * 설정창을 열 때마다 목록을 다시 읽는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
+	TObjectPtr<UComboBoxString> Cmb_VoiceInputDevice;
+
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "SettingsKit")
 	TObjectPtr<UWidget> Txt_VoiceOutputValue;
 
@@ -433,6 +440,18 @@ private:
 	void PopulateResolutionCombo();
 	void PopulateFromSettings();
 
+	/** 마이크 장치 목록을 게임에서 다시 받아 콤보를 채운다. */
+	void PopulateMicDeviceCombo();
+
+	/**
+	 * 저장된 장치를 콤보에서 고른다. 지금 목록에 없으면(뽑혀 있으면) "(연결 안 됨)" 항목을 붙여서라도
+	 * 보여준다 — 조용히 기본값으로 바꿔 보이면 사용자가 모르는 사이에 저장값이 덮인다.
+	 */
+	void SelectMicDeviceOption(const FString& DeviceName);
+
+	/** Cmb_VoiceInputDevice 의 항목별 실제 값. 인덱스가 콤보 항목과 1:1 이고 0번은 빈 문자열(기본값). */
+	TArray<FString> MicDeviceOptionValues;
+
 	FDelegateHandle TextRevisionChangedHandle;
 
 	//~ 값 라벨
@@ -458,6 +477,7 @@ private:
 	UFUNCTION() void HandleVoiceGateChanged(float V);
 	UFUNCTION() void HandleVoiceMuteChanged(bool bChecked);
 	UFUNCTION() void HandleVoiceMicModeSelected(FString Item, ESelectInfo::Type Type);
+	UFUNCTION() void HandleVoiceInputDeviceSelected(FString Item, ESelectInfo::Type Type);
 
 	//~ 화면 콜백
 	UFUNCTION() void HandleResolutionSelected(FString Item, ESelectInfo::Type Type);

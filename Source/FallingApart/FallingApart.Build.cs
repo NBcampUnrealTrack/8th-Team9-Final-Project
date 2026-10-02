@@ -37,8 +37,17 @@ public class FallingApart : ModuleRules
 			"CoreOnline", "OnlineSubsystem", "OnlineSubsystemUtils", "AudioMixer",
 			"AudioCaptureCore", "SignalProcessing",
 			//스팀 연동을 위한 모듈 포함
-			"OnlineSubsystemSteam"
+			"OnlineSubsystemSteam",
+			// Voice — 마이크 장치 교체(IVoiceCapture::ChangeDevice). UFAVoiceStatics::SetCaptureDevice.
+			"Voice"
 		});
+
+		// 마이크 장치 목록. 엔진 캡처가 DirectSound 장치 설명 문자열을 키로 쓰므로
+		// 같은 API(DirectSoundCaptureEnumerateW)로 읽어야 이름이 정확히 맞는다.
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			AddEngineThirdPartyPrivateStaticDependencies(Target, "DirectSound");
+		}
 
 		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
 	}
