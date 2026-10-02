@@ -688,7 +688,7 @@ void UFAOnlineSessionSubsystem::RestoreLobbySetting()
 	
 	LastSessionSettings->bAllowJoinInProgress = true;
 	LastSessionSettings->bAllowJoinViaPresence = true;
-
+	LastSessionSettings->bAllowInvites = true;
 	LastSessionSettings->Set(
 		SETTING_MAPNAME,
 		DefaultLobbyMapPackageName.ToString(),
