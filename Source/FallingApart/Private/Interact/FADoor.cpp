@@ -77,6 +77,7 @@ void AFADoor::BeginPlay()
 
 	bLastSoundedOpenState = bIsOpen;
 	SavedPawnCollisionResponse = DoorMesh->GetCollisionResponseToChannel(ECC_Pawn);
+	SetActorTickEnabled(false);
 }
 
 void AFADoor::Tick(float DeltaTime)
@@ -100,6 +101,10 @@ void AFADoor::Tick(float DeltaTime)
 
 	// 멈춘 뒤에도 충돌을 되살릴 때까지는 계속 봐야 하므로 위에서 일찍 빠져나가지 않는다.
 	UpdatePawnCollisionForMotion(DeltaTime, bMoving);
+	if (!bMoving && !bPawnCollisionSuppressed)
+	{
+		SetActorTickEnabled(false);
+	}
 }
 
 void AFADoor::UpdatePawnCollisionForMotion(float DeltaTime, bool bMoving)
@@ -380,6 +385,8 @@ void AFADoor::ApplyOpenState(bool bPlaySound)
 	}
 
 	TargetPivotRotation = GetTargetPivotRotation();
+	SetActorTickEnabled(!HingePivot->GetRelativeRotation().Equals(TargetPivotRotation, 0.05f)
+		|| bPawnCollisionSuppressed);
 
 	if (!bPlaySound || bIsOpen == bLastSoundedOpenState)
 	{
