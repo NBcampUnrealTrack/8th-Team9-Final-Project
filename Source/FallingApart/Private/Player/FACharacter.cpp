@@ -1580,7 +1580,7 @@ void AFACharacter::Tick(float DeltaTime)
 		}
 	}
 
-	if (!bIsFirstPerson)
+	if (IsLocallyControlled() && !bIsFirstPerson)
 	{
 		UpdateCameraCollision(DeltaTime);
 	}

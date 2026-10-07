@@ -436,10 +436,37 @@ TArray<FSKKeybindRow> USKSettingsSubsystem::GetKeybindRows(ULocalPlayer* LocalPl
 		}
 	}
 
-	// TMap 순회 순서는 보장되지 않는다 — 목록이 열 때마다 뒤바뀌면 못 쓴다.
-	Rows.Sort([](const FSKKeybindRow& A, const FSKKeybindRow& B)
+	TMap<FName, int32> DisplayOrder;
+	if (const USKPluginSettings* PluginSettings = USKPluginSettings::Get())
 	{
-		return A.DisplayName.CompareTo(B.DisplayName) < 0;
+		for (const TSoftObjectPtr<UInputMappingContext>& SoftContext : PluginSettings->RebindableMappingContexts)
+		{
+			if (const UInputMappingContext* Context = SoftContext.LoadSynchronous())
+			{
+				for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappingsForProfile(Profile->GetProfileIdString()))
+				{
+					const FName MappingName = Mapping.GetMappingName();
+					if (Mapping.IsPlayerMappable() && !MappingName.IsNone() && !DisplayOrder.Contains(MappingName))
+					{
+						const int32 Index = DisplayOrder.Num();
+						DisplayOrder.Add(MappingName, Index);
+					}
+				}
+			}
+		}
+	}
+
+	Rows.Sort([&DisplayOrder](const FSKKeybindRow& A, const FSKKeybindRow& B)
+	{
+		const int32* AOrder = DisplayOrder.Find(A.MappingName);
+		const int32* BOrder = DisplayOrder.Find(B.MappingName);
+		const int32 AIndex = AOrder ? *AOrder : MAX_int32;
+		const int32 BIndex = BOrder ? *BOrder : MAX_int32;
+		if (AIndex != BIndex)
+		{
+			return AIndex < BIndex;
+		}
+		return A.MappingName.LexicalLess(B.MappingName);
 	});
 
 	return Rows;
