@@ -46,6 +46,8 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 private:
+	friend class FFALobbyPlayerCountTest;
+
 	void RefreshAdvertisedPlayerCount(const AController* ExcludedController = nullptr);
 	bool IsSessionOwner(FUniqueNetIdRepl UniqueNetId);
 	/** GameState에 필요 데이터 전파. LobbyGameState->SetLobbySnapshot를 참고 */

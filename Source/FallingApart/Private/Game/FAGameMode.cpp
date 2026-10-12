@@ -7,6 +7,7 @@
 #include "GAS/FAAbilitySystemComponent.h"
 #include "GAS/FAGameplayTags.h"
 #include "Game/FAGameState.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "Network/FAOnlineSessionSubsystem.h"
@@ -648,6 +649,21 @@ void AFAGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 {
 	// 다른 액터가 초기화되기 전에 가장 먼저 실행되는 Gamemode 초기화 가상함수. 규칙설정에 적절함.
 	Super::InitGame(MapName, Options, ErrorMessage);
+
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
+	if (UGameplayStatics::ParseOption(Options, TEXT("FASoloTest")) == TEXT("1"))
+	{
+		// Per-world test settings only; do not change Blueprint defaults or session context.
+		MinPlayersToStart = 1;
+		ExpectedPlayersToStart = 1;
+		bHasLobbyMatchContext = false;
+		StartingZombieCountOverride = 0;
+		RoundDuration = 3600.0f;
+		DraftsPerRound = 0;
+		UE_LOG(LogTemp, Display, TEXT("[FASoloTest] Enabled: one player, 3600-second round, no periodic drafts."));
+		return;
+	}
+#endif
 	
 	UGameInstance* GameInstance = GetGameInstance();
 	if (!GameInstance)
@@ -1128,9 +1144,16 @@ AFAGameState* AFAGameMode::GetFAGameState() const
 	return GetGameState<AFAGameState>();
 }
 
+bool AFAGameMode::CanReturnToLobby() const
+{
+	const AFAGameState* State = GetFAGameState();
+	return HasAuthority() && !bReturningToLobby && IsValid(State)
+		&& State->GetRoundPhase() == EFARoundPhase::MatchEnd;
+}
+
 void AFAGameMode::RequestReturnToLobbyNow()
 {
-	if (bReturningToLobby)
+	if (!CanReturnToLobby())
 	{
 		return;
 	}
@@ -1144,8 +1167,8 @@ void AFAGameMode::RequestReturnToLobbyNow()
 
 void AFAGameMode::BeginReturnToLobby()
 {
-	//한번만 발동 명시
-	if (bReturningToLobby)
+	// 버튼 요청과 자동 복귀 타이머 모두 최종 경기 종료 후 한 번만 허용한다.
+	if (!CanReturnToLobby())
 		return;
 	bReturningToLobby = true;
 	

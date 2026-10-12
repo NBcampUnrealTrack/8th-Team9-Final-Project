@@ -286,6 +286,8 @@ private:
 	
 	// [박지석] - 최종 결과창 출력 10초후 로비로 다같이 돌아가는 시스템 관련
 private:
+	friend class FFAMatchReturnGuardTest;
+	bool CanReturnToLobby() const;
 	void BeginReturnToLobby();
 	void HandleSessionReopenForLobby(bool bSuccess);
 	void TravelToLobby();

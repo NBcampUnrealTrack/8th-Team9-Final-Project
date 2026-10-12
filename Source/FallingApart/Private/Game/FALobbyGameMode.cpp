@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Game/FALobbyGameMode.h"
@@ -431,7 +431,11 @@ bool AFALobbyGameMode::CanStartGame(int32& OutPlayerCount, int32& OutReadyCount)
 	{
 		AFALobbyPlayerState* LobbyPlayerState = Cast<AFALobbyPlayerState>(PlayerState);
 		
-		if (!LobbyPlayerState || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator() || PlayerState->GetPlayerController()->IsActorBeingDestroyed())
+		if (!IsValid(LobbyPlayerState) || LobbyPlayerState->IsInactive() || LobbyPlayerState->IsOnlyASpectator())
+			continue;
+
+		const APlayerController* Controller = LobbyPlayerState->GetPlayerController();
+		if (!IsValid(Controller) || Controller->IsActorBeingDestroyed())
 			continue;
 		
 		OutPlayerCount++;
