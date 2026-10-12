@@ -130,3 +130,4 @@ $RECYCLE.BIN/
 # steam_appid.txt  # 필요하면 아래처럼 관리하세요
 *.local
 .env
+/Scripts

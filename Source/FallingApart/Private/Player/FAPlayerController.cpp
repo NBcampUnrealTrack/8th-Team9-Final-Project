@@ -54,6 +54,7 @@ AFAPlayerController::AFAPlayerController()
 
 void AFAPlayerController::FADraft(int32 DraftIndex)
 {
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 	if (!HasAuthority())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Draft] FADraft 는 서버에서만 쓸 수 있다 (PIE 는 Play As Listen Server 로 호스트에서 입력할 것)"));
@@ -65,6 +66,7 @@ void AFAPlayerController::FADraft(int32 DraftIndex)
 		// 회차 카운터(GameState::DraftsCompleted)는 건드리지 않는다 — 정규 30초 루프와 섞이지 않게.
 		Draft->StartDraftForAllPlayers(FMath::Clamp(DraftIndex, 1, 6));
 	}
+#endif
 }
 
 void AFAPlayerController::FATags()
@@ -89,6 +91,7 @@ void AFAPlayerController::FATags()
 
 void AFAPlayerController::FADeathMatch()
 {
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 	if (!HasAuthority())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[DeathMatch] FADeathMatch 는 서버에서만 쓸 수 있다 (PIE 는 Play As Listen Server 로 호스트에서 입력할 것)"));
@@ -120,6 +123,7 @@ void AFAPlayerController::FADeathMatch()
 	{
 		DeathMatch->StartDeathMatch(Contenders);
 	}
+#endif
 }
 
 void AFAPlayerController::FAPlaySound(const FString& SoundId)
@@ -204,6 +208,7 @@ namespace FAVoiceTuning
 
 void AFAPlayerController::FAInfect(const FString& PlayerNameFragment)
 {
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 	if (!HasAuthority())
 	{
 		ClientMessage(TEXT("[FAInfect] 서버에서만 쓸 수 있다 (PIE 는 호스트 창에서 입력할 것)"));
@@ -253,6 +258,7 @@ void AFAPlayerController::FAInfect(const FString& PlayerNameFragment)
 
 	ClientMessage(FString::Printf(TEXT("[FAInfect] %s 감염 — 전환 연출과 연속 드래프트가 시작된다"),
 		*Victim->GetPlayerName()));
+#endif
 }
 
 void AFAPlayerController::FAVoiceGate(float SilenceThreshold, float NoiseGateThreshold)

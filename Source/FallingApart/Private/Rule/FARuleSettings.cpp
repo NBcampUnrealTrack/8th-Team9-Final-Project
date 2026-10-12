@@ -205,6 +205,7 @@ FLinearColor UFARuleSettings::GetGambleColor(float TimeSeconds)
 	return FLinearColor(Hue, 0.85f, 1.0f).HSVToLinearRGB();
 }
 
+#if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 namespace FARuleDebug
 {
 	/**
@@ -389,3 +390,4 @@ namespace FARuleDebug
 		TEXT("보유 룰을 전부 제거한다. FARule.Clear [all] (서버 창 전용)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ClearRules));
 }
+#endif
